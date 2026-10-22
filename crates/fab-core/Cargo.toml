@@ -1,0 +1,6 @@
+[package]
+name = "fab-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
