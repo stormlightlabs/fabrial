@@ -33,6 +33,14 @@ with method `run_workflow`, `workflow_id` `comment.yml`, `ref` `main`, and
 scratch directory, never inside the repository. The comment appears once the
 run finishes, after about ten seconds.
 
+Both return once the run is queued, so a run that fails on a bad `pr`, a
+missing secret or a closed pull request goes unseen. Confirm each post: run
+`gh run list --workflow comment.yml --limit 1`, then
+`gh run watch <id> --exit-status`. A cloud session checks the conclusion of
+the newest `comment.yml` run with `actions_list` method `list_workflow_runs`,
+or reads the comments with `pull_request_read` method `get_comments`. Report a
+failed run instead of retrying it in a loop.
+
 ## Implement
 
 Dispatch the `implementer` agent with the task ID and a worktree you created
@@ -81,9 +89,9 @@ Review finished at <full head sha>
 ```
 
 Post it through the Bot comment workflow like the rest. The Review gate
-workflow then turns `storm/review` green for that head. Post
-it only once the sequence has run to its end. A push after it sets the check
-back to pending, unless the push only moved the base.
+workflow then turns `storm/review` green for that head. Post it only once the
+sequence has run to its end. A push after it sets the check back to pending,
+unless the push only moved the base.
 
 Then report: the pull request, what each pass found and what each revise
 fixed, and anything left for the owner to judge, including any finding the
