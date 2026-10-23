@@ -30,14 +30,16 @@ checkout.
 
 ```sh
 git fetch origin main <branch>
-git diff "$(git merge-base origin/main HEAD)" HEAD | git patch-id --stable
+git diff "$(git merge-base origin/main HEAD)" HEAD > before.diff
 git rebase origin/main
-git diff origin/main HEAD | git patch-id --stable
+git diff origin/main HEAD > after.diff
 ```
 
-The two ids say whether the review still applies. The same id means only the
-base moved. A different id means the change itself differs, as when `main`
-already held part of it.
+Compare the two diffs as the Review gate does: the same changed lines with
+the same surrounding context, wherever they sit in the file. Line numbers in
+the `@@` headers and the blob ids on `index` lines may differ; any other
+difference, whitespace included, means the change itself differs, as when
+`main` already held part of it or changed a line next to it.
 
 A conflict is a decision about the change. Abort with `git rebase --abort`,
 name the conflicting files, and stop: a `revise` pass or the operator resolves
@@ -54,6 +56,9 @@ git push --force-with-lease origin <branch>
 
 When only the base moved, the Review gate keeps `storm/review` green.
 Otherwise the check goes back to pending and the change needs a review round.
+If it stays pending after a push that only moved the base, the previous
+head's check was not yet green when the gate read it: wait for that check,
+then rerun this push's Review gate run, or run a review round.
 
 ## Report
 

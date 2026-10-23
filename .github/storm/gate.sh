@@ -59,16 +59,19 @@ last_success() {
       | sort_by(.completed_at) | last | select(.conclusion == \"success\") | .output.summary" || true
 }
 
-# Prints a hash of a commit's exact diff against its merge base with main, or
-# nothing when the commit is not in the clone or adds nothing. Whitespace
-# counts: a whitespace-only change hashes differently.
+# Prints a hash of a commit's diff against its merge base with main, or
+# nothing when the commit is not in the clone or adds nothing. The hash leaves
+# out where the change sits: `index` lines, and hunk headers cut to `@@`, so a
+# rebase over an earlier line of the same file keeps it. Every other byte
+# counts, whitespace included.
 diff_hash() {
   local sha=$1 base
   git -C "$HEAD_DIR" cat-file -e "$sha^{commit}" 2>/dev/null ||
     git -C "$HEAD_DIR" fetch -q origin "$sha" 2>/dev/null || return 0
   base=$(git -C "$HEAD_DIR" merge-base origin/main "$sha") || return 0
   git -C "$HEAD_DIR" diff --quiet "$base" "$sha" && return 0
-  git -C "$HEAD_DIR" diff --binary --no-color --no-ext-diff "$base" "$sha" | sha256sum | cut -d' ' -f1
+  git -C "$HEAD_DIR" diff --binary --no-color --no-ext-diff "$base" "$sha" |
+    sed -E '/^index /d; s/^@@ -[0-9,]+ \+[0-9,]+ @@.*$/@@/' | sha256sum | cut -d' ' -f1
 }
 
 # The marker a success leaves in its summary, so a later push can tell whether
