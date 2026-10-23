@@ -80,3 +80,10 @@ jobs:
             echo "::error title=auto-merge::$out"
             exit 1
           fi
+
+          # A `/storm:stop` that landed after the label check above would be
+          # undone by the call just made, so look again and turn it back off.
+          if gh pr view "$BRANCH" --json labels --jq '.labels[].name' | grep -qx 'storm:stopped'; then
+            gh pr merge "$BRANCH" --disable-auto
+            echo "Labelled storm:stopped while enabling auto-merge; turned it off again."
+          fi

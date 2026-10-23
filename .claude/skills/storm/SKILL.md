@@ -70,17 +70,13 @@ it only for the head the last round reviewed, and only when the loop ran to
 its end. A push after it sets the check back to pending, unless the push only
 moved the base.
 
-A newer event on the pull request can cancel the gate run your comment
-queued. After posting, check `storm/review` on the head; if it is still
-pending once the gate has had time to run, post the comment once more.
-
 Then report: the pull request, the rounds it took, what each fixed, and what
 the owner should look at. The owner approves, and auto-merge lands it.
 
 ## Comment commands
 
-While subscribed to the pull request, act on these comments from the owner or
-a collaborator:
+While subscribed to the pull request, act on these comments from the owner, a
+member or a collaborator:
 
 | Comment              | What happens                                                                |
 | -------------------- | --------------------------------------------------------------------------- |

@@ -12,9 +12,13 @@
 #                  `/storm:stop` labels the pull request and turns off
 #                  auto-merge.
 #
+# A command word ends at whitespace or the end of the line, so
+# `/storm:readyish` and `/storm:stopwatch` do nothing.
+#
 # Runs from a checkout of main with the pull request's head in HEAD_DIR and
-# origin/main fetched there. Needs REPO, PR, GH_TOKEN and EVENT. With
-# DRY_RUN=1, writes to GitHub are printed instead of sent.
+# origin/main fetched there. Needs REPO, PR, GH_TOKEN and EVENT. HEAD_SHA is
+# the head to act on; without it, the pull request's current head is read.
+# With DRY_RUN=1, writes to GitHub are printed instead of sent.
 set -euo pipefail
 
 : "${REPO:?}" "${PR:?}" "${EVENT:?}"
@@ -91,7 +95,7 @@ wrong_sha() {
     --body "\`$command\` names \`${named:-nothing}\`, but the head is \`$short\`. Check the head and post it again."
 }
 
-head=$(gh pr view "$PR" --repo "$REPO" --json headRefOid --jq .headRefOid)
+head=${HEAD_SHA:-$(gh pr view "$PR" --repo "$REPO" --json headRefOid --jq .headRefOid)}
 short=${head:0:7}
 
 if [[ $EVENT == push ]]; then
@@ -124,7 +128,7 @@ case $line in
       wrong_sha 'Review finished' "$named"
     fi
     ;;
-  /storm:ready*)
+  /storm:ready | /storm:ready[[:space:]]*)
     named=$(named_sha 2)
     if names_head "$named"; then
       check "$head" success "Marked ready by @$author" \
@@ -133,7 +137,7 @@ case $line in
       wrong_sha '/storm:ready' "$named"
     fi
     ;;
-  /storm:stop*)
+  /storm:stop | /storm:stop[[:space:]]*)
     gh_write label create "$STOP_LABEL" --repo "$REPO" --force \
       --description 'No auto-merge or agent work until a person removes this label' >/dev/null
     gh_write pr edit "$PR" --repo "$REPO" --add-label "$STOP_LABEL" >/dev/null

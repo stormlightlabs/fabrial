@@ -29,8 +29,6 @@ jobs:
        github.event.comment.user.type != 'Bot' &&
        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
-    concurrency:
-      group: storm-gate-${{ github.event.pull_request.number || github.event.issue.number }}
     steps:
       - uses: actions/create-github-app-token@v2
         id: app
@@ -38,14 +36,18 @@ jobs:
           app-id: ${{ secrets.THUNDERBOT_APP_ID }}
           private-key: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}
 
+      # A push run works on the head its event names, not the newest one, so
+      # runs need no ordering: each sets the check on its own commit. A comment
+      # run reads the head when it starts and accepts only a SHA naming it.
       - name: Find the head
         id: pr
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           PR: ${{ github.event.pull_request.number || github.event.issue.number }}
+          EVENT_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           echo "number=$PR" >> "$GITHUB_OUTPUT"
-          echo "sha=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" >> "$GITHUB_OUTPUT"
+          echo "sha=${EVENT_SHA:-$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v5
         with:
@@ -64,6 +66,7 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}
           PR: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.sha }}
           EVENT: ${{ github.event_name == 'issue_comment' && 'comment' || 'push' }}
           ACTION: ${{ github.event.action }}
           BEFORE: ${{ github.event.before }}
