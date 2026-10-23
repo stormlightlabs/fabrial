@@ -5,9 +5,12 @@
 #
 #   EVENT=push     a new head: pending, unless it is the change last reviewed
 #                  with only the base moved (BEFORE is the previous head).
-#   EVENT=comment  BODY from AUTHOR: `Review finished at <sha>` naming the head,
-#                  or `/storm:ready`, sets it to success; `/storm:stop` labels
-#                  the pull request and turns off auto-merge.
+#                  With ACTION=reopened there is no BEFORE: the head stays as
+#                  it is when its own latest run is a success, else pending.
+#   EVENT=comment  BODY from AUTHOR: `Review finished at <sha>` or
+#                  `/storm:ready <sha>` naming the head sets it to success;
+#                  `/storm:stop` labels the pull request and turns off
+#                  auto-merge.
 #
 # Runs from a checkout of main with the pull request's head in HEAD_DIR and
 # origin/main fetched there. Needs REPO, PR, GH_TOKEN and EVENT. With
@@ -17,6 +20,7 @@ set -euo pipefail
 : "${REPO:?}" "${PR:?}" "${EVENT:?}"
 HEAD_DIR=${HEAD_DIR:-head}
 CHECK_NAME='storm/review'
+BOT_SLUG='stormlight-thunderbot'
 STOP_LABEL='storm:stopped'
 
 # Runs gh for a write, or prints it under DRY_RUN.
@@ -42,40 +46,69 @@ check() {
   gh_write api -X POST "repos/$REPO/check-runs" "${args[@]}" >/dev/null
 }
 
-# Prints the patch id of a commit's change against main, or nothing when the
-# commit is not in the clone or adds nothing.
-patch_id() {
+# Prints the summary of the bot's latest completed storm/review run on a
+# commit when that run succeeded, and nothing otherwise. Runs from other apps
+# are ignored, since any app with checks:write can post one under this name.
+last_success() {
+  gh api "repos/$REPO/commits/$1/check-runs?check_name=$CHECK_NAME" \
+    --jq "[.check_runs[] | select(.status == \"completed\" and .app.slug == \"$BOT_SLUG\")]
+      | sort_by(.completed_at) | last | select(.conclusion == \"success\") | .output.summary" || true
+}
+
+# Prints a hash of a commit's exact diff against its merge base with main, or
+# nothing when the commit is not in the clone or adds nothing. Whitespace
+# counts: a whitespace-only change hashes differently.
+diff_hash() {
   local sha=$1 base
   git -C "$HEAD_DIR" cat-file -e "$sha^{commit}" 2>/dev/null ||
     git -C "$HEAD_DIR" fetch -q origin "$sha" 2>/dev/null || return 0
   base=$(git -C "$HEAD_DIR" merge-base origin/main "$sha") || return 0
-  git -C "$HEAD_DIR" diff "$base" "$sha" | git patch-id --stable | cut -d' ' -f1
+  git -C "$HEAD_DIR" diff --quiet "$base" "$sha" && return 0
+  git -C "$HEAD_DIR" diff --binary --no-color --no-ext-diff "$base" "$sha" | sha256sum | cut -d' ' -f1
 }
 
 # The marker a success leaves in its summary, so a later push can tell whether
 # only the base moved.
 marker() {
-  printf '\n\n<!-- storm-review patch=%s -->' "$(patch_id "$1")"
+  printf '\n\n<!-- storm-review diff=%s -->' "$(diff_hash "$1")"
+}
+
+# Prints the SHA a command line names as its word number $1, without
+# backticks or a trailing full stop.
+named_sha() {
+  awk -v n="$1" '{print $n}' <<<"$line" | tr -d '`.'
+}
+
+# Succeeds when $1 is at least 7 hex characters and a prefix of the head.
+names_head() {
+  [[ $1 =~ ^[0-9a-f]{7,40}$ && $head == "$1"* ]]
+}
+
+# Asks for a command again when the SHA it names is not the head.
+wrong_sha() {
+  local command=$1 named=$2
+  gh_write pr comment "$PR" --repo "$REPO" \
+    --body "\`$command\` names \`${named:-nothing}\`, but the head is \`$short\`. Check the head and post it again."
 }
 
 head=$(gh pr view "$PR" --repo "$REPO" --json headRefOid --jq .headRefOid)
 short=${head:0:7}
 
 if [[ $EVENT == push ]]; then
+  if [[ ${ACTION:-} == reopened && -n $(last_success "$head") ]]; then
+    exit 0
+  fi
   before=${BEFORE:-}
   if [[ -n $before && ! $before =~ ^0+$ ]]; then
-    last=$(gh api "repos/$REPO/commits/$before/check-runs?check_name=$CHECK_NAME" \
-      --jq '[.check_runs[] | select(.status == "completed")] | sort_by(.completed_at) | last
-        | select(.conclusion == "success") | .output.summary' || true)
-    reviewed=$(sed -n 's/.*<!-- storm-review patch=\([0-9a-f]*\) -->.*/\1/p' <<<"$last")
-    if [[ -n $reviewed && $reviewed == "$(patch_id "$head")" ]]; then
+    reviewed=$(sed -n 's/.*<!-- storm-review diff=\([0-9a-f]*\) -->.*/\1/p' <<<"$(last_success "$before")")
+    if [[ -n $reviewed && $reviewed == "$(diff_hash "$head")" ]]; then
       check "$head" success "Same change as ${before:0:7}" \
         "Only the base moved since ${before:0:7}, so its review stands.$(marker "$head")"
       exit 0
     fi
   fi
   check "$head" in_progress "Waiting for review" \
-    "The agent that opened this pull request reviews it and comments \`Review finished at $short\`. A person can accept it as it is with \`/storm:ready\`."
+    "The agent that opened this pull request reviews it and comments \`Review finished at $short\`. A person can accept it as it is with \`/storm:ready $short\`."
   exit 0
 fi
 
@@ -83,18 +116,22 @@ line=$(head -n 1 <<<"${BODY:-}" | tr -d '\r')
 author=${AUTHOR:-someone}
 case $line in
   'Review finished at '*)
-    named=$(awk '{print $4}' <<<"$line" | tr -d '`.')
-    if [[ ${#named} -ge 7 && $head == "$named"* ]]; then
+    named=$(named_sha 4)
+    if names_head "$named"; then
       check "$head" success "Reviewed at $short" \
         "@$author finished the review of $short.$(marker "$head")"
     else
-      gh_write pr comment "$PR" --repo "$REPO" \
-        --body "\`Review finished\` names \`$named\`, but the head is \`$short\`. Review the head and post it again."
+      wrong_sha 'Review finished' "$named"
     fi
     ;;
   /storm:ready*)
-    check "$head" success "Marked ready by @$author" \
-      "@$author accepted $short with \`/storm:ready\`.$(marker "$head")"
+    named=$(named_sha 2)
+    if names_head "$named"; then
+      check "$head" success "Marked ready by @$author" \
+        "@$author accepted $short with \`/storm:ready\`.$(marker "$head")"
+    else
+      wrong_sha '/storm:ready' "$named"
+    fi
     ;;
   /storm:stop*)
     gh_write label create "$STOP_LABEL" --repo "$REPO" --force \
