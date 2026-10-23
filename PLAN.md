@@ -158,7 +158,7 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 
 ## 3. arclightning
 
-- [ ] Install fabrial in `stormlightlabs/arclightning` with `fab init`.
+- [x] Install fabrial in `stormlightlabs/arclightning` with `fab init` (arclightning#1).
 - [ ] Implement arclightning's repository-native workspace (its roadmap's
       milestone 3) through the `storm` skill.
 
