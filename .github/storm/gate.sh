@@ -9,8 +9,9 @@
 #                  it is when its own latest run is a success, else pending.
 #   EVENT=comment  BODY from AUTHOR: `Review finished at <sha>` or
 #                  `/storm:ready <sha>` naming the head sets it to success,
-#                  and marks a draft ready with auto-merge on; `/storm:stop`
-#                  labels the pull request and turns off auto-merge.
+#                  marks a draft ready and makes sure auto-merge is on with
+#                  Branch PR's message; `/storm:stop` labels the pull request
+#                  and turns off auto-merge.
 #
 # A command word ends at whitespace or the end of the line, so
 # `/storm:readyish` and `/storm:stopwatch` do nothing.
@@ -98,13 +99,14 @@ names_head() {
 # Marks a draft pull request ready once its head has passed review, and makes
 # sure squash auto-merge is on with the message Branch PR uses. A ready pull
 # request whose auto-merge is off, or set with another message or method, gets
-# it set again, so a second `Review finished` repairs a run that failed half
-# way. A stopped pull request is left alone. Callers run it before posting the
-# success: when GitHub refuses auto-merge, the bot says why and the script
-# stops with storm/review pending.
+# it set again, so a second `Review finished` repairs a run that failed
+# halfway. A stopped or closed pull request is left alone. Callers run it
+# before posting the success: when GitHub refuses auto-merge, storm/review goes
+# back to pending, the bot says why, and the script stops.
 mark_ready() {
-  local info title branch body err
-  info=$(gh pr view "$PR" --repo "$REPO" --json isDraft,title,headRefName,labels,autoMergeRequest)
+  local info title branch body old err
+  info=$(gh pr view "$PR" --repo "$REPO" --json state,isDraft,title,headRefName,labels,autoMergeRequest)
+  [[ $(jq -r .state <<<"$info") == OPEN ]] || return 0
   jq -e --arg l "$STOP_LABEL" 'any(.labels[]; .name == $l)' <<<"$info" >/dev/null && return 0
   title=$(jq -r .title <<<"$info")
   branch=$(jq -r .headRefName <<<"$info")
@@ -116,14 +118,19 @@ mark_ready() {
   jq -e --arg t "$title" --arg b "$body" '.autoMergeRequest | . != null
     and .mergeMethod == "SQUASH" and .commitHeadline == $t
     and ((.commitBody // "") | rtrimstr("\n")) == $b' <<<"$info" >/dev/null && return 0
-  if [[ $(jq -r '.autoMergeRequest != null' <<<"$info") == true ]]; then
-    gh_write pr merge "$PR" --repo "$REPO" --disable-auto >/dev/null
+  # A request set another way is replaced. If the new one is refused, the old
+  # one goes back, so a failure never leaves less than there was.
+  old=$(jq -c .autoMergeRequest <<<"$info")
+  if [[ $old != null ]]; then
+    err=$(gh_write pr merge "$PR" --repo "$REPO" --disable-auto 2>&1 >/dev/null) || refused "$err"
+    [[ -z $err ]] || printf '%s\n' "$err" >&2
   fi
   if ! err=$(gh_write pr merge "$PR" --repo "$REPO" --auto --squash --subject "$title" --body "$body" 2>&1 >/dev/null); then
-    gh_write pr comment "$PR" --repo "$REPO" --body "Could not turn on auto-merge: $err
-
-storm/review stays pending. Fix the cause, then post \`Review finished at $head\` again."
-    exit 1
+    [[ $old == null ]] || gh_write pr merge "$PR" --repo "$REPO" --auto \
+      "--$(jq -r '.mergeMethod | ascii_downcase' <<<"$old")" \
+      --subject "$(jq -r '.commitHeadline // ""' <<<"$old")" \
+      --body "$(jq -r '.commitBody // ""' <<<"$old")" >/dev/null || true
+    refused "$err"
   fi
   [[ -z $err ]] || printf '%s\n' "$err" >&2
   # A `/storm:stop` that landed after the label read above would be undone by
@@ -132,6 +139,16 @@ storm/review stays pending. Fix the cause, then post \`Review finished at $head\
     jq -e --arg l "$STOP_LABEL" 'any(.labels[]; .name == $l)' >/dev/null; then
     gh_write pr merge "$PR" --repo "$REPO" --disable-auto >/dev/null
   fi
+}
+
+# Sets storm/review back to pending on the head, says why GitHub refused the
+# auto-merge call, and stops the script.
+refused() {
+  check "$head" in_progress "Auto-merge refused" "GitHub refused to set auto-merge: $1"
+  gh_write pr comment "$PR" --repo "$REPO" --body "Could not set auto-merge: $1
+
+storm/review is pending. Fix the cause, then post \`Review finished at $head\` again."
+  exit 1
 }
 
 # Asks for a command again when the SHA it names is not the head.
