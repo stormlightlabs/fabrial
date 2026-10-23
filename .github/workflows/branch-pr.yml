@@ -1,0 +1,77 @@
+# Opens a pull request for an agent's work branch (claude/, codex/ or storm/)
+# as stormlight-thunderbot, so the owner can approve it under the ruleset on
+# main. Ported from desertthunder/knowledgebase.
+#
+# The title is the branch's first commit subject and the body lists the
+# subjects, so it needs no model. A title or body set later by hand or by an
+# agent is kept. Auto-merge is turned on, so the PR lands once the owner
+# approves it and `check` passes. The squash commit takes the PR title, and its
+# only trailer is a Co-authored-by line for the owner.
+name: Branch PR
+
+on:
+  push:
+    branches: ["claude/**", "codex/**", "storm/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: branch-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.THUNDERBOT_APP_ID }}
+          private-key: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Open or update the PR
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BRANCH: ${{ github.ref_name }}
+          REVIEWER: desertthunder
+          # Credits the owner, who reviewed and approved, on the squash commit.
+          OWNER_TRAILER: Owais <desertthunder.dev@gmail.com>
+        run: |
+          subjects=$(git log --reverse --format=%s origin/main..HEAD)
+          if [[ -z "$subjects" ]]; then
+            echo "No commits ahead of main."
+            exit 0
+          fi
+
+          number=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [[ -z "$number" ]]; then
+            title=$(printf '%s\n' "$subjects" | head -n 1)
+            {
+              echo "From \`$BRANCH\`:"
+              echo
+              printf '%s\n' "$subjects" | sed 's/^/- /'
+              echo
+              echo "Approve to merge. The squash commit takes this title and credits the owner as co-author."
+            } > body.md
+            gh pr create --base main --head "$BRANCH" --title "$title" --body-file body.md \
+              --reviewer "$REVIEWER"
+          else
+            title=$(gh pr view "$number" --json title --jq .title)
+          fi
+
+          # The ruleset then holds the merge until the owner approves. The
+          # explicit message keeps the agents' Co-authored-by trailers off main.
+          # Auto-merge keeps the commit title from when it was turned on, so
+          # turn it off and on again to pick up the current title. The
+          # repository deletes merged branches itself.
+          gh pr merge "$BRANCH" --disable-auto >/dev/null 2>&1 || true
+          if ! out=$(gh pr merge "$BRANCH" --auto --squash \
+            --subject "$title" --body "$(printf 'Merged from %s.\n\nCo-authored-by: %s' "$BRANCH" "$OWNER_TRAILER")" 2>&1); then
+            echo "::error title=auto-merge::$out"
+            exit 1
+          fi

@@ -1,0 +1,11 @@
+[package]
+name = "fab-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "fab"
+path = "src/main.rs"
+
+[dependencies]
+fab-core = { path = "../fab-core" }
