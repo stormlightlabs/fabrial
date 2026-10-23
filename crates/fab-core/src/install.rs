@@ -150,6 +150,19 @@ impl std::fmt::Display for Drift {
     }
 }
 
+/// What sits at `.agents/skills`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LinkState {
+    /// Nothing.
+    Absent,
+    /// A symlink to `../.claude/skills`.
+    Ok,
+    /// A real directory, which `init` never deletes.
+    Directory,
+    /// A file, or a symlink to somewhere else.
+    Other,
+}
+
 /// What [`init`] wrote.
 #[derive(Debug, Default)]
 pub struct Report {
@@ -180,14 +193,26 @@ pub fn init(root: &Path, settings: &Settings, force: bool) -> Result<Report, Err
     let first_install = !root.join(SETTINGS_PATH).exists();
     let files = expected_files(settings, &version());
 
+    // Everything that can refuse is decided before the first write.
+    let agents = root.join("AGENTS.md");
+    let current = read_optional(&agents)?;
+    let updated = with_agents_section(&normalize(current.as_deref().unwrap_or("")))?;
+    let link = skills_link_state(root);
+    if link == LinkState::Directory {
+        return Err(Error::SkillsDir);
+    }
+
     if first_install && !force {
-        let conflicts: Vec<PathBuf> = files
+        let mut conflicts: Vec<PathBuf> = files
             .iter()
             .filter(|(path, contents, _)| {
                 fs::read_to_string(root.join(path)).is_ok_and(|existing| existing != *contents)
             })
             .map(|(path, _, _)| path.clone())
             .collect();
+        if link == LinkState::Other {
+            conflicts.push(SKILLS_LINK.into());
+        }
         if !conflicts.is_empty() {
             return Err(Error::Conflict(conflicts));
         }
@@ -210,9 +235,6 @@ pub fn init(root: &Path, settings: &Settings, force: bool) -> Result<Report, Err
         report.written.push(path.clone());
     }
 
-    let agents = root.join("AGENTS.md");
-    let current = read_optional(&agents)?;
-    let updated = with_agents_section(current.as_deref().unwrap_or(""));
     if current.as_deref() == Some(updated.as_str()) {
         report.unchanged.push("AGENTS.md".into());
     } else {
@@ -220,7 +242,7 @@ pub fn init(root: &Path, settings: &Settings, force: bool) -> Result<Report, Err
         report.written.push("AGENTS.md".into());
     }
 
-    if skills_link_ok(root) {
+    if link == LinkState::Ok {
         report.unchanged.push(SKILLS_LINK.into());
     } else {
         write_skills_link(root)?;
@@ -241,21 +263,21 @@ pub fn check(root: &Path) -> Result<Vec<Drift>, Error> {
     if settings.version.as_deref().map(release) != Some(release(&running)) {
         drift.push(Drift::Version { installed: settings.version.clone(), running: running.clone() });
     }
-    for (path, contents, _) in expected_files(&settings, &running) {
-        if path == Path::new(SETTINGS_PATH) {
-            continue;
-        }
+    // The settings file is compared with the render of its own values, so a
+    // line the workflows' `sed` readers cannot read shows as drift.
+    let recorded = settings.version.as_deref().unwrap_or(&running);
+    for (path, contents, _) in expected_files(&settings, recorded) {
         match read_optional(&root.join(&path))? {
             None => drift.push(Drift::Missing(path)),
             Some(existing) if existing != contents => drift.push(Drift::Differs(path)),
             Some(_) => {}
         }
     }
-    let agents = read_optional(&root.join("AGENTS.md"))?.unwrap_or_default();
-    if agents_section(&agents) != Some(AGENTS_SECTION) {
+    let agents = normalize(&read_optional(&root.join("AGENTS.md"))?.unwrap_or_default());
+    if !matches!(agents_section(&agents), Ok(Some(section)) if section == AGENTS_SECTION) {
         drift.push(Drift::AgentsSection);
     }
-    if !skills_link_ok(root) {
+    if skills_link_state(root) != LinkState::Ok {
         drift.push(Drift::SkillsLink);
     }
     Ok(drift)
@@ -287,25 +309,43 @@ fn release(version: &str) -> &str {
     version.split('+').next().unwrap_or(version)
 }
 
+/// `text` with CRLF line endings turned into LF, which is what `init` writes.
+fn normalize(text: &str) -> String {
+    text.replace("\r\n", "\n")
+}
+
+/// Where fabrial's section sits: the byte offsets of the first begin marker
+/// and of the first end marker after it, or `None` when there is no begin
+/// marker. A begin marker with no end after it is an error, since the end of
+/// the section is unknown.
+fn section_bounds(agents: &str) -> Result<Option<(usize, usize)>, Error> {
+    let Some(start) = agents.find(AGENTS_BEGIN) else {
+        return Ok(None);
+    };
+    let after = start + AGENTS_BEGIN.len();
+    match agents[after..].find(AGENTS_END) {
+        Some(end) => Ok(Some((start, after + end))),
+        None => Err(Error::Agents(format!(
+            "{AGENTS_BEGIN} has no {AGENTS_END} after it; add the end marker or remove the begin marker"
+        ))),
+    }
+}
+
 /// The text between the section markers, or `None` when there is no section.
-fn agents_section(agents: &str) -> Option<&str> {
-    let start = agents.find(AGENTS_BEGIN)? + AGENTS_BEGIN.len();
-    let end = start + agents[start..].find(AGENTS_END)?;
-    agents[start..end].strip_prefix('\n')
+fn agents_section(agents: &str) -> Result<Option<&str>, Error> {
+    Ok(section_bounds(agents)?.and_then(|(start, end)| agents[start + AGENTS_BEGIN.len()..end].strip_prefix('\n')))
 }
 
 /// `agents` with fabrial's section replaced, or added at the end.
-fn with_agents_section(agents: &str) -> String {
+fn with_agents_section(agents: &str) -> Result<String, Error> {
     let block = format!("{AGENTS_BEGIN}\n{AGENTS_SECTION}{AGENTS_END}\n");
-    if let (Some(start), Some(end)) = (agents.find(AGENTS_BEGIN), agents.find(AGENTS_END))
-        && start < end
-    {
+    if let Some((start, end)) = section_bounds(agents)? {
         let mut tail = &agents[end + AGENTS_END.len()..];
         tail = tail.strip_prefix('\n').unwrap_or(tail);
-        return format!("{}{block}{tail}", &agents[..start]);
+        return Ok(format!("{}{block}{tail}", &agents[..start]));
     }
     if agents.is_empty() {
-        return format!("# AGENTS.md\n\n{block}");
+        return Ok(format!("# AGENTS.md\n\n{block}"));
     }
     let sep = if agents.ends_with("\n\n") {
         ""
@@ -314,7 +354,7 @@ fn with_agents_section(agents: &str) -> String {
     } else {
         "\n\n"
     };
-    format!("{agents}{sep}{block}")
+    Ok(format!("{agents}{sep}{block}"))
 }
 
 fn read_optional(path: &Path) -> Result<Option<String>, Error> {
@@ -325,16 +365,30 @@ fn read_optional(path: &Path) -> Result<Option<String>, Error> {
     }
 }
 
-fn skills_link_ok(root: &Path) -> bool {
-    fs::read_link(root.join(SKILLS_LINK)).is_ok_and(|target| target == Path::new(SKILLS_TARGET))
+fn skills_link_state(root: &Path) -> LinkState {
+    let link = root.join(SKILLS_LINK);
+    match fs::symlink_metadata(&link) {
+        Err(_) => LinkState::Absent,
+        Ok(meta) if meta.file_type().is_symlink() => {
+            if fs::read_link(&link).is_ok_and(|target| target == Path::new(SKILLS_TARGET)) {
+                LinkState::Ok
+            } else {
+                LinkState::Other
+            }
+        }
+        Ok(meta) if meta.is_dir() => LinkState::Directory,
+        Ok(_) => LinkState::Other,
+    }
 }
 
+/// Replaces whatever is at `.agents/skills` with the link. [`init`] has
+/// already refused a directory, so only a file or a link is removed here.
 #[cfg(unix)]
 fn write_skills_link(root: &Path) -> Result<(), Error> {
     let link = root.join(SKILLS_LINK);
     if let Ok(meta) = fs::symlink_metadata(&link) {
-        if !meta.file_type().is_symlink() {
-            return Err(Error::Conflict(vec![SKILLS_LINK.into()]));
+        if meta.is_dir() {
+            return Err(Error::SkillsDir);
         }
         fs::remove_file(&link).map_err(|source| Error::Io { path: link.clone(), source })?;
     }
@@ -456,10 +510,101 @@ mod tests {
     #[test]
     fn agents_section_is_replaced_in_place() {
         let text = format!("# P\n\n{AGENTS_BEGIN}\nold\n{AGENTS_END}\n\n## After\n");
-        let updated = with_agents_section(&text);
+        let updated = with_agents_section(&text).unwrap();
         assert!(updated.starts_with(&format!("# P\n\n{AGENTS_BEGIN}\n## Branches")));
         assert!(updated.ends_with(&format!("{AGENTS_END}\n\n## After\n")));
-        assert_eq!(agents_section(&updated), Some(AGENTS_SECTION));
+        assert_eq!(agents_section(&updated).unwrap(), Some(AGENTS_SECTION));
+    }
+
+    #[test]
+    fn a_begin_marker_without_an_end_fails_without_writing() {
+        let dir = tempfile::tempdir().unwrap();
+        let text = format!("# P\n\n{AGENTS_BEGIN}\nmine\n");
+        fs::write(dir.path().join("AGENTS.md"), &text).unwrap();
+        let err = init(dir.path(), &settings(), false).unwrap_err();
+        assert!(matches!(err, Error::Agents(_)));
+        assert!(err.to_string().starts_with("AGENTS.md: "));
+        assert_eq!(fs::read_to_string(dir.path().join("AGENTS.md")).unwrap(), text);
+        assert!(!dir.path().join(SETTINGS_PATH).exists());
+    }
+
+    #[test]
+    fn an_end_marker_before_the_begin_marker_is_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let text = format!("# P\n\n```\n{AGENTS_END}\n```\n\n{AGENTS_BEGIN}\nold\n{AGENTS_END}\n");
+        fs::write(dir.path().join("AGENTS.md"), &text).unwrap();
+        init(dir.path(), &settings(), false).unwrap();
+        init(dir.path(), &settings(), false).unwrap();
+        let agents = fs::read_to_string(dir.path().join("AGENTS.md")).unwrap();
+        assert_eq!(agents.matches(AGENTS_BEGIN).count(), 1);
+        assert!(agents.starts_with(&format!("# P\n\n```\n{AGENTS_END}\n```\n\n{AGENTS_BEGIN}\n## Branches")));
+        assert_eq!(agents_section(&agents).unwrap(), Some(AGENTS_SECTION));
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn a_crlf_agents_file_is_rewritten_with_lf() {
+        let dir = tempfile::tempdir().unwrap();
+        init(dir.path(), &settings(), false).unwrap();
+        let path = dir.path().join("AGENTS.md");
+        let crlf = fs::read_to_string(&path).unwrap().replace('\n', "\r\n");
+        fs::write(&path, &crlf).unwrap();
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+        init(dir.path(), &settings(), false).unwrap();
+        let agents = fs::read_to_string(&path).unwrap();
+        assert!(!agents.contains('\r'));
+        assert_eq!(agents, crlf.replace("\r\n", "\n"));
+    }
+
+    #[test]
+    fn check_reports_a_settings_line_the_workflows_cannot_read() {
+        let dir = tempfile::tempdir().unwrap();
+        init(dir.path(), &settings(), false).unwrap();
+        let path = dir.path().join(SETTINGS_PATH);
+        let text = fs::read_to_string(&path)
+            .unwrap()
+            .replace(r#"trailer = "Owais <desertthunder.dev@gmail.com>""#, r#"trailer="x""#);
+        fs::write(&path, text).unwrap();
+        assert_eq!(check(dir.path()).unwrap(), vec![Drift::Differs(SETTINGS_PATH.into())]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skills_link_conflicts_are_found_before_writing() {
+        // A directory is refused on every run, before anything is written.
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join(SKILLS_LINK)).unwrap();
+        for force in [false, true] {
+            let err = init(dir.path(), &settings(), force).unwrap_err();
+            assert!(matches!(err, Error::SkillsDir));
+            assert!(!err.to_string().contains("--force"));
+            assert!(!dir.path().join(SETTINGS_PATH).exists());
+        }
+        assert!(dir.path().join(SKILLS_LINK).is_dir());
+
+        // A wrong link is a conflict on a first install, and replaced with --force.
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join(".agents")).unwrap();
+        std::os::unix::fs::symlink("elsewhere", dir.path().join(SKILLS_LINK)).unwrap();
+        let err = init(dir.path(), &settings(), false).unwrap_err();
+        assert!(matches!(err, Error::Conflict(paths) if paths == vec![PathBuf::from(SKILLS_LINK)]));
+        assert!(!dir.path().join(SETTINGS_PATH).exists());
+        init(dir.path(), &settings(), true).unwrap();
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+
+        // On a later run a wrong link is replaced, and a directory is refused.
+        let link = dir.path().join(SKILLS_LINK);
+        fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink("elsewhere", &link).unwrap();
+        init(dir.path(), &settings(), false).unwrap();
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+        fs::remove_file(&link).unwrap();
+        fs::create_dir(&link).unwrap();
+        assert!(matches!(
+            init(dir.path(), &settings(), false).unwrap_err(),
+            Error::SkillsDir
+        ));
+        assert!(link.is_dir());
     }
 
     #[cfg(unix)]

@@ -53,6 +53,13 @@ impl Settings {
         if self.owner.starts_with('@') {
             return Err(Error::Settings("`owner` is a login without the `@`".into()));
         }
+        if !is_login(&self.owner) {
+            return Err(Error::Settings(format!(
+                "`owner` is not a GitHub login: {:?} (letters, digits and single hyphens, \
+                 not at either end, up to 39 characters)",
+                self.owner
+            )));
+        }
         Ok(())
     }
 
@@ -79,6 +86,17 @@ impl Settings {
             self.owner, self.trailer, self.gates, version
         )
     }
+}
+
+/// Whether `owner` is a GitHub login: ASCII letters, digits and single
+/// hyphens, not starting or ending with a hyphen, up to 39 characters.
+fn is_login(owner: &str) -> bool {
+    !owner.is_empty()
+        && owner.len() <= 39
+        && owner.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        && !owner.starts_with('-')
+        && !owner.ends_with('-')
+        && !owner.contains("--")
 }
 
 #[cfg(test)]
@@ -121,5 +139,19 @@ mod tests {
         let mut bad = settings();
         bad.gates = String::new();
         assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn owner_must_be_a_github_login() {
+        for good in ["desertthunder", "a", "a-b-c", "A1", &"x".repeat(39)] {
+            let mut s = settings();
+            s.owner = good.to_string();
+            assert!(s.validate().is_ok(), "{good}");
+        }
+        for bad in ["a b", "-a", "a-", "a--b", "a_b", "ä", &"x".repeat(40)] {
+            let mut s = settings();
+            s.owner = bad.to_string();
+            assert!(s.validate().is_err(), "{bad}");
+        }
     }
 }

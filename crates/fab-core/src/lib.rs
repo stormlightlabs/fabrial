@@ -29,6 +29,13 @@ pub enum Error {
     /// A first install would replace files fabrial did not write.
     #[error("these files exist and differ from fabrial's; pass --force to replace them: {}", list(.0))]
     Conflict(Vec<PathBuf>),
+    /// `AGENTS.md` holds a fabrial begin marker with no end marker after it,
+    /// so the section's extent is unknown.
+    #[error("AGENTS.md: {0}")]
+    Agents(String),
+    /// `.agents/skills` is a directory, which `init` never deletes.
+    #[error(".agents/skills is a directory, not a link to ../.claude/skills; remove it and run fab init again")]
+    SkillsDir,
     /// The platform cannot do something fabrial needs.
     #[error("not supported on this platform: {0}")]
     Unsupported(&'static str),
