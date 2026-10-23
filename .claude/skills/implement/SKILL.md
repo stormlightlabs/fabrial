@@ -99,9 +99,11 @@ git push -u origin <branch>
 The Branch PR workflow then opens the pull request as a draft from
 stormlight-thunderbot. Do not open one yourself. It stays a draft until the
 `storm` skill's review finishes; GitHub requests the owner's review when it is
-marked ready. Once it exists, you may replace the body with your own: what
-changed and why, in a few lines, with `Closes #<n>` when the task is an issue.
-The workflow keeps a title or body set after it opens.
+marked ready. Once it exists, replace the body with your own when the task is
+an issue: what changed and why, in a few lines, ending with `Closes #<n>`.
+GitHub reads the closing keyword from the body, and the squash commit does not
+carry it. For other tasks you may replace the body the same way. The workflow
+keeps a title or body set after it opens.
 
 Post what you verified as a comment on the pull request, not in the body: the
 commands you ran and what they returned, and anything you did not check. Post
