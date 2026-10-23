@@ -9,8 +9,9 @@ argument-hint: [pr-number|branch] [standard|adversarial]
 Review a diff and report findings. Do not edit code during a review pass; the
 `revise` skill owns changes.
 
-The `storm` skill runs one standard pass and then one adversarial pass, each
-in a fresh agent and each followed by a verifier and a revise. A pass reports to whoever invoked it, and posts only when they ask.
+The `storm` skill runs one standard pass and then one adversarial pass, each in
+a fresh agent and each followed by a verifier and a revise. A pass reports to
+whoever invoked it, and posts only when they ask.
 
 ## Pick the target and the pass
 
@@ -47,9 +48,10 @@ finding.
 ## Gather context first
 
 Read the changed files around the diff, not only the diff. Read the task the
-change is for: a `storm/<id>` branch names it, and otherwise the pull request
-body or the first commit should. `arcl context <id>` gives its acceptance
-criteria and its spec.
+change is for: the branch name, the pull request body or the first commit names
+it. For an arcl task, `arcl context <id>` gives its acceptance criteria and
+spec; for an issue, `gh issue view <n>` or `issue_read`; otherwise the pull
+request body is the task.
 
 `references/reading-the-diff.md` gives the commands. In short: fetch the
 branch, pin its head commit once and review that, use one transport (`gh`, or

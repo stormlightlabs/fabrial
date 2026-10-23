@@ -41,9 +41,22 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           BRANCH: ${{ github.ref_name }}
-          # Credits the owner, who reviewed and approved, on the squash commit.
-          OWNER_TRAILER: Owais <desertthunder.dev@gmail.com>
         run: |
+          # Credits the owner, who reviewed and approved, on the squash commit.
+          # Read from main's settings, as the Review gate does, so a branch
+          # cannot change the trailer and one cut before the file still works.
+          # Until main has the file, as on the push that adds it, read the
+          # branch's own copy; the owner's approval still gates the merge.
+          settings=origin/main
+          if ! git cat-file -e origin/main:.github/fabrial.toml 2>/dev/null; then
+            settings=HEAD
+          fi
+          OWNER_TRAILER=$(git show "$settings:.github/fabrial.toml" 2>/dev/null \
+            | sed -n 's/^trailer = "\(.*\)"$/\1/p' || true)
+          if [[ -z "$OWNER_TRAILER" ]]; then
+            echo "::error title=settings::.github/fabrial.toml has no trailer on main or this branch."
+            exit 1
+          fi
           subjects=$(git log --reverse --format=%s origin/main..HEAD)
           if [[ -z "$subjects" ]]; then
             echo "No commits ahead of main."

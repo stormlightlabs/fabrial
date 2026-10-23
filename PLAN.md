@@ -141,15 +141,20 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 
 ## 2. Org rollout
 
-- [ ] The skills and agents take a task from arcl, a GitHub issue, or a
-      description, and run the gates the repository's `AGENTS.md` names.
-- [ ] Per-repository settings, such as the owner's trailer and the reviewer,
-      come from one file instead of being written into the workflows.
-- [ ] `fab init`: write the workflows, `gate.sh`, `CODEOWNERS`, skills, agents
-      and an `AGENTS.md` section into a repository; `--check` reports drift.
-- [ ] Org setup (owner): the bot installed on each repository, the secrets
-      shared, and one org ruleset requiring `storm/review` and the repository's
-      check.
+- [x] The skills and agents take a task from arcl, a GitHub issue, or a
+      description, and run the command `gates` names in `.github/fabrial.toml`.
+- [x] Per-repository settings (the owner, the squash trailer and the gate
+      command) come from `.github/fabrial.toml` instead of being written into
+      the workflows.
+- [ ] `fab init`: write the workflows, `gate.sh`, `CODEOWNERS`, the settings
+      file, skills, agents and an `AGENTS.md` section into a repository, and
+      record the fabrial version it installed. `--check` reports files that
+      differ from the running binary's, and an installed version that differs
+      from it.
+- [ ] Org setup (owner): the bot installed on each repository and the secrets
+      shared. A ruleset requiring `storm/review` and the repository's check
+      applies to a repository only after its `fab init` pull request merges,
+      because the gate runs from the repository's `main`.
 
 ## 3. arclightning
 
