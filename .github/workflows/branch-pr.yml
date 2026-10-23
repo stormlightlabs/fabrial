@@ -38,7 +38,6 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           BRANCH: ${{ github.ref_name }}
-          REVIEWER: desertthunder
           # Credits the owner, who reviewed and approved, on the squash commit.
           OWNER_TRAILER: Owais <desertthunder.dev@gmail.com>
         run: |
@@ -58,8 +57,9 @@ jobs:
               echo
               echo "Approve to merge. The squash commit takes this title and credits the owner as co-author."
             } > body.md
-            gh pr create --base main --head "$BRANCH" --title "$title" --body-file body.md \
-              --reviewer "$REVIEWER"
+            # CODEOWNERS requests the owner's review. Asking again with
+            # --reviewer fails with "Could not add requested reviewers".
+            gh pr create --base main --head "$BRANCH" --title "$title" --body-file body.md
           else
             title=$(gh pr view "$number" --json title --jq .title)
           fi
