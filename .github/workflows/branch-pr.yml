@@ -41,9 +41,13 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           BRANCH: ${{ github.ref_name }}
-          # Credits the owner, who reviewed and approved, on the squash commit.
-          OWNER_TRAILER: Owais <desertthunder.dev@gmail.com>
         run: |
+          # Credits the owner, who reviewed and approved, on the squash commit.
+          OWNER_TRAILER=$(sed -n 's/^trailer = "\(.*\)"$/\1/p' .github/fabrial.toml)
+          if [[ -z "$OWNER_TRAILER" ]]; then
+            echo "::error title=settings::.github/fabrial.toml has no trailer."
+            exit 1
+          fi
           subjects=$(git log --reverse --format=%s origin/main..HEAD)
           if [[ -z "$subjects" ]]; then
             echo "No commits ahead of main."

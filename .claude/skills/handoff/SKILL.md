@@ -1,14 +1,15 @@
 ---
 name: handoff
-description: Record the state of unfinished work on its arcl task so the next session can pick it up, or pick up from a task's latest handoff. Use for /handoff, when a session ends with work left, or when a session starts by continuing earlier work.
-argument-hint: [task-id|pick-up <task-id>]
+description: Record the state of unfinished work on its task, in arcl or on its GitHub issue or pull request, so the next session can pick it up, or pick up from the latest handoff. Use for /handoff, when a session ends with work left, or when a session starts by continuing earlier work.
+argument-hint: [task|pick-up <task>]
 ---
 
 # Handoff
 
-A handoff is a note on the arcl task that a later session reads to carry on
-where this one stopped. arcl stores it with the task, so any machine and any
-harness can read it.
+A handoff is a note on the task that a later session reads to carry on where
+this one stopped. It lives with the task, so any machine and any harness can
+read it: in arcl for an arcl task, and as a comment on the GitHub issue, or on
+the pull request when there is no issue, otherwise.
 
 `/handoff <id>` writes one. `/handoff pick-up <id>` picks one up.
 
@@ -16,8 +17,9 @@ Write one when a session ends with work left: steps not taken, a pull request
 waiting on review, a check only the operator can run. A session that finished
 its task writes none; it reports instead.
 
-Work with no task gets one first: `arcl task create` with the title of the
-work, or ask the operator where it belongs.
+Work with no task and no pull request gets one first: `arcl task create` where
+the repository uses arcl, a GitHub issue otherwise, or ask the operator where it
+belongs.
 
 ## Writing
 
@@ -25,9 +27,12 @@ work, or ask the operator where it belongs.
 arcl task handoff <id> --note-file <file>
 ```
 
-This stores the note and parks the task, which takes it out of `arcl ready`
-until someone unparks it. Write the note in the session's scratch directory,
-never inside the repository.
+For an arcl task, this stores the note and parks the task, which takes it out
+of `arcl ready` until someone unparks it. For an issue or a pull request, post
+the note as a comment opening with `Handoff:`, through the Bot comment workflow
+on a pull request and with `gh issue comment` or `add_issue_comment` on an
+issue. Write the note in the session's scratch directory, never inside the
+repository.
 
 ```markdown
 Written <YYYY-MM-DD> from <branch or worktree>.
@@ -61,15 +66,16 @@ arcl task unpark <id>
 arcl task start <id>
 ```
 
-`arcl context` includes the latest handoff. A handoff describes the repository
-when it was written, so check each claim the next step depends on: that a
-branch and worktree exist, the state of each pull request, and that `main`
-holds what the note says merged. Where the repository disagrees, the
-repository is right. Say what changed before going on.
+`arcl context` includes the latest handoff. For an issue or a pull request, read
+its newest comment opening with `Handoff:`. A handoff describes the repository
+when it was written, so check each claim the next step depends on: that a branch
+and worktree exist, the state of each pull request, and that `main` holds what
+the note says merged. Where the repository disagrees, the repository is right.
+Say what changed before going on.
 
 ## Do not
 
-- Commit a handoff or copy it into a pull request. A decision that has to
-  outlive the work belongs in the task or its spec.
+- Commit a handoff or put it in a pull request's body. A decision that has to
+  outlive the work belongs in the task, its issue or its spec.
 - Keep the next steps in the harness's own memory. Another harness, or another
   machine, cannot read it.

@@ -11,8 +11,9 @@ the phases.
 just check    # cargo fmt --check, clippy with warnings denied, cargo test
 ```
 
-CI runs the same recipe as the `check` job, which the ruleset on `main`
-requires. Clippy warnings fail it whether or not your change caused them.
+`gates` in `.github/fabrial.toml` names this command for the skills. CI runs
+the same recipe as the `check` job, which the ruleset on `main` requires.
+Clippy warnings fail it whether or not your change caused them.
 
 ## Layout
 
@@ -23,6 +24,7 @@ crates/fab-cli    the `fab` binary
 .claude/agents/   implementer, reviewer, adversarial-reviewer, verifier, reviser
 .github/          CODEOWNERS and the Check, Branch PR and Review gate workflows
 .github/storm/    gate.sh, which the Review gate workflow runs
+.github/fabrial.toml  the owner, the squash trailer and the gate command
 docs/hosts.md     what each host reads, and where they differ
 PLAN.md           decisions and phases
 AGENTS.md         this file (CLAUDE.md links to it)

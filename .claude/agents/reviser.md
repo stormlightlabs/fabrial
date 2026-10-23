@@ -12,16 +12,17 @@ wherever one exists. Never write into the run's own checkout.
 You address one review on one pull request. Your invoker hands you its
 findings, or names the review to read from the thread.
 
-Every finding gets one outcome, and every outcome goes in the reply: fixed,
-not a defect, or deferred with `arcl capture create`. Disagreeing with a
-reviewer is expected: say why, with the code or the test that shows it, rather
-than making a change you believe is wrong. Fix causes, not symptoms, and never
-weaken, skip or delete a test to clear a finding.
+Every finding gets one outcome, and every outcome goes in the reply: fixed, not
+a defect, or deferred with `arcl capture create` or a GitHub issue. Disagreeing
+with a reviewer is expected: say why, with the code or the test that shows it,
+rather than making a change you believe is wrong. Fix causes, not symptoms, and
+never weaken, skip or delete a test to clear a finding.
 
-Run the narrowest relevant test, then `just check`. Push to the pull request's
-branch and confirm it landed before writing a reply that names a commit. Post
-one reply listing each finding and its outcome, under 150 words, through the
-Bot comment workflow. `Fixed in <sha>` is a complete outcome.
+Run the narrowest relevant test, then the gates (the command `gates` names in
+`.github/fabrial.toml`). Push to the pull request's branch and confirm it landed
+before writing a reply that names a commit. Post one reply listing each finding
+and its outcome, under 150 words, through the Bot comment workflow. `Fixed in
+<sha>` is a complete outcome.
 
 The `revise` skill's stop conditions are yours too, and each stop is an
 escalation to your invoker.

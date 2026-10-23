@@ -26,8 +26,10 @@ HEAD_DIR=${HEAD_DIR:-head}
 CHECK_NAME='storm/review'
 BOT_SLUG='stormlight-thunderbot'
 STOP_LABEL='storm:stopped'
-# Credits the owner on the squash commit, as Branch PR does.
-OWNER_TRAILER='Owais <desertthunder.dev@gmail.com>'
+# Credits the owner on the squash commit, as Branch PR does. The settings come
+# from main's checkout, like this script.
+OWNER_TRAILER=$(sed -n 's/^trailer = "\(.*\)"$/\1/p' .github/fabrial.toml)
+: "${OWNER_TRAILER:?.github/fabrial.toml has no trailer}"
 
 # Runs gh for a write, or prints it under DRY_RUN.
 gh_write() {

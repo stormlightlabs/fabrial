@@ -47,8 +47,9 @@ it.
 
 ## Verify and push
 
-Run `just check`. A gate that fails after the rebase is a finding for a
-`revise` pass: report it and push nothing.
+Run the gates (the command `gates` names in `.github/fabrial.toml`). A gate that
+fails after the rebase is a finding for a `revise` pass: report it and push
+nothing.
 
 ```sh
 git push --force-with-lease origin <branch>

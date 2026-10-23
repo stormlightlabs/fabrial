@@ -1,7 +1,7 @@
 ---
 name: storm
-description: Run one arcl task or one open pull request through implement, a standard review and its revise, then an adversarial review and its revise, ending with `Review finished at <sha>`. Use for /storm, when asked to take a task to a reviewed pull request, or to review and finish a pull request this session opened.
-argument-hint: <task-id|pr-number>
+description: Run one task (an arcl task, a GitHub issue or a description) or one open pull request through implement, a standard review and its revise, then an adversarial review and its revise, ending with `Review finished at <sha>`. Use for /storm, when asked to take a task to a reviewed pull request, or to review and finish a pull request this session opened.
+argument-hint: <task|pr-number>
 ---
 
 # Storm
@@ -127,5 +127,6 @@ Any of these ends the run without `Review finished`. Report the reason.
 
 - Review, revise or verify in this session's own context.
 - Post `Review finished` before the sequence has run to its end.
-- Start another review pass on your own. A second sequence needs `/storm:review`.
+- Start another review pass on your own. A second sequence needs
+  `/storm:review`.
 - Approve or merge.
