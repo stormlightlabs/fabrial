@@ -33,13 +33,14 @@ with method `run_workflow`, `workflow_id` `comment.yml`, `ref` `main`, and
 scratch directory, never inside the repository. The comment appears once the
 run finishes, after about ten seconds.
 
-Both return once the run is queued, so a run that fails on a bad `pr`, a
-missing secret or a closed pull request goes unseen. Confirm each post: run
-`gh run list --workflow comment.yml --limit 1`, then
-`gh run watch <id> --exit-status`. A cloud session checks the conclusion of
-the newest `comment.yml` run with `actions_list` method `list_workflow_runs`,
-or reads the comments with `pull_request_read` method `get_comments`. Report a
-failed run instead of retrying it in a loop.
+Both return once the run is queued, before it is listed, so a run that fails
+on a bad `pr` or a missing secret goes unseen, and the newest listed run may be
+an earlier one. Confirm each post by its result: within about a minute,
+`gh pr view <n> --comments`, or `pull_request_read` method `get_comments` in a
+cloud session, should show a comment from `stormlight-thunderbot[bot]`, created
+after you dispatched, whose first line matches yours. If none appears, look for
+a failure among the newest `comment.yml` runs and report it. Do not retry in a
+loop.
 
 ## Implement
 
