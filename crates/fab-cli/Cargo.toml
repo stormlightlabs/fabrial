@@ -8,4 +8,5 @@ name = "fab"
 path = "src/main.rs"
 
 [dependencies]
+clap.workspace = true
 fab-core = { path = "../fab-core" }
