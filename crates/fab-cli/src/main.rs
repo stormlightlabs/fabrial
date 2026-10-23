@@ -44,7 +44,9 @@ enum Command {
 fn main() -> ExitCode {
     match Cli::parse().command {
         Command::Init { dir, check, owner, trailer, gates, force } => {
-            let result = if check { run_check(&dir) } else { run_init(&dir, owner, trailer, gates, force) };
+            let result = install::require_repo_root(&dir).and_then(|()| {
+                if check { run_check(&dir) } else { run_init(&dir, owner, trailer, gates, force) }
+            });
             result.unwrap_or_else(|e| {
                 eprintln!("fab: {e}");
                 ExitCode::from(2)

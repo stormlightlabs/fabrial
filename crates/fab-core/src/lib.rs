@@ -36,6 +36,17 @@ pub enum Error {
     /// `.agents/skills` is a directory, which `init` never deletes.
     #[error(".agents/skills is a directory, not a link to ../.claude/skills; remove it and run fab init again")]
     SkillsDir,
+    /// A managed path, or a directory above one, is a symlink, or is not the
+    /// kind of entry fabrial writes there. `init` never follows or deletes
+    /// it, with or without `--force`.
+    #[error(
+        "these managed paths are symlinks or not the file or directory fabrial writes, and fab init does not follow or delete them; remove them and run fab init again: {}",
+        list(.0)
+    )]
+    Unmanageable(Vec<PathBuf>),
+    /// The directory given is not a repository root: it has no `.git` entry.
+    #[error("{}: no .git here; --dir must be the repository root", .0.display())]
+    NotRepoRoot(PathBuf),
     /// The platform cannot do something fabrial needs.
     #[error("not supported on this platform: {0}")]
     Unsupported(&'static str),

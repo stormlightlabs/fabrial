@@ -5,7 +5,9 @@
 //! the settings file and a section of `AGENTS.md` are written from the
 //! repository's [`Settings`].
 
+use std::collections::BTreeSet;
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use crate::settings::{SETTINGS_PATH, Settings};
@@ -18,6 +20,8 @@ pub const AGENTS_END: &str = "<!-- fabrial:end -->";
 /// The symlink Codex and Pi read skills through.
 pub const SKILLS_LINK: &str = ".agents/skills";
 
+const AGENTS_PATH: &str = "AGENTS.md";
+const CODEOWNERS_PATH: &str = ".github/CODEOWNERS";
 const SKILLS_TARGET: &str = "../.claude/skills";
 const AGENTS_SECTION: &str = include_str!("agents-section.md");
 
@@ -125,7 +129,8 @@ const EMBEDDED: &[(&str, &str, bool)] = &[
 pub enum Drift {
     /// A managed file is not there.
     Missing(PathBuf),
-    /// A managed file's contents differ from this build's.
+    /// A managed file's contents differ from this build's, or the path is a
+    /// symlink or an entry of another kind, which `init` refuses.
     Differs(PathBuf),
     /// `AGENTS.md` has no fabrial section, or its section differs.
     AgentsSection,
@@ -163,6 +168,15 @@ enum LinkState {
     Other,
 }
 
+/// The kind of entry `init` writes at a managed path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Kind {
+    /// A regular file.
+    File,
+    /// A directory.
+    Dir,
+}
+
 /// What [`init`] wrote.
 #[derive(Debug, Default)]
 pub struct Report {
@@ -172,12 +186,28 @@ pub struct Report {
     pub unchanged: Vec<PathBuf>,
 }
 
-/// Reads a repository's settings, or `None` when it has none.
+/// Refuses a `root` with no `.git` entry. A worktree's `.git` is a file, so
+/// any kind of entry counts.
+pub fn require_repo_root(root: &Path) -> Result<(), Error> {
+    let git = root.join(".git");
+    match fs::symlink_metadata(&git) {
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == ErrorKind::NotFound => Err(Error::NotRepoRoot(root.into())),
+        Err(source) => Err(Error::Io { path: git, source }),
+    }
+}
+
+/// Reads a repository's settings, or `None` when it has none. A settings
+/// path that is a symlink, or sits under one, is refused rather than read.
 pub fn read_settings(root: &Path) -> Result<Option<Settings>, Error> {
+    let bad = unmanageable(root, [(PathBuf::from(SETTINGS_PATH), Kind::File)])?;
+    if !bad.is_empty() {
+        return Err(Error::Unmanageable(bad));
+    }
     let path = root.join(SETTINGS_PATH);
     match fs::read_to_string(&path) {
         Ok(text) => Settings::parse(&text).map(Some),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
         Err(source) => Err(Error::Io { path, source }),
     }
 }
@@ -188,13 +218,21 @@ pub fn read_settings(root: &Path) -> Result<Option<Settings>, Error> {
 /// exists with other contents is someone else's, so `init` refuses unless
 /// `force` is set. Once the settings file exists, the managed files are
 /// fabrial's and are replaced.
+///
+/// A symlink at a managed path or at a directory above one, or a directory
+/// where a managed file goes, is refused on every run, with or without
+/// `force`, and is never followed or deleted.
 pub fn init(root: &Path, settings: &Settings, force: bool) -> Result<Report, Error> {
     settings.validate()?;
+    // Everything that can refuse is decided before the first write.
+    let bad = unmanageable(root, managed_paths())?;
+    if !bad.is_empty() {
+        return Err(Error::Unmanageable(bad));
+    }
     let first_install = !root.join(SETTINGS_PATH).exists();
     let files = expected_files(settings, &version());
 
-    // Everything that can refuse is decided before the first write.
-    let agents = root.join("AGENTS.md");
+    let agents = root.join(AGENTS_PATH);
     let current = read_optional(&agents)?;
     let updated = with_agents_section(&normalize(current.as_deref().unwrap_or("")))?;
     let link = skills_link_state(root);
@@ -206,7 +244,7 @@ pub fn init(root: &Path, settings: &Settings, force: bool) -> Result<Report, Err
         let mut conflicts: Vec<PathBuf> = files
             .iter()
             .filter(|(path, contents, _)| {
-                fs::read_to_string(root.join(path)).is_ok_and(|existing| existing != *contents)
+                fs::read(root.join(path)).is_ok_and(|existing| existing != contents.as_bytes())
             })
             .map(|(path, _, _)| path.clone())
             .collect();
@@ -221,7 +259,7 @@ pub fn init(root: &Path, settings: &Settings, force: bool) -> Result<Report, Err
     let mut report = Report::default();
     for (path, contents, executable) in &files {
         let full = root.join(path);
-        if fs::read_to_string(&full).is_ok_and(|existing| existing == *contents) {
+        if fs::read(&full).is_ok_and(|existing| existing == contents.as_bytes()) {
             report.unchanged.push(path.clone());
             continue;
         }
@@ -236,10 +274,10 @@ pub fn init(root: &Path, settings: &Settings, force: bool) -> Result<Report, Err
     }
 
     if current.as_deref() == Some(updated.as_str()) {
-        report.unchanged.push("AGENTS.md".into());
+        report.unchanged.push(AGENTS_PATH.into());
     } else {
         fs::write(&agents, updated).map_err(|source| Error::Io { path: agents.clone(), source })?;
-        report.written.push("AGENTS.md".into());
+        report.written.push(AGENTS_PATH.into());
     }
 
     if link == LinkState::Ok {
@@ -253,13 +291,22 @@ pub fn init(root: &Path, settings: &Settings, force: bool) -> Result<Report, Err
 
 /// Lists where the repository at `root` differs from what this build's
 /// [`init`] would write. An empty list means no drift.
+///
+/// A path [`init`] would refuse is reported as [`Drift::Differs`], and
+/// nothing is read through it.
 pub fn check(root: &Path) -> Result<Vec<Drift>, Error> {
     let running = version();
+    let bad = unmanageable(root, managed_paths())?;
+    let blocked = |path: &Path| bad.iter().any(|b| path.starts_with(b));
+    let mut drift: Vec<Drift> = bad.iter().cloned().map(Drift::Differs).collect();
+    if blocked(Path::new(SETTINGS_PATH)) {
+        return Ok(drift);
+    }
     let Some(settings) = read_settings(root)? else {
-        return Ok(vec![Drift::Missing(SETTINGS_PATH.into())]);
+        drift.push(Drift::Missing(SETTINGS_PATH.into()));
+        return Ok(drift);
     };
 
-    let mut drift = Vec::new();
     if settings.version.as_deref().map(release) != Some(release(&running)) {
         drift.push(Drift::Version { installed: settings.version.clone(), running: running.clone() });
     }
@@ -267,20 +314,80 @@ pub fn check(root: &Path) -> Result<Vec<Drift>, Error> {
     // line the workflows' `sed` readers cannot read shows as drift.
     let recorded = settings.version.as_deref().unwrap_or(&running);
     for (path, contents, _) in expected_files(&settings, recorded) {
-        match read_optional(&root.join(&path))? {
+        if blocked(&path) {
+            continue;
+        }
+        match read_bytes(&root.join(&path))? {
             None => drift.push(Drift::Missing(path)),
-            Some(existing) if existing != contents => drift.push(Drift::Differs(path)),
+            Some(existing) if existing != contents.as_bytes() => drift.push(Drift::Differs(path)),
             Some(_) => {}
         }
     }
-    let agents = normalize(&read_optional(&root.join("AGENTS.md"))?.unwrap_or_default());
-    if !matches!(agents_section(&agents), Ok(Some(section)) if section == AGENTS_SECTION) {
-        drift.push(Drift::AgentsSection);
+    if !blocked(Path::new(AGENTS_PATH)) {
+        // An AGENTS.md that is not UTF-8 has no section this build wrote.
+        let agents = match fs::read(root.join(AGENTS_PATH)) {
+            Ok(bytes) => String::from_utf8(bytes)
+                .map(|text| normalize(&text))
+                .unwrap_or_default(),
+            Err(e) if e.kind() == ErrorKind::NotFound => String::new(),
+            Err(source) => return Err(Error::Io { path: root.join(AGENTS_PATH), source }),
+        };
+        if !matches!(agents_section(&agents), Ok(Some(section)) if section == AGENTS_SECTION) {
+            drift.push(Drift::AgentsSection);
+        }
     }
-    if skills_link_state(root) != LinkState::Ok {
+    if !blocked(Path::new(SKILLS_LINK)) && skills_link_state(root) != LinkState::Ok {
         drift.push(Drift::SkillsLink);
     }
     Ok(drift)
+}
+
+/// Every path [`init`] writes through, with the kind of entry it writes
+/// there. `.agents/skills` itself is left to [`skills_link_state`], so only
+/// the directory above it is listed.
+fn managed_paths() -> Vec<(PathBuf, Kind)> {
+    let mut paths: Vec<(PathBuf, Kind)> = EMBEDDED
+        .iter()
+        .map(|(path, _, _)| ((*path).into(), Kind::File))
+        .collect();
+    for path in [CODEOWNERS_PATH, SETTINGS_PATH, AGENTS_PATH] {
+        paths.push((path.into(), Kind::File));
+    }
+    if let Some(parent) = Path::new(SKILLS_LINK).parent() {
+        paths.push((parent.into(), Kind::Dir));
+    }
+    paths
+}
+
+/// The entries among `paths`, and the directories above them, that `init`
+/// must not write through: a symlink, or an entry of the wrong kind. Each
+/// path is walked from the root down and stops at its first missing or
+/// refused entry, so nothing is looked up through a symlink.
+fn unmanageable(root: &Path, paths: impl IntoIterator<Item = (PathBuf, Kind)>) -> Result<Vec<PathBuf>, Error> {
+    let mut found = BTreeSet::new();
+    for (path, kind) in paths {
+        let parts: Vec<_> = path.components().collect();
+        let mut rel = PathBuf::new();
+        for (i, part) in parts.iter().enumerate() {
+            rel.push(part);
+            let want = if i + 1 == parts.len() { kind } else { Kind::Dir };
+            let full = root.join(&rel);
+            let meta = match fs::symlink_metadata(&full) {
+                Ok(meta) => meta,
+                Err(e) if e.kind() == ErrorKind::NotFound => break,
+                Err(source) => return Err(Error::Io { path: full, source }),
+            };
+            let fits = match want {
+                Kind::File => meta.file_type().is_file(),
+                Kind::Dir => meta.file_type().is_dir(),
+            };
+            if !fits {
+                found.insert(rel);
+                break;
+            }
+        }
+    }
+    Ok(found.into_iter().collect())
 }
 
 /// Every file `init` writes, with its contents and whether it is executable.
@@ -289,7 +396,7 @@ fn expected_files(settings: &Settings, version: &str) -> Vec<(PathBuf, String, b
         .iter()
         .map(|(path, contents, executable)| ((*path).into(), (*contents).into(), *executable))
         .collect();
-    files.push((".github/CODEOWNERS".into(), codeowners(&settings.owner), false));
+    files.push((CODEOWNERS_PATH.into(), codeowners(&settings.owner), false));
     files.push((SETTINGS_PATH.into(), settings.render(version), false));
     files
 }
@@ -360,7 +467,15 @@ fn with_agents_section(agents: &str) -> Result<String, Error> {
 fn read_optional(path: &Path) -> Result<Option<String>, Error> {
     match fs::read_to_string(path) {
         Ok(text) => Ok(Some(text)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+        Err(source) => Err(Error::Io { path: path.into(), source }),
+    }
+}
+
+fn read_bytes(path: &Path) -> Result<Option<Vec<u8>>, Error> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
         Err(source) => Err(Error::Io { path: path.into(), source }),
     }
 }
@@ -605,6 +720,110 @@ mod tests {
             Error::SkillsDir
         ));
         assert!(link.is_dir());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_at_a_managed_path_is_refused_and_not_followed() {
+        let outside = tempfile::tempdir().unwrap();
+        let target = outside.path().join("target");
+        fs::write(&target, "theirs\n").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join(".github/storm")).unwrap();
+        std::os::unix::fs::symlink(&target, dir.path().join(".github/storm/gate.sh")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join(".claude")).unwrap();
+        for force in [false, true] {
+            let err = init(dir.path(), &settings(), force).unwrap_err();
+            assert!(
+                matches!(&err, Error::Unmanageable(paths)
+                    if *paths == vec![PathBuf::from(".claude"), PathBuf::from(".github/storm/gate.sh")]),
+                "{err}"
+            );
+            assert!(!dir.path().join(SETTINGS_PATH).exists());
+        }
+        assert_eq!(fs::read_to_string(&target).unwrap(), "theirs\n");
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(fs::metadata(&target).unwrap().permissions().mode() & 0o111, 0);
+        assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 1);
+
+        // Once installed, a link that appears later is refused too, and
+        // `check` reports it without reading through it.
+        let dir = tempfile::tempdir().unwrap();
+        init(dir.path(), &settings(), false).unwrap();
+        let gate = dir.path().join(".github/storm/gate.sh");
+        fs::remove_file(&gate).unwrap();
+        std::os::unix::fs::symlink(&target, &gate).unwrap();
+        assert!(matches!(
+            init(dir.path(), &settings(), true),
+            Err(Error::Unmanageable(_))
+        ));
+        assert_eq!(fs::read_to_string(&target).unwrap(), "theirs\n");
+        assert_eq!(
+            check(dir.path()).unwrap(),
+            vec![Drift::Differs(".github/storm/gate.sh".into())]
+        );
+    }
+
+    #[test]
+    fn a_directory_at_a_managed_file_is_refused_before_writing() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join(".github/CODEOWNERS")).unwrap();
+        for force in [false, true] {
+            let err = init(dir.path(), &settings(), force).unwrap_err();
+            assert!(matches!(&err, Error::Unmanageable(paths) if *paths == vec![PathBuf::from(".github/CODEOWNERS")]));
+        }
+        let mut written: Vec<_> = walk(dir.path());
+        written.sort();
+        assert_eq!(
+            written,
+            vec![PathBuf::from(".github"), PathBuf::from(".github/CODEOWNERS")]
+        );
+    }
+
+    #[test]
+    fn a_non_utf8_managed_file_is_a_conflict_and_drift() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join(".github")).unwrap();
+        fs::write(dir.path().join(".github/CODEOWNERS"), b"* @\xff\n").unwrap();
+        let err = init(dir.path(), &settings(), false).unwrap_err();
+        assert!(matches!(err, Error::Conflict(paths) if paths == vec![PathBuf::from(".github/CODEOWNERS")]));
+
+        init(dir.path(), &settings(), true).unwrap();
+        fs::write(dir.path().join(".github/CODEOWNERS"), b"* @\xff\n").unwrap();
+        assert_eq!(
+            check(dir.path()).unwrap(),
+            vec![Drift::Differs(".github/CODEOWNERS".into())]
+        );
+    }
+
+    #[test]
+    fn a_directory_without_git_is_not_a_repository_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = require_repo_root(dir.path()).unwrap_err();
+        assert!(matches!(err, Error::NotRepoRoot(_)));
+        assert!(err.to_string().contains("must be the repository root"));
+        // A worktree's .git is a file.
+        fs::write(dir.path().join(".git"), "gitdir: elsewhere\n").unwrap();
+        require_repo_root(dir.path()).unwrap();
+        fs::remove_file(dir.path().join(".git")).unwrap();
+        fs::create_dir(dir.path().join(".git")).unwrap();
+        require_repo_root(dir.path()).unwrap();
+    }
+
+    /// Every entry under `root`, relative to it.
+    fn walk(root: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                out.push(path.strip_prefix(root).unwrap().to_path_buf());
+                if fs::symlink_metadata(&path).unwrap().is_dir() {
+                    stack.push(path);
+                }
+            }
+        }
+        out
     }
 
     #[cfg(unix)]
