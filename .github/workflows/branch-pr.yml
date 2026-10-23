@@ -1,12 +1,15 @@
-# Opens a pull request for an agent's work branch (claude/, codex/ or storm/)
-# as stormlight-thunderbot, so the owner can approve it under the ruleset on
-# main. Ported from desertthunder/knowledgebase.
+# Opens a draft pull request for an agent's work branch (claude/, codex/ or
+# storm/) as stormlight-thunderbot, so the owner can approve it under the
+# ruleset on main. Ported from desertthunder/knowledgebase.
 #
 # The title is the branch's first commit subject and the body lists the
 # subjects, so it needs no model. A title or body set later by hand or by an
-# agent is kept. Auto-merge is turned on, so the PR lands once the owner
-# approves it and `check` passes. The squash commit takes the PR title, and its
-# only trailer is a Co-authored-by line for the owner.
+# agent is kept. The PR stays a draft until its review finishes; the Review
+# gate then marks it ready and turns on auto-merge, so it lands once the owner
+# approves it and the checks pass. On a PR that is already ready, a push turns
+# auto-merge off and on again to pick up the current title. The squash commit
+# takes the PR title, and its only trailer is a Co-authored-by line for the
+# owner.
 name: Branch PR
 
 on:
@@ -55,11 +58,13 @@ jobs:
               echo
               printf '%s\n' "$subjects" | sed 's/^/- /'
               echo
-              echo "Approve to merge. The squash commit takes this title and credits the owner as co-author."
+              echo "Draft until the review finishes. Approve to merge. The squash commit takes this title and credits the owner as co-author."
             } > body.md
-            # CODEOWNERS requests the owner's review. Asking again with
+            # GitHub skips CODEOWNERS on a draft and requests the owner's
+            # review when the Review gate marks it ready. Asking with
             # --reviewer fails with "Could not add requested reviewers".
-            gh pr create --base main --head "$BRANCH" --title "$title" --body-file body.md
+            gh pr create --draft --base main --head "$BRANCH" --title "$title" --body-file body.md
+            number=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
           else
             title=$(gh pr view "$number" --json title --jq .title)
             # `/storm:stop` labels the PR and turns auto-merge off. Turn it off
@@ -69,6 +74,13 @@ jobs:
               echo "#$number is labelled storm:stopped; auto-merge is off."
               exit 0
             fi
+          fi
+
+          # A draft waits for its review: the Review gate marks it ready and
+          # turns on auto-merge when `Review finished` names its head.
+          if [[ $(gh pr view "$number" --json isDraft --jq .isDraft) == true ]]; then
+            echo "#$number is a draft; auto-merge waits for the review."
+            exit 0
           fi
 
           # The ruleset then holds the merge until the owner approves. The

@@ -41,8 +41,8 @@ Follow arclightning's conventions, since the two share crates:
 ## Branches and pull requests
 
 - Never commit to `main`. Push a `claude/<topic>`, `codex/<topic>` or
-  `storm/<task>` branch; the Branch PR workflow opens the pull request as
-  stormlight-thunderbot and turns on squash auto-merge.
+  `storm/<task>` branch; the Branch PR workflow opens the pull request as a
+  draft from stormlight-thunderbot.
 - Commits on those branches may carry the agent's attribution trailers. The
   squash commit replaces them with the PR title, `Merged from <branch>.` and
   the owner's `Co-authored-by` line, so nothing on `main` carries AI
@@ -54,9 +54,9 @@ Follow arclightning's conventions, since the two share crates:
   access.
 - The agent that opens a PR reviews it with the `storm` skill and ends with a
   `Review finished at <sha>` comment. That turns `storm/review`, which `main`
-  requires, green for that head. `/storm:ready <sha>` from the owner, a member
-  or a collaborator accepts that head as it is, and `/storm:stop` halts
-  auto-merge.
+  requires, green for that head, marks the draft ready and turns on squash
+  auto-merge. `/storm:ready <sha>` from the owner, a member or a collaborator
+  accepts that head as it is, and `/storm:stop` halts auto-merge.
 - Include `PLAN.md` updates in the PR they describe.
 - The [Fabrial Ledger](https://claude.ai/artifact/FeWinSfPXLQYoGyRAHoE39)
   shows `PLAN.md`'s items and a log of pull requests from its database. When a
