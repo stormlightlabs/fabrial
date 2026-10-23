@@ -1,0 +1,124 @@
+# Answers `/storm:revise`, `/storm:ready` and `/storm:stop` comments on a pull
+# request from the owner or a collaborator. `/storm:review` is the Review
+# workflow's.
+#
+# - revise: the reviser agent addresses the newest review, and the bot commits,
+#   pushes and replies. Agent branches only.
+# - ready: sets storm/review to success on the current head, accepting what the
+#   review found.
+# - stop: labels the pull request storm:stopped and turns off auto-merge, so no
+#   review or auto-merge runs until a person removes the label.
+name: Storm
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  command:
+    if: >-
+      github.event.issue.pull_request &&
+      (startsWith(github.event.comment.body, '/storm:revise') ||
+       startsWith(github.event.comment.body, '/storm:ready') ||
+       startsWith(github.event.comment.body, '/storm:stop')) &&
+      github.event.comment.user.type != 'Bot' &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    concurrency:
+      group: storm-command-${{ github.event.issue.number }}
+    env:
+      REPO: ${{ github.repository }}
+      PR: ${{ github.event.issue.number }}
+      BODY: ${{ github.event.comment.body }}
+      COMMENT_ID: ${{ github.event.comment.id }}
+      AUTHOR: ${{ github.event.comment.user.login }}
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.THUNDERBOT_APP_ID }}
+          private-key: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}
+
+      - name: Read the command
+        id: cmd
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          name=$(head -n 1 <<<"$BODY" | awk '{print $1}')
+          echo "name=${name#/storm:}" >> "$GITHUB_OUTPUT"
+          gh pr view "$PR" --repo "$REPO" --json headRefName,headRefOid \
+            --jq '"branch=" + .headRefName, "sha=" + .headRefOid' >> "$GITHUB_OUTPUT"
+          gh api -X POST "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content=eyes >/dev/null
+
+      - name: Ready
+        if: steps.cmd.outputs.name == 'ready'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SHA: ${{ steps.cmd.outputs.sha }}
+        run: |
+          gh api -X POST "repos/$REPO/check-runs" -f name=storm/review -f head_sha="$SHA" \
+            -f status=completed -f conclusion=success \
+            -f "output[title]=Marked ready by @$AUTHOR" \
+            -f "output[summary]=@$AUTHOR accepted the review of ${SHA:0:7} with \`/storm:ready\`." >/dev/null
+
+      - name: Stop
+        if: steps.cmd.outputs.name == 'stop'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          gh label create storm:stopped --repo "$REPO" --force \
+            --description "No review or auto-merge until a person removes this label" >/dev/null
+          gh pr edit "$PR" --repo "$REPO" --add-label storm:stopped
+          gh pr merge "$PR" --repo "$REPO" --disable-auto >/dev/null 2>&1 || true
+
+      - uses: actions/checkout@v5
+        if: steps.cmd.outputs.name == 'revise'
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/checkout@v5
+        if: steps.cmd.outputs.name == 'revise'
+        with:
+          ref: ${{ steps.cmd.outputs.branch }}
+          path: head
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.cmd.outputs.name == 'revise'
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.cmd.outputs.name == 'revise'
+        with:
+          workspaces: head
+
+      - uses: extractions/setup-just@v3
+        if: steps.cmd.outputs.name == 'revise'
+
+      - name: Install Claude Code
+        if: steps.cmd.outputs.name == 'revise'
+        run: npm install -g @anthropic-ai/claude-code@2.1.309
+
+      - name: Revise
+        if: steps.cmd.outputs.name == 'revise'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STORM_MODEL: ${{ vars.STORM_MODEL || 'opus' }}
+          STORM_BUDGET_USD: ${{ vars.STORM_BUDGET_USD || '5' }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: .github/storm/revise.sh
+
+      - name: Acknowledge
+        if: always() && steps.cmd.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          CONTENT: ${{ job.status == 'success' && '+1' || 'confused' }}
+        run: gh api -X POST "repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content="$CONTENT" >/dev/null

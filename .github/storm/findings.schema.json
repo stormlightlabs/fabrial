@@ -1,0 +1,64 @@
+{
+  "type": "object",
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "severity": {
+            "enum": [
+              "blocker",
+              "high",
+              "medium",
+              "low",
+              "nit"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "description": "Repository-relative path, or \"PR\" for the title and body."
+          },
+          "line": {
+            "type": "integer"
+          },
+          "problem": {
+            "type": "string",
+            "description": "The defect and the input that reaches it, in one short sentence."
+          },
+          "why": {
+            "type": "string",
+            "description": "What breaks for a user or caller, in one short sentence."
+          },
+          "fix": {
+            "type": "string",
+            "description": "The fix direction, in one short sentence."
+          },
+          "evidence": {
+            "enum": [
+              "reproduced",
+              "traced",
+              "unverified"
+            ]
+          },
+          "recurring": {
+            "type": "boolean",
+            "description": "The finding was raised before and the code still gets it wrong."
+          }
+        },
+        "required": [
+          "severity",
+          "path",
+          "line",
+          "problem",
+          "why",
+          "fix",
+          "evidence"
+        ]
+      }
+    }
+  },
+  "required": [
+    "findings"
+  ]
+}

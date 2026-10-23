@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "verdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "index": { "type": "integer" },
+          "keep": { "type": "boolean" },
+          "severity": { "enum": ["blocker", "high", "medium", "low", "nit"] },
+          "reason": { "type": "string" }
+        },
+        "required": ["index", "keep", "severity", "reason"]
+      }
+    }
+  },
+  "required": ["verdicts"]
+}

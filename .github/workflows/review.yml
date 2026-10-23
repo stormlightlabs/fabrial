@@ -1,0 +1,83 @@
+# Reviews every push to a pull request into main, and reruns on a
+# `/storm:review` comment. Fresh reviewer and adversarial-reviewer agents read
+# the diff, a verifier tries to refute each finding, and the survivors are
+# posted as one review from stormlight-thunderbot. The storm/review check,
+# which the ruleset on main requires, fails on a blocker or high finding.
+#
+# pull_request_target runs this file, the scripts in .github/storm/ and the
+# agents in .claude/ from main, so a change cannot alter its own review. The
+# pull request's head is checked out in head/ and only read, apart from
+# `cargo test`, which the agents may run on it.
+name: Review
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '/storm:review') &&
+       github.event.comment.user.type != 'Bot' &&
+       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    concurrency:
+      group: storm-review-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.THUNDERBOT_APP_ID }}
+          private-key: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}
+
+      - name: Find the head
+        id: pr
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          echo "number=$PR" >> "$GITHUB_OUTPUT"
+          echo "sha=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
+          path: head
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: head
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.309
+
+      - name: Review
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.pr.outputs.number }}
+          FORCE: ${{ github.event_name == 'issue_comment' && '1' || '0' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STORM_MODEL: ${{ vars.STORM_MODEL || 'opus' }}
+          STORM_BUDGET_USD: ${{ vars.STORM_BUDGET_USD || '5' }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: .github/storm/review.sh
