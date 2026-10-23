@@ -93,14 +93,15 @@ Review finished at <full head sha>
 
 Post it through the Bot comment workflow like the rest. The Review gate
 workflow then turns `storm/review` green for that head, marks the draft ready
-and turns on auto-merge. Post it only once the
+and turns on auto-merge. A pull request that GitHub would merge already takes
+no auto-merge; the bot posts the squash message instead. Post it only once the
 sequence has run to its end. A push after it sets the check back to pending,
 unless the push only moved the base.
 
 Then report: the pull request, what each pass found and what each revise
 fixed, and anything left for the owner to judge, including any finding the
 adversarial pass's revise did not resolve. The owner approves, and auto-merge
-lands it.
+lands it, or the owner merges it with the message the bot posted.
 
 ## Comment commands
 

@@ -10,8 +10,9 @@
 #   EVENT=comment  BODY from AUTHOR: `Review finished at <sha>` or
 #                  `/storm:ready <sha>` naming the head sets it to success,
 #                  marks a draft ready and makes sure auto-merge is on with
-#                  Branch PR's message; `/storm:stop` labels the pull request
-#                  and turns off auto-merge.
+#                  Branch PR's message (or, on a pull request that can merge
+#                  now, posts that message); `/storm:stop` labels the pull
+#                  request and turns off auto-merge.
 #
 # A command word ends at whitespace or the end of the line, so
 # `/storm:readyish` and `/storm:stopwatch` do nothing.
@@ -100,11 +101,11 @@ names_head() {
 # sure squash auto-merge is on with the message Branch PR uses. A ready pull
 # request whose auto-merge is off, or set with another message or method, gets
 # it set again, so a second `Review finished` repairs a run that failed
-# halfway. A stopped or closed pull request is left alone. One that can merge
-# now (approved, checks green) takes no auto-merge, so the bot posts the squash
-# message for whoever merges it. Callers run it before posting the success:
-# when GitHub refuses a call, storm/review goes back to pending, the bot says
-# why, and the script stops.
+# halfway. A stopped or closed pull request is left alone. One GitHub would
+# merge now (approved, required checks green) takes no auto-merge, so the bot
+# posts the squash message for whoever merges it by hand. Callers run it
+# before posting the success: when GitHub refuses a call, storm/review fails,
+# the bot says why, and the script stops.
 mark_ready() {
   local info title branch body old err
   info=$(gh pr view "$PR" --repo "$REPO" \
@@ -121,7 +122,8 @@ mark_ready() {
   jq -e --arg t "$title" --arg b "$body" '.autoMergeRequest | . != null
     and .mergeMethod == "SQUASH" and .commitHeadline == $t
     and ((.commitBody // "") | rtrimstr("\n")) == $b' <<<"$info" >/dev/null && return 0
-  if [[ $(jq -r .mergeStateStatus <<<"$info") == CLEAN ]]; then
+  # GitHub refuses auto-merge on a pull request it would merge now.
+  if [[ $(jq -r .mergeStateStatus <<<"$info") =~ ^(CLEAN|UNSTABLE|HAS_HOOKS)$ ]]; then
     mergeable_now "$title" "$body"
     return 0
   fi
@@ -135,7 +137,7 @@ mark_ready() {
   fi
   if ! err=$(gh_write pr merge "$PR" --repo "$REPO" --auto --squash --subject "$title" --body "$body" 2>&1 >/dev/null); then
     # The pull request became mergeable between the read above and this call.
-    if [[ $err == *'clean status'* && $old == null ]]; then
+    if [[ $err =~ (clean|unstable|has_hooks)\ status && $old == null ]]; then
       mergeable_now "$title" "$body"
       return 0
     fi
@@ -143,7 +145,7 @@ mark_ready() {
       "--$(jq -r '.mergeMethod | ascii_downcase' <<<"$old")" \
       --subject "$(jq -r '.commitHeadline // ""' <<<"$old")" \
       --body "$(jq -r '.commitBody // ""' <<<"$old")" >/dev/null || true
-    honour_stop
+    honour_stop || true
     refused 'set auto-merge' "$err"
   fi
   [[ -z $err ]] || printf '%s\n' "$err" >&2
@@ -157,32 +159,33 @@ stopped() {
 }
 
 # A `/storm:stop` that landed after mark_ready read the labels would be undone
-# by an auto-merge call made since, so look again and turn auto-merge off.
+# by an auto-merge call made since, so look again and turn auto-merge off. A
+# failed call fails here, so the success is not posted over a stop.
 honour_stop() {
   if stopped; then
-    gh_write pr merge "$PR" --repo "$REPO" --disable-auto >/dev/null || true
+    gh_write pr merge "$PR" --repo "$REPO" --disable-auto >/dev/null
   fi
 }
 
 # Tells whoever merges a pull request that GitHub would merge now, so takes no
 # auto-merge, which squash message to use: mergeable_now <subject> <body>.
 mergeable_now() {
-  gh_write pr comment "$PR" --repo "$REPO" --body "This pull request can merge now, so auto-merge is not set. Squash it with this message:
-
-\`\`\`text
-$1
-
-$2
-\`\`\`"
+  local text
+  text=$(printf 'This pull request can merge now, so auto-merge is not set. Squash it with this message:\n\n```text\n%s\n\n%s\n```' "$1" "$2")
+  # A repost on the same pull request posts it once.
+  gh pr view "$PR" --repo "$REPO" --json comments |
+    jq -e --arg t "$text" 'any(.comments[]; .body == $t)' >/dev/null && return 0
+  gh_write pr comment "$PR" --repo "$REPO" --body "$text"
 }
 
-# Sets storm/review back to pending on the head, says which call GitHub
-# refused and why, and stops the script: refused <what was tried> <error>.
+# Fails storm/review on the head, says which call GitHub refused and why, and
+# stops the script: refused <what was tried> <error>. The run is completed, so
+# a later push that only moves the base does not carry an older success over.
 refused() {
-  check "$head" in_progress "Auto-merge refused" "GitHub refused to $1: $2"
+  check "$head" failure "Auto-merge refused" "GitHub refused to $1: $2"
   gh_write pr comment "$PR" --repo "$REPO" --body "Could not $1: $2
 
-storm/review is pending. Fix the cause, then post \`Review finished at $head\` again."
+storm/review has failed. Fix the cause, then post \`Review finished at $head\` again."
   exit 1
 }
 
