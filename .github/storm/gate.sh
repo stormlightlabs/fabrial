@@ -8,9 +8,9 @@
 #                  With ACTION=reopened there is no BEFORE: the head stays as
 #                  it is when its own latest run is a success, else pending.
 #   EVENT=comment  BODY from AUTHOR: `Review finished at <sha>` or
-#                  `/storm:ready <sha>` naming the head sets it to success;
-#                  `/storm:stop` labels the pull request and turns off
-#                  auto-merge.
+#                  `/storm:ready <sha>` naming the head sets it to success,
+#                  and marks a draft ready with auto-merge on; `/storm:stop`
+#                  labels the pull request and turns off auto-merge.
 #
 # A command word ends at whitespace or the end of the line, so
 # `/storm:readyish` and `/storm:stopwatch` do nothing.
@@ -26,6 +26,8 @@ HEAD_DIR=${HEAD_DIR:-head}
 CHECK_NAME='storm/review'
 BOT_SLUG='stormlight-thunderbot'
 STOP_LABEL='storm:stopped'
+# Credits the owner on the squash commit, as Branch PR does.
+OWNER_TRAILER='Owais <desertthunder.dev@gmail.com>'
 
 # Runs gh for a write, or prints it under DRY_RUN.
 gh_write() {
@@ -92,6 +94,21 @@ names_head() {
 }
 
 # Asks for a command again when the SHA it names is not the head.
+# Marks a draft pull request ready once its head has passed review, and turns
+# on squash auto-merge with the message Branch PR uses. A stopped pull request
+# stays a draft.
+mark_ready() {
+  local info title branch
+  info=$(gh pr view "$PR" --repo "$REPO" --json isDraft,title,headRefName,labels)
+  [[ $(jq -r .isDraft <<<"$info") == true ]] || return 0
+  jq -e --arg l "$STOP_LABEL" 'any(.labels[]; .name == $l)' <<<"$info" >/dev/null && return 0
+  title=$(jq -r .title <<<"$info")
+  branch=$(jq -r .headRefName <<<"$info")
+  gh_write pr ready "$PR" --repo "$REPO" >/dev/null
+  gh_write pr merge "$PR" --repo "$REPO" --auto --squash --subject "$title" \
+    --body "$(printf 'Merged from %s.\n\nCo-authored-by: %s' "$branch" "$OWNER_TRAILER")" >/dev/null
+}
+
 wrong_sha() {
   local command=$1 named=$2
   gh_write pr comment "$PR" --repo "$REPO" \
@@ -127,6 +144,7 @@ case $line in
     if names_head "$named"; then
       check "$head" success "Reviewed at $short" \
         "@$author finished the review of $short.$(marker "$head")"
+      mark_ready
     else
       wrong_sha 'Review finished' "$named"
     fi
@@ -136,6 +154,7 @@ case $line in
     if names_head "$named"; then
       check "$head" success "Marked ready by @$author" \
         "@$author accepted $short with \`/storm:ready\`.$(marker "$head")"
+      mark_ready
     else
       wrong_sha '/storm:ready' "$named"
     fi

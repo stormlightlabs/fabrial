@@ -92,8 +92,9 @@ are discarded at merge.
 git push -u origin <branch>
 ```
 
-The Branch PR workflow then opens the pull request as stormlight-thunderbot,
-requests the owner's review and turns on auto-merge. Do not open one yourself.
+The Branch PR workflow then opens the pull request as a draft from
+stormlight-thunderbot and requests the owner's review. Do not open one
+yourself. It stays a draft until the `storm` skill's review finishes.
 Once it exists, you may replace the body with your own: what changed and why,
 in a few lines. The workflow keeps a title or body set after it opens.
 

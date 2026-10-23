@@ -51,8 +51,10 @@ a paid plan, so rulesets on `main` are enforced.
   sessions never hold the App's private key; only Actions and the daemon do.
 - **The bot is `stormlight-thunderbot`,** with its App ID and private key as
   org secrets shared with each repository that uses fabrial.
-- **Pull requests.** The bot sets the squash commit to the PR title, a short
-  summary and the owner's `Co-authored-by` trailer, as okb does. "Verified
+- **Pull requests.** The bot opens each PR as a draft, and it stays one until
+  its review finishes, so it cannot merge partway through. The bot sets the
+  squash commit to the PR title, a short summary and the owner's
+  `Co-authored-by` trailer, as okb does. "Verified
   with" and "Not covered" never reach `main`: verification goes in the review
   comment and in arcl's completion evidence. PR bodies stay short.
 - **The agent that opens a PR reviews it,** in its own Claude Code (or Codex)

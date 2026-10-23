@@ -48,9 +48,9 @@ Dispatch the `implementer` agent with the task ID and a worktree you created
 for it, as the `implement` skill's **Take a working tree** says. A cloud
 session that holds the work in its own checkout implements there itself.
 
-The push opens the pull request through the Branch PR workflow. Find it with
-`gh pr list --head <branch>`, or `list_pull_requests` with `head` in a cloud
-session.
+The push opens the pull request as a draft through the Branch PR workflow.
+Find it with `gh pr list --head <branch>`, or `list_pull_requests` with `head`
+in a cloud session.
 
 ## Review
 
@@ -90,7 +90,8 @@ Review finished at <full head sha>
 ```
 
 Post it through the Bot comment workflow like the rest. The Review gate
-workflow then turns `storm/review` green for that head. Post it only once the
+workflow then turns `storm/review` green for that head, marks the draft ready
+and turns on auto-merge. Post it only once the
 sequence has run to its end. A push after it sets the check back to pending,
 unless the push only moved the base.
 
