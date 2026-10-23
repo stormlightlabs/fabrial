@@ -34,7 +34,7 @@ a paid plan, so rulesets on `main` are enforced.
   operations: claim, start a step, record a result, mark ready, release. The
   daemon drives the fixed sequence in code. An agent such as Pi drives it
   through the CLI or `fab mcp`. A person drives it from the dashboard or with
-  `/storm` PR comments.
+  `/storm:` PR comments.
 - **Enforcement is server-side:** rulesets, required checks and the review
   workflow. There is no shell-command parsing and no local token broker. Worker
   sessions never hold the App's private key; only Actions and the daemon do.
@@ -44,8 +44,16 @@ a paid plan, so rulesets on `main` are enforced.
   summary and the owner's `Co-authored-by` trailer, as okb does. "Verified
   with" and "Not covered" never reach `main`: verification goes in the review
   comment and in arcl's completion evidence. PR bodies stay short.
-- **Prose checks stay:** the writing standard and the tells catalogue from
-  thunderstorm's `writing-docs`, and tropius in CI as a report.
+- **The agent that opens a PR reviews it,** in its own Claude Code (or Codex)
+  session: one standard review and one adversarial review by fresh agents,
+  each checked by a verifier and followed by a revise. It ends with
+  `Review finished at <sha>`. A
+  model-free workflow turns the required `storm/review` check green when that
+  comment names the head. It runs from `main` through `pull_request_target`,
+  so a change cannot alter its own gate.
+- **Prose follows guidelines, not a CI check:** the writing standard and the
+  tells catalogue from thunderstorm's `writing-docs`, in
+  `.claude/skills/writing-docs/`.
 - **Workers.** Pi on the VPS comes first, through `dispatch` into tmux panes,
   which lets Pi orchestrate and use opencode and OpenAI models. Claude Code and
   Codex run in their own clouds and push `claude/` and `codex/` branches; the
@@ -105,16 +113,16 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 
 ## 1. Review loop
 
-- [ ] Port `implement`, `review`, `adv-rev`, `revise`, `resync` and `handoff`,
+- [x] Port `implement`, `review`, `adv-rev`, `revise`, `resync` and `handoff`,
       and the `implementer`, `reviewer`, `adversarial-reviewer` and `reviser`
       agents.
-- [ ] Review workflow: fresh reviewer and adversarial-reviewer agents read the
-      diff and the repository's rules, a verify pass tries to refute each
-      finding, and the survivors are posted as one bot review with a required
-      `storm/review` check.
-- [ ] `/storm review|revise|ready|stop` comment commands.
+- [x] Review sequence in the `storm` skill: one standard pass and one
+      adversarial pass by fresh agents, each followed by a verifier that tries
+      to refute its findings and a revise. A model-free gate sets the required `storm/review` check.
+- [x] `/storm:review|revise|ready|stop` comment commands.
 - [ ] Verify the shared skill layout on Claude Code, Codex and Pi, and record
-      what differs.
+      what differs. `docs/hosts.md` records Claude Code; Codex and Pi are
+      still to check.
 
 ## 2. Core
 
