@@ -25,6 +25,7 @@ version that differs from it, and exits 1 when there is any drift.
 
 Before the first pull request there, install stormlight-thunderbot on the
 repository and share its `THUNDERBOT_APP_ID` and `THUNDERBOT_PRIVATE_KEY`
-secrets with it. The gate runs from `main`, so on the install pull request it
+secrets with it, and turn on "Allow auto-merge" in the repository's settings;
+the gate refuses to pass a pull request without it. The gate runs from `main`, so on the install pull request it
 does nothing: mark that draft ready yourself, and require `storm/review` on
 `main` only after it merges.

@@ -95,20 +95,37 @@ names_head() {
   [[ $1 =~ ^[0-9a-f]{7,40}$ && $head == "$1"* ]]
 }
 
-# Marks a draft pull request ready once its head has passed review, and turns
-# on squash auto-merge with the message Branch PR uses. A stopped pull request
-# stays a draft. Callers run it before posting the success, so a failed call
-# stops the script and leaves storm/review pending.
+# Marks a draft pull request ready once its head has passed review, and makes
+# sure squash auto-merge is on with the message Branch PR uses. A ready pull
+# request whose auto-merge is off, or set with another message or method, gets
+# it set again, so a second `Review finished` repairs a run that failed half
+# way. A stopped pull request is left alone. Callers run it before posting the
+# success: when GitHub refuses auto-merge, the bot says why and the script
+# stops with storm/review pending.
 mark_ready() {
-  local info title branch
-  info=$(gh pr view "$PR" --repo "$REPO" --json isDraft,title,headRefName,labels)
-  [[ $(jq -r .isDraft <<<"$info") == true ]] || return 0
+  local info title branch body err
+  info=$(gh pr view "$PR" --repo "$REPO" --json isDraft,title,headRefName,labels,autoMergeRequest)
   jq -e --arg l "$STOP_LABEL" 'any(.labels[]; .name == $l)' <<<"$info" >/dev/null && return 0
   title=$(jq -r .title <<<"$info")
   branch=$(jq -r .headRefName <<<"$info")
-  gh_write pr ready "$PR" --repo "$REPO" >/dev/null
-  gh_write pr merge "$PR" --repo "$REPO" --auto --squash --subject "$title" \
-    --body "$(printf 'Merged from %s.\n\nCo-authored-by: %s' "$branch" "$OWNER_TRAILER")" >/dev/null
+  body=$(printf 'Merged from %s.\n\nCo-authored-by: %s' "$branch" "$OWNER_TRAILER")
+  if [[ $(jq -r .isDraft <<<"$info") == true ]]; then
+    gh_write pr ready "$PR" --repo "$REPO" >/dev/null
+  fi
+  # GitHub may store the body with a trailing newline, so compare without it.
+  jq -e --arg t "$title" --arg b "$body" '.autoMergeRequest | . != null
+    and .mergeMethod == "SQUASH" and .commitHeadline == $t
+    and ((.commitBody // "") | rtrimstr("\n")) == $b' <<<"$info" >/dev/null && return 0
+  if [[ $(jq -r '.autoMergeRequest != null' <<<"$info") == true ]]; then
+    gh_write pr merge "$PR" --repo "$REPO" --disable-auto >/dev/null
+  fi
+  if ! err=$(gh_write pr merge "$PR" --repo "$REPO" --auto --squash --subject "$title" --body "$body" 2>&1 >/dev/null); then
+    gh_write pr comment "$PR" --repo "$REPO" --body "Could not turn on auto-merge: $err
+
+storm/review stays pending. Fix the cause, then post \`Review finished at $head\` again."
+    exit 1
+  fi
+  [[ -z $err ]] || printf '%s\n' "$err" >&2
   # A `/storm:stop` that landed after the label read above would be undone by
   # the call just made, so look again and turn auto-merge back off.
   if gh pr view "$PR" --repo "$REPO" --json isDraft,labels |
