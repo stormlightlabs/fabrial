@@ -22,6 +22,17 @@ a paid plan, so rulesets on `main` are enforced.
   arclightning. Its repository-native workspace is committed to git, so every
   machine sees the same work. There is no GitHub Projects board. GitHub keeps
   pull requests and reviews.
+- **The two projects build each other, in this order.** fabrial first becomes
+  usable across the stormlightlabs org, then implements arclightning's work,
+  including the repository-native workspace. Only then does arcl take over
+  fabrial's own tasks. Until phase 4, `PLAN.md` tracks fabrial's work, and the
+  skills take a task from arcl, a GitHub issue, or a description from the
+  owner.
+- **`fab init` installs fabrial by copying.** It writes the Branch PR, Review
+  gate and Bot comment workflows, `gate.sh`, `CODEOWNERS`, the skills, the
+  agents and an `AGENTS.md` section into a repository, from files built into
+  the binary. `fab init --check` reports drift. While fabrial is private, a
+  public repository such as arclightning cannot call its reusable workflows.
 - **fabrial executes it.** It picks ready tasks, claims one, runs the review
   loop on a `storm/<task>` branch in its own worktree, opens the PR, and writes
   the handoff and evidence back to arcl.
@@ -39,7 +50,7 @@ a paid plan, so rulesets on `main` are enforced.
   workflow. There is no shell-command parsing and no local token broker. Worker
   sessions never hold the App's private key; only Actions and the daemon do.
 - **The bot is `stormlight-thunderbot`,** with its App ID and private key as
-  org secrets shared with fabrial.
+  org secrets shared with each repository that uses fabrial.
 - **Pull requests.** The bot sets the squash commit to the PR title, a short
   summary and the owner's `Co-authored-by` trailer, as okb does. "Verified
   with" and "Not covered" never reach `main`: verification goes in the review
@@ -47,10 +58,9 @@ a paid plan, so rulesets on `main` are enforced.
 - **The agent that opens a PR reviews it,** in its own Claude Code (or Codex)
   session: one standard review and one adversarial review by fresh agents,
   each checked by a verifier and followed by a revise. It ends with
-  `Review finished at <sha>`. A
-  model-free workflow turns the required `storm/review` check green when that
-  comment names the head. It runs from `main` through `pull_request_target`,
-  so a change cannot alter its own gate.
+  `Review finished at <sha>`. A model-free workflow turns the required
+  `storm/review` check green when that comment names the head. It runs from
+  `main` through `pull_request_target`, so a change cannot alter its own gate.
 - **Prose follows guidelines, not a CI check:** the writing standard and the
   tells catalogue from thunderstorm's `writing-docs`, in
   `.claude/skills/writing-docs/`.
@@ -118,7 +128,8 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       agents.
 - [x] Review sequence in the `storm` skill: one standard pass and one
       adversarial pass by fresh agents, each followed by a verifier that tries
-      to refute its findings and a revise. A model-free gate sets the required `storm/review` check.
+      to refute its findings and a revise. A model-free gate sets the required
+      `storm/review` check.
 - [x] `/storm:review|revise|ready|stop` comment commands.
 - [x] Bot comments: agents post PR comments as stormlight-thunderbot through
       the Bot comment workflow.
@@ -126,17 +137,41 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       what differs. `docs/hosts.md` records Claude Code; Codex and Pi are
       still to check.
 
-## 2. Core
+## 2. Org rollout
 
+- [ ] The skills and agents take a task from arcl, a GitHub issue, or a
+      description, and run the gates the repository's `AGENTS.md` names.
+- [ ] Per-repository settings, such as the owner's trailer and the reviewer,
+      come from one file instead of being written into the workflows.
+- [ ] `fab init`: write the workflows, `gate.sh`, `CODEOWNERS`, skills, agents
+      and an `AGENTS.md` section into a repository; `--check` reports drift.
+- [ ] Org setup (owner): the bot installed on each repository, the secrets
+      shared, and one org ruleset requiring `storm/review` and the repository's
+      check.
+
+## 3. arclightning
+
+- [ ] Install fabrial in `stormlightlabs/arclightning` with `fab init`.
+- [ ] Implement arclightning's repository-native workspace (its roadmap's
+      milestone 3) through the `storm` skill.
+
+## 4. arcl here
+
+- [ ] `arcl init` in fabrial, and move `PLAN.md`'s open items into arcl as a
+      plan with phases and tasks.
 - [ ] Read tasks, readiness and context from arcl through its crates; write
       handoffs and evidence back.
+- [ ] Point the ledger at arcl, or retire it for arcl's dashboard.
+
+## 5. Core
+
 - [ ] Claims on `refs/fabrial/claims`: claim, renew, release and expire, with
       tests for two machines racing for one task.
 - [ ] `fab run <task>`: the fixed sequence, one worker per step, on a worktree
       per task.
 - [ ] `fab status`: runs, their step and their PR, read from the claims ref.
 
-## 3. Workers
+## 6. Workers
 
 - [ ] Pi dispatch into tmux and zellij, with roles and effort caps (port
       thunderstorm's `internal/dispatch` and `internal/roles`).
@@ -144,7 +179,7 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       follow its branch.
 - [ ] Jules spike.
 
-## 4. Machines
+## 7. Machines
 
 - [ ] `fab daemon` under systemd: takes ready tasks, honours a concurrency cap,
       and wakes on App webhooks or polls.
@@ -152,14 +187,14 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 - [ ] Logs and transcripts per run.
 - [ ] Choose and set up the first VPS.
 
-## 5. Drivers
+## 8. Drivers
 
 - [ ] `fab mcp`: the run operations as MCP tools, so Pi or another agent can
       orchestrate.
 - [ ] Dashboard: runs, steps, logs, and the same operations the comments
       trigger.
 
-## 6. Migration
+## 9. Migration
 
 - [ ] Move thunderstorm's open issues into arcl.
 - [ ] Archive `stormlightlabs/thunderstorm`, then delete it once nothing

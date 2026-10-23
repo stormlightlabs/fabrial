@@ -37,7 +37,7 @@ frontmatter shows what to pass. Codex invokes a skill by name; Pi names one
 
 The roles live once, in `.claude/agents/`. On Codex and Pi, the orchestrator
 reads a role's Markdown and passes its body as the instructions of a built-in
-agent or a dispatched session. Phase 3 of `PLAN.md` ports Pi's dispatch.
+agent or a dispatched session. Phase 6 of `PLAN.md` ports Pi's dispatch.
 
 A Codex dispatch must set `fork_turns` to `"none"` or a number. A full-history
 fork inherits the parent's context and refuses a model override, so the
@@ -49,4 +49,4 @@ reviewer would not start fresh.
 `structured_output`, but only when the agent's `tools` frontmatter, if set,
 lists `StructuredOutput`. Without it, Claude Code 2.1.309 answers in prose and
 leaves `structured_output` null, with no error. Nothing here runs agents
-headless today; this matters again for `fab run` in phase 2.
+headless today; this matters again for `fab run` in phase 5.
