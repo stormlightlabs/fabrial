@@ -43,9 +43,12 @@ jobs:
           BRANCH: ${{ github.ref_name }}
         run: |
           # Credits the owner, who reviewed and approved, on the squash commit.
-          OWNER_TRAILER=$(sed -n 's/^trailer = "\(.*\)"$/\1/p' .github/fabrial.toml)
+          # Read from main's settings, as the Review gate does, so a branch
+          # cannot change the trailer and one cut before the file still works.
+          OWNER_TRAILER=$(git show origin/main:.github/fabrial.toml 2>/dev/null \
+            | sed -n 's/^trailer = "\(.*\)"$/\1/p' || true)
           if [[ -z "$OWNER_TRAILER" ]]; then
-            echo "::error title=settings::.github/fabrial.toml has no trailer."
+            echo "::error title=settings::.github/fabrial.toml on main has no trailer."
             exit 1
           fi
           subjects=$(git log --reverse --format=%s origin/main..HEAD)

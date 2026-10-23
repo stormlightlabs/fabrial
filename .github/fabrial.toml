@@ -1,7 +1,8 @@
 # fabrial's settings for this repository. The Branch PR workflow, the Review
 # gate and the skills read them. Each value is one line: key = "value".
 
-# GitHub login of the person who approves pull requests; CODEOWNERS names them.
+# GitHub login of the person who approves pull requests. Nothing reads it
+# yet; `fab init` will write CODEOWNERS from it.
 owner = "desertthunder"
 
 # The Co-authored-by trailer on every squash commit.

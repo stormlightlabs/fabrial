@@ -12,7 +12,9 @@ diff yourself, since the separation is what makes the review worth having.
 
 ## Start
 
-A task ID starts at implement. A pull request number starts at review.
+An arcl task ID, an issue `#<n>` or a description starts at implement. A pull
+request number starts at review. A bare number is a pull request if
+`gh pr view <n>` (or `pull_request_read`) finds one, and an issue otherwise.
 
 Restate when the run ends before dispatching anything: the sequence has posted
 `Review finished at <head>`, or a stop condition below has fired.
