@@ -17,6 +17,31 @@ A task ID starts at implement. A pull request number starts at review.
 Restate when the run ends before dispatching anything: the sequence has posted
 `Review finished at <head>`, or a stop condition below has fired.
 
+## Posting
+
+Every comment this skill and its agents put on a pull request goes out as
+stormlight-thunderbot through the Bot comment workflow, never through the
+session's own GitHub access, which posts as a person:
+
+```sh
+gh workflow run comment.yml -f pr=<n> -f body="$(cat <file>)"
+```
+
+A cloud session, which has no `gh`, calls the MCP tool `actions_run_trigger`
+with method `run_workflow`, `workflow_id` `comment.yml`, `ref` `main`, and
+`inputs` `{"pr": "<n>", "body": "<text>"}`. Write the body in the session's
+scratch directory, never inside the repository. The comment appears once the
+run finishes, after about ten seconds.
+
+Both return once the run is queued, before it is listed, so a run that fails
+on a bad `pr` or a missing secret goes unseen, and the newest listed run may be
+an earlier one. Confirm each post by its result: within about a minute,
+`gh pr view <n> --comments`, or `pull_request_read` method `get_comments` in a
+cloud session, should show a comment from `stormlight-thunderbot[bot]`, created
+after you dispatched, whose first line matches yours. If none appears, look for
+a failure among the newest `comment.yml` runs and report it. Do not retry in a
+loop.
+
 ## Implement
 
 Dispatch the `implementer` agent with the task ID and a worktree you created
@@ -64,9 +89,10 @@ is exactly:
 Review finished at <full head sha>
 ```
 
-The Review gate workflow then turns `storm/review` green for that head. Post
-it only once the sequence has run to its end. A push after it sets the check
-back to pending, unless the push only moved the base.
+Post it through the Bot comment workflow like the rest. The Review gate
+workflow then turns `storm/review` green for that head. Post it only once the
+sequence has run to its end. A push after it sets the check back to pending,
+unless the push only moved the base.
 
 Then report: the pull request, what each pass found and what each revise
 fixed, and anything left for the owner to judge, including any finding the

@@ -98,7 +98,8 @@ Once it exists, you may replace the body with your own: what changed and why,
 in a few lines. The workflow keeps a title or body set after it opens.
 
 Post what you verified as a comment on the pull request, not in the body: the
-commands you ran and what they returned, and anything you did not check.
+commands you ran and what they returned, and anything you did not check. Post
+it through the Bot comment workflow, as the `storm` skill's **Posting** says.
 
 ## Report
 
