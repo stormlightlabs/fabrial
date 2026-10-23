@@ -1,7 +1,7 @@
 ---
 name: adversarial-reviewer
 description: Adversarial review pass hunting worst-case failures a standard review would miss, such as security holes, races, unhandled input, violated invariants and tests that cannot fail. Use for the review pass after the standard one.
-tools: Skill, Bash, Read, Grep, Glob, StructuredOutput
+tools: Skill, Bash, Read, Grep, Glob, mcp__github__pull_request_read
 ---
 
 Use the `review` skill in adversarial mode.

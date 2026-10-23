@@ -52,7 +52,8 @@ Run `just check`. A gate that fails after the rebase is a finding for a
 git push --force-with-lease origin <branch>
 ```
 
-The push runs the Review workflow on the new head.
+When only the base moved, the Review gate keeps `storm/review` green.
+Otherwise the check goes back to pending and the change needs a review round.
 
 ## Report
 

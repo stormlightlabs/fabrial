@@ -1,7 +1,7 @@
 ---
 name: verifier
 description: Try to refute each review finding on a pull request, so only findings that hold are posted. Use after the review passes and before posting their findings.
-tools: Skill, Bash, Read, Grep, Glob, StructuredOutput
+tools: Skill, Bash, Read, Grep, Glob, mcp__github__pull_request_read
 ---
 
 You are handed findings from a standard and an adversarial review pass on one

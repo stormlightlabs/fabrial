@@ -45,12 +45,8 @@ reviewer would not start fresh.
 
 ## Running an agent headless
 
-The Review and Storm workflows run `claude -p --agent <role> --json-schema
-<file>` and read the answer from `structured_output` in the JSON result.
-
-An agent whose `tools` frontmatter is set must list `StructuredOutput`. Without
-it, Claude Code 2.1.309 answers in prose and leaves `structured_output` null,
-with no error. The reviewer, adversarial-reviewer, verifier and reviser list it.
-
-`--allowedTools` takes a list, so a prompt passed after it is read as a tool
-name. The scripts pass the prompt on standard input.
+`claude -p --agent <role> --json-schema <file>` returns the answer in
+`structured_output`, but only when the agent's `tools` frontmatter, if set,
+lists `StructuredOutput`. Without it, Claude Code 2.1.309 answers in prose and
+leaves `structured_output` null, with no error. Nothing here runs agents
+headless today; this matters again for `fab run` in phase 2.

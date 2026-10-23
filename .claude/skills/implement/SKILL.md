@@ -106,8 +106,8 @@ State the branch, the pull request, what changed, what you verified and how,
 what you did not verify, and anything you captured as new work. Do not claim a
 check passed without running it.
 
-The review workflow reviews every push. Its findings are the next `revise`
-pass's input.
+The `storm` skill reviews the pull request next. Its findings are the next
+`revise` pass's input.
 
 ## Do not
 

@@ -1,8 +1,0 @@
-{
-  "type": "object",
-  "properties": {
-    "subject": { "type": "string" },
-    "reply": { "type": "string" }
-  },
-  "required": ["subject", "reply"]
-}

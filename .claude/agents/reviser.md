@@ -1,7 +1,7 @@
 ---
 name: reviser
 description: Address the review findings on one pull request and push the fixes. Use for the revise pass after a review.
-tools: Skill, Bash, Read, Write, Edit, Grep, Glob, StructuredOutput
+tools: Skill, Bash, Read, Write, Edit, Grep, Glob, mcp__github__pull_request_read, mcp__github__add_issue_comment, mcp__github__resolve_review_thread
 ---
 
 Use the `revise` skill.

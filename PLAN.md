@@ -44,12 +44,15 @@ a paid plan, so rulesets on `main` are enforced.
   summary and the owner's `Co-authored-by` trailer, as okb does. "Verified
   with" and "Not covered" never reach `main`: verification goes in the review
   comment and in arcl's completion evidence. PR bodies stay short.
-- **The review runs in Actions,** on Claude Code with the reviewer,
-  adversarial-reviewer and verifier agents. `pull_request_target` runs the
-  workflow, its scripts and the agents from `main`, so a change cannot alter
-  its own review.
-- **Prose checks stay:** the writing standard and the tells catalogue from
-  thunderstorm's `writing-docs`, and tropius in CI as a report.
+- **The agent that opens a PR reviews it,** in its own Claude Code (or Codex)
+  session, by dispatching fresh reviewer, adversarial-reviewer and verifier
+  agents, then the reviser. It ends with `Review finished at <sha>`. A
+  model-free workflow turns the required `storm/review` check green when that
+  comment names the head. It runs from `main` through `pull_request_target`,
+  so a change cannot alter its own gate.
+- **Prose follows guidelines, not a CI check:** the writing standard and the
+  tells catalogue from thunderstorm's `writing-docs`, in
+  `.claude/skills/writing-docs/`.
 - **Workers.** Pi on the VPS comes first, through `dispatch` into tmux panes,
   which lets Pi orchestrate and use opencode and OpenAI models. Claude Code and
   Codex run in their own clouds and push `claude/` and `codex/` branches; the
@@ -112,10 +115,10 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 - [x] Port `implement`, `review`, `adv-rev`, `revise`, `resync` and `handoff`,
       and the `implementer`, `reviewer`, `adversarial-reviewer` and `reviser`
       agents.
-- [x] Review workflow: fresh reviewer and adversarial-reviewer agents read the
-      diff and the repository's rules, a verify pass tries to refute each
-      finding, and the survivors are posted as one bot review with a required
-      `storm/review` check.
+- [x] Review loop in the `storm` skill: fresh reviewer and
+      adversarial-reviewer agents read the diff and the repository's rules, a
+      verifier tries to refute each finding, and the survivors are posted as
+      one comment. A model-free gate sets the required `storm/review` check.
 - [x] `/storm:review|revise|ready|stop` comment commands.
 - [ ] Verify the shared skill layout on Claude Code, Codex and Pi, and record
       what differs. `docs/hosts.md` records Claude Code; Codex and Pi are

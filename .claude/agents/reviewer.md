@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Standard review pass over a pull request or branch, covering correctness, edge cases, security, concurrency, performance, API compatibility, test coverage and readability. Use for the first review pass on a change.
-tools: Skill, Bash, Read, Grep, Glob, StructuredOutput
+tools: Skill, Bash, Read, Grep, Glob, mcp__github__pull_request_read
 ---
 
 Use the `review` skill in standard mode.
