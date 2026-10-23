@@ -95,7 +95,8 @@ names_head() {
 
 # Marks a draft pull request ready once its head has passed review, and turns
 # on squash auto-merge with the message Branch PR uses. A stopped pull request
-# stays a draft.
+# stays a draft. Callers run it before posting the success, so a failed call
+# stops the script and leaves storm/review pending.
 mark_ready() {
   local info title branch
   info=$(gh pr view "$PR" --repo "$REPO" --json isDraft,title,headRefName,labels)
@@ -148,9 +149,9 @@ case $line in
   'Review finished at '*)
     named=$(named_sha 4)
     if names_head "$named"; then
+      mark_ready
       check "$head" success "Reviewed at $short" \
         "@$author finished the review of $short.$(marker "$head")"
-      mark_ready
     else
       wrong_sha 'Review finished' "$named"
     fi
@@ -158,9 +159,9 @@ case $line in
   /storm:ready | /storm:ready[[:space:]]*)
     named=$(named_sha 2)
     if names_head "$named"; then
+      mark_ready
       check "$head" success "Marked ready by @$author" \
         "@$author accepted $short with \`/storm:ready\`.$(marker "$head")"
-      mark_ready
     else
       wrong_sha '/storm:ready' "$named"
     fi
