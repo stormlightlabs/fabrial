@@ -96,7 +96,7 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 
 ## 0. Repository
 
-- [ ] Ruleset on `main` (owner), `CODEOWNERS`, and stormlight-thunderbot
+- [x] Ruleset on `main` (owner), `CODEOWNERS`, and stormlight-thunderbot
       installed with its org secrets.
 - [x] A short `AGENTS.md`: gates, layout, branch and PR rules.
 - [x] Port the writing skill and the tells catalogue.
