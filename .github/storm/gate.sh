@@ -93,7 +93,6 @@ names_head() {
   [[ $1 =~ ^[0-9a-f]{7,40}$ && $head == "$1"* ]]
 }
 
-# Asks for a command again when the SHA it names is not the head.
 # Marks a draft pull request ready once its head has passed review, and turns
 # on squash auto-merge with the message Branch PR uses. A stopped pull request
 # stays a draft.
@@ -107,8 +106,15 @@ mark_ready() {
   gh_write pr ready "$PR" --repo "$REPO" >/dev/null
   gh_write pr merge "$PR" --repo "$REPO" --auto --squash --subject "$title" \
     --body "$(printf 'Merged from %s.\n\nCo-authored-by: %s' "$branch" "$OWNER_TRAILER")" >/dev/null
+  # A `/storm:stop` that landed after the label read above would be undone by
+  # the call just made, so look again and turn auto-merge back off.
+  if gh pr view "$PR" --repo "$REPO" --json isDraft,labels |
+    jq -e --arg l "$STOP_LABEL" 'any(.labels[]; .name == $l)' >/dev/null; then
+    gh_write pr merge "$PR" --repo "$REPO" --disable-auto >/dev/null
+  fi
 }
 
+# Asks for a command again when the SHA it names is not the head.
 wrong_sha() {
   local command=$1 named=$2
   gh_write pr comment "$PR" --repo "$REPO" \

@@ -60,7 +60,8 @@ jobs:
               echo
               echo "Draft until the review finishes. Approve to merge. The squash commit takes this title and credits the owner as co-author."
             } > body.md
-            # CODEOWNERS requests the owner's review. Asking again with
+            # GitHub skips CODEOWNERS on a draft and requests the owner's
+            # review when the Review gate marks it ready. Asking with
             # --reviewer fails with "Could not add requested reviewers".
             gh pr create --draft --base main --head "$BRANCH" --title "$title" --body-file body.md
             number=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')

@@ -93,8 +93,9 @@ git push -u origin <branch>
 ```
 
 The Branch PR workflow then opens the pull request as a draft from
-stormlight-thunderbot and requests the owner's review. Do not open one
-yourself. It stays a draft until the `storm` skill's review finishes.
+stormlight-thunderbot. Do not open one yourself. It stays a draft until the
+`storm` skill's review finishes; GitHub requests the owner's review when it is
+marked ready.
 Once it exists, you may replace the body with your own: what changed and why,
 in a few lines. The workflow keeps a title or body set after it opens.
 
