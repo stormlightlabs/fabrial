@@ -44,7 +44,7 @@ gh_write() {
   gh "$@"
 }
 
-# Records the check on a commit: check <sha> <in_progress|success> <title> <summary>.
+# Records the check on a commit: check <sha> <in_progress|success|failure> <title> <summary>.
 check() {
   local sha=$1 state=$2 title=$3 summary=$4
   local args=(-f name="$CHECK_NAME" -f head_sha="$sha" -f "output[title]=$title" -f "output[summary]=$summary")
@@ -137,7 +137,7 @@ mark_ready() {
   fi
   if ! err=$(gh_write pr merge "$PR" --repo "$REPO" --auto --squash --subject "$title" --body "$body" 2>&1 >/dev/null); then
     # The pull request became mergeable between the read above and this call.
-    if [[ $err =~ (clean|unstable|has_hooks)\ status && $old == null ]]; then
+    if [[ $err =~ (clean|unstable|has_hooks)\ status ]]; then
       mergeable_now "$title" "$body"
       return 0
     fi
@@ -170,8 +170,12 @@ honour_stop() {
 # Tells whoever merges a pull request that GitHub would merge now, so takes no
 # auto-merge, which squash message to use: mergeable_now <subject> <body>.
 mergeable_now() {
-  local text
-  text=$(printf 'This pull request can merge now, so auto-merge is not set. Squash it with this message:\n\n```text\n%s\n\n%s\n```' "$1" "$2")
+  local text run fence='```'
+  # The fence outgrows any backtick run in the message, so a title cannot
+  # close it early.
+  run=$(grep -o '`*' <<<"$1$2" | awk '{ if (length > n) n = length } END { print n + 0 }')
+  while (( ${#fence} <= run )); do fence+='`'; done
+  text=$(printf 'This pull request can merge now, so auto-merge is not set. Squash it with this message:\n\n%stext\n%s\n\n%s\n%s' "$fence" "$1" "$2" "$fence")
   # A repost on the same pull request posts it once.
   gh pr view "$PR" --repo "$REPO" --json comments |
     jq -e --arg t "$text" 'any(.comments[]; .body == $t)' >/dev/null && return 0
