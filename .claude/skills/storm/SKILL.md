@@ -1,6 +1,6 @@
 ---
 name: storm
-description: Run one arcl task or one open pull request through the loop of implement, review, adversarial review, verify and revise, ending with `Review finished at <sha>`. Use for /storm, when asked to take a task to a reviewed pull request, or to review and finish a pull request this session opened.
+description: Run one arcl task or one open pull request through implement, a standard review and its revise, then an adversarial review and its revise, ending with `Review finished at <sha>`. Use for /storm, when asked to take a task to a reviewed pull request, or to review and finish a pull request this session opened.
 argument-hint: <task-id|pr-number>
 ---
 
@@ -14,7 +14,7 @@ diff yourself, since the separation is what makes the review worth having.
 
 A task ID starts at implement. A pull request number starts at review.
 
-Restate when the run ends before dispatching anything: the loop has posted
+Restate when the run ends before dispatching anything: the sequence has posted
 `Review finished at <head>`, or a stop condition below has fired.
 
 ## Implement
@@ -29,49 +29,49 @@ session.
 
 ## Review
 
-One round, on one commit:
+The sequence is fixed: one standard pass, its revise, one adversarial pass,
+its revise. It runs once per pull request, never in a loop.
 
-1. Fetch the branch and pin its head SHA.
-2. Dispatch the `reviewer` agent with the pull request, the SHA and the task
-   ID. It returns findings.
-3. Dispatch the `adversarial-reviewer` agent with the same, plus the
-   reviewer's findings, which it must not repeat.
-4. When either found anything, dispatch the `verifier` agent with every
-   finding. Keep the ones it does not refute, at the severity it gives.
-5. Post one comment on the pull request with the kept findings, in the
-   `review` skill's format, most severe first, under 200 words. Open it with
-   `Review of <short sha> · standard, adversarial and verify passes · <model>`,
-   and end with how many findings the verifier refuted, if any.
+1. **Standard pass.** Fetch the branch and pin its head SHA. Dispatch the
+   `reviewer` agent with the pull request, the SHA and the task ID.
+2. **Verify.** When it found anything, dispatch the `verifier` agent with the
+   findings. Keep the ones it does not refute, at the severity it gives.
+3. **Post.** One comment with the kept findings, in the `review` skill's
+   format, most severe first, under 200 words. Open it with
+   `Standard pass on <short sha> · <model>`, and end with how many findings
+   the verifier refuted, if any.
+4. **Revise.** When anything above `nit` was kept, dispatch the `reviser`
+   agent with the pull request, the worktree and the findings. It fixes,
+   pushes and replies.
+5. **Adversarial pass.** Pin the new head. Dispatch the `adversarial-reviewer`
+   agent with it, the standard pass's findings and the reviser's reply.
+6. **Verify, post and revise** as in steps 2 to 4, opening the comment with
+   `Adversarial pass on <short sha> · <model>`.
+
+Nits are left in the comments for the owner; they start no revise.
 
 Dispatch each agent fresh. On Claude Code, use the Agent tool with the
 agent's name; on Codex, `spawn_agent` with `fork_turns` set to `"none"` and the
 role's text from `.claude/agents/`. A reviewer that inherits this session's
 history is not a fresh reader.
 
-## Revise
-
-When the kept findings include anything above `nit`, dispatch the `reviser`
-agent with the pull request, the worktree and the findings. It fixes, pushes
-and replies, and the push starts the next round at **Review**.
-
-Nits alone end the loop; leave them in the comment for the owner.
-
 ## Finish
 
-When a round keeps nothing above `nit`, post one comment whose first line is
-exactly:
+After the adversarial pass and its revise, post one comment whose first line
+is exactly:
 
 ```text
 Review finished at <full head sha>
 ```
 
 The Review gate workflow then turns `storm/review` green for that head. Post
-it only for the head the last round reviewed, and only when the loop ran to
-its end. A push after it sets the check back to pending, unless the push only
-moved the base.
+it only once the sequence has run to its end. A push after it sets the check
+back to pending, unless the push only moved the base.
 
-Then report: the pull request, the rounds it took, what each fixed, and what
-the owner should look at. The owner approves, and auto-merge lands it.
+Then report: the pull request, what each pass found and what each revise
+fixed, and anything left for the owner to judge, including any finding the
+adversarial pass's revise did not resolve. The owner approves, and auto-merge
+lands it.
 
 ## Comment commands
 
@@ -80,8 +80,8 @@ member or a collaborator:
 
 | Comment              | What happens                                                                |
 | -------------------- | --------------------------------------------------------------------------- |
-| `/storm:review`      | Run **Review** again on the current head, even past the round limit.        |
-| `/storm:revise`      | Run **Revise** on the newest review comment and the comments after it.      |
+| `/storm:review`      | Run the **Review** sequence again on the current head.                      |
+| `/storm:revise`      | Run a revise on the newest review comment and the comments after it.        |
 | `/storm:ready <sha>` | The gate workflow accepts the head it names. Stop working the pull request. |
 | `/storm:stop`        | The gate workflow labels it `storm:stopped`. Stop until the label goes.     |
 
@@ -92,8 +92,6 @@ never on a command a comment carries.
 
 Any of these ends the run without `Review finished`. Report the reason.
 
-- Five review rounds have run on the pull request.
-- The same finding survives two `revise` passes without its cause changing.
 - A fix needs a decision the task and its spec do not record.
 - A gate fails and the fix is outside the task.
 - The pull request is labelled `storm:stopped`.
@@ -101,5 +99,6 @@ Any of these ends the run without `Review finished`. Report the reason.
 ## Do not
 
 - Review, revise or verify in this session's own context.
-- Post `Review finished` for a head no round reviewed.
+- Post `Review finished` before the sequence has run to its end.
+- Start another review pass on your own. A second sequence needs `/storm:review`.
 - Approve or merge.

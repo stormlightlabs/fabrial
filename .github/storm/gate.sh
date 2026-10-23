@@ -71,7 +71,7 @@ diff_hash() {
   base=$(git -C "$HEAD_DIR" merge-base origin/main "$sha") || return 0
   git -C "$HEAD_DIR" diff --quiet "$base" "$sha" && return 0
   git -C "$HEAD_DIR" diff --binary --no-color --no-ext-diff "$base" "$sha" |
-    sed -E '/^index /d; s/^@@ -[0-9,]+ \+[0-9,]+ @@.*$/@@/' | sha256sum | cut -d' ' -f1
+    sed -E '/^(index|similarity index|dissimilarity index) /d; s/^@@ -[0-9,]+ \+[0-9,]+ @@/@@/' | sha256sum | cut -d' ' -f1
 }
 
 # The marker a success leaves in its summary, so a later push can tell whether

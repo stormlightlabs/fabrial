@@ -55,10 +55,10 @@ git push --force-with-lease origin <branch>
 ```
 
 When only the base moved, the Review gate keeps `storm/review` green.
-Otherwise the check goes back to pending and the change needs a review round.
+Otherwise the check goes back to pending and the change needs `/storm:review`.
 If it stays pending after a push that only moved the base, the previous
 head's check was not yet green when the gate read it: wait for that check,
-then rerun this push's Review gate run, or run a review round.
+then rerun this push's Review gate run, or ask for `/storm:review`.
 
 ## Report
 

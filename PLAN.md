@@ -45,8 +45,9 @@ a paid plan, so rulesets on `main` are enforced.
   with" and "Not covered" never reach `main`: verification goes in the review
   comment and in arcl's completion evidence. PR bodies stay short.
 - **The agent that opens a PR reviews it,** in its own Claude Code (or Codex)
-  session, by dispatching fresh reviewer, adversarial-reviewer and verifier
-  agents, then the reviser. It ends with `Review finished at <sha>`. A
+  session: one standard review and one adversarial review by fresh agents,
+  each checked by a verifier and followed by a revise. It ends with
+  `Review finished at <sha>`. A
   model-free workflow turns the required `storm/review` check green when that
   comment names the head. It runs from `main` through `pull_request_target`,
   so a change cannot alter its own gate.
@@ -115,10 +116,9 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 - [x] Port `implement`, `review`, `adv-rev`, `revise`, `resync` and `handoff`,
       and the `implementer`, `reviewer`, `adversarial-reviewer` and `reviser`
       agents.
-- [x] Review loop in the `storm` skill: fresh reviewer and
-      adversarial-reviewer agents read the diff and the repository's rules, a
-      verifier tries to refute each finding, and the survivors are posted as
-      one comment. A model-free gate sets the required `storm/review` check.
+- [x] Review sequence in the `storm` skill: one standard pass and one
+      adversarial pass by fresh agents, each followed by a verifier that tries
+      to refute its findings and a revise. A model-free gate sets the required `storm/review` check.
 - [x] `/storm:review|revise|ready|stop` comment commands.
 - [ ] Verify the shared skill layout on Claude Code, Codex and Pi, and record
       what differs. `docs/hosts.md` records Claude Code; Codex and Pi are

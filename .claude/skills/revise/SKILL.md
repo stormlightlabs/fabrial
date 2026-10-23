@@ -84,8 +84,8 @@ you did not act on it, or where the diff does not show what changed.
 Where a fix leaves the title or body describing something the branch no longer
 does, edit them.
 
-The push sets `storm/review` back to pending, and the next review round runs
-on the new head.
+The push sets `storm/review` back to pending until the `storm` skill's
+sequence posts `Review finished`.
 
 ## Resolve the threads
 
@@ -95,7 +95,6 @@ reviewer has not answered.
 
 ## Stop conditions
 
-- Stop after 5 review-and-revise rounds on one pull request.
 - Stop when the same finding arrives twice without its cause having changed.
 - Stop when a fix needs a decision the task and its spec do not record.
 
