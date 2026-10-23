@@ -36,7 +36,7 @@ Stop and ask when any of these is true:
 arcl task start <id>
 ```
 
-This moves the task to in progress, so `arcl ready` stops offering it. Phase 2
+This moves the task to in progress, so `arcl ready` stops offering it. Phase 5
 of `PLAN.md` replaces it with a claim on `refs/fabrial/claims`, which other
 machines can see; until then a start is visible only where the arcl database
 lives.

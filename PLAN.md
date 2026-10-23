@@ -31,9 +31,8 @@ a paid plan, so rulesets on `main` are enforced.
 - **`fab init` installs fabrial by copying.** It writes the Branch PR, Review
   gate and Bot comment workflows, `gate.sh`, `CODEOWNERS`, the skills, the
   agents and an `AGENTS.md` section into a repository, from files built into
-  the binary. `fab init --check` reports drift. fabrial stays private, and
-  GitHub does not let a public repository such as arclightning call a private
-  repository's reusable workflows.
+  the binary. `fab init --check` reports drift. While fabrial is private, a
+  public repository such as arclightning cannot call its reusable workflows.
 - **fabrial executes it.** It picks ready tasks, claims one, runs the review
   loop on a `storm/<task>` branch in its own worktree, opens the PR, and writes
   the handoff and evidence back to arcl.
@@ -60,8 +59,8 @@ a paid plan, so rulesets on `main` are enforced.
   session: one standard review and one adversarial review by fresh agents,
   each checked by a verifier and followed by a revise. It ends with
   `Review finished at <sha>`. A model-free workflow turns the required
-  `storm/review` check green when that comment names the head. It runs from `main` through `pull_request_target`,
-  so a change cannot alter its own gate.
+  `storm/review` check green when that comment names the head. It runs from
+  `main` through `pull_request_target`, so a change cannot alter its own gate.
 - **Prose follows guidelines, not a CI check:** the writing standard and the
   tells catalogue from thunderstorm's `writing-docs`, in
   `.claude/skills/writing-docs/`.
