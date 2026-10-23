@@ -54,6 +54,9 @@ Follow arclightning's conventions, since the two share crates:
   requires, green for that head. `/storm:ready` from the owner accepts a head
   as it is, and `/storm:stop` halts auto-merge.
 - Include `PLAN.md` updates in the PR they describe.
+- The [Fabrial Ledger](https://claude.ai/artifact/FeWinSfPXLQYoGyRAHoE39)
+  shows `PLAN.md`'s items and a log of pull requests from its database. When a
+  PR opens or merges, update its rows in the `items` and `log` collections.
 
 ## Writing
 
