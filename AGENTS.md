@@ -8,7 +8,7 @@ the phases.
 ## Gates
 
 ```sh
-just check    # cargo fmt --check, clippy with warnings denied, cargo test
+just check    # fmt --check, clippy with warnings denied, tests, fab init --check
 ```
 
 `gates` in `.github/fabrial.toml` names this command for the skills. CI runs
@@ -18,7 +18,7 @@ Clippy warnings fail it whether or not your change caused them.
 ## Layout
 
 ```text
-crates/fab-core   run operations shared by every driver
+crates/fab-core   install and settings; later, the run operations
 crates/fab-cli    the `fab` binary
 .claude/skills/   skills; .agents/skills links here for Codex and Pi
 .claude/agents/   implementer, reviewer, adversarial-reviewer, verifier, reviser
@@ -40,29 +40,37 @@ Follow arclightning's conventions, since the two share crates:
   before private.
 - Use at most one level of `super`.
 
+## Plan and ledger
+
+- Include `PLAN.md` updates in the PR they describe.
+- The [Fabrial Ledger](https://claude.ai/artifact/FeWinSfPXLQYoGyRAHoE39)
+  shows `PLAN.md`'s items and a log of pull requests from its database. When a
+  PR opens or merges, update its rows in the `items` and `log` collections.
+
+<!-- fabrial:begin -->
 ## Branches and pull requests
+
+This repository uses fabrial. `fab init` wrote this section and the files it
+names; `fab init --check` reports where they have drifted.
 
 - Never commit to `main`. Push a `claude/<topic>`, `codex/<topic>` or
   `storm/<task>` branch; the Branch PR workflow opens the pull request as a
   draft from stormlight-thunderbot.
 - Commits on those branches may carry the agent's attribution trailers. The
   squash commit replaces them with the PR title, `Merged from <branch>.` and
-  the owner's `Co-authored-by` line, so nothing on `main` carries AI
-  attribution.
+  the owner's `Co-authored-by` line from `.github/fabrial.toml`, so nothing on
+  `main` carries AI attribution.
+- Before pushing, run the command `gates` names in `.github/fabrial.toml`.
 - The owner's approval merges the PR. Agents never approve or merge.
 - Keep the PR body to what changed and why. Put verification in a PR comment.
 - Agents post PR comments as stormlight-thunderbot through the Bot comment
   workflow (`.github/workflows/comment.yml`), never with their own GitHub
   access.
 - The agent that opens a PR reviews it with the `storm` skill and ends with a
-  `Review finished at <sha>` comment. That turns `storm/review`, which `main`
-  requires, green for that head, marks the draft ready and turns on squash
-  auto-merge. `/storm:ready <sha>` from the owner, a member or a collaborator
-  accepts that head as it is, and `/storm:stop` halts auto-merge.
-- Include `PLAN.md` updates in the PR they describe.
-- The [Fabrial Ledger](https://claude.ai/artifact/FeWinSfPXLQYoGyRAHoE39)
-  shows `PLAN.md`'s items and a log of pull requests from its database. When a
-  PR opens or merges, update its rows in the `items` and `log` collections.
+  `Review finished at <sha>` comment. That turns `storm/review` green for that
+  head, marks the draft ready and turns on squash auto-merge.
+  `/storm:ready <sha>` from the owner, a member or a collaborator accepts that
+  head as it is, and `/storm:stop` halts auto-merge.
 
 ## Writing
 
@@ -79,3 +87,4 @@ bodies, comments, and replies. Keep it short and plain:
 `.claude/skills/writing-docs/` holds the full standard, and its
 `references/tells.md` lists the patterns that make text read as generated.
 Check a draft against both before committing or posting.
+<!-- fabrial:end -->

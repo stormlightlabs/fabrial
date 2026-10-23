@@ -146,7 +146,7 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 - [x] Per-repository settings (the owner, the squash trailer and the gate
       command) come from `.github/fabrial.toml` instead of being written into
       the workflows.
-- [ ] `fab init`: write the workflows, `gate.sh`, `CODEOWNERS`, the settings
+- [x] `fab init`: write the workflows, `gate.sh`, `CODEOWNERS`, the settings
       file, skills, agents and an `AGENTS.md` section into a repository, and
       record the fabrial version it installed. `--check` reports files that
       differ from the running binary's, and an installed version that differs
