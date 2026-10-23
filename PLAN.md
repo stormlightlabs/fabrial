@@ -120,6 +120,8 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       adversarial pass by fresh agents, each followed by a verifier that tries
       to refute its findings and a revise. A model-free gate sets the required `storm/review` check.
 - [x] `/storm:review|revise|ready|stop` comment commands.
+- [x] Bot comments: agents post PR comments as stormlight-thunderbot through
+      the Bot comment workflow.
 - [ ] Verify the shared skill layout on Claude Code, Codex and Pi, and record
       what differs. `docs/hosts.md` records Claude Code; Codex and Pi are
       still to check.

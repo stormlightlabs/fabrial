@@ -1,6 +1,7 @@
 # Keeps the storm/review check, which the ruleset on main requires. The agent
 # that opened a pull request reviews it in its own session with the `storm`
-# skill and ends by commenting `Review finished at <sha>`. This workflow runs
+# skill and ends with `Review finished at <sha>`, posted as the bot through the
+# Bot comment workflow (or by the owner, a member or a collaborator). It runs
 # no model: .github/storm/gate.sh marks each new head pending, turns the check
 # green on that comment or on `/storm:ready <sha>`, and answers `/storm:stop`.
 #
@@ -23,11 +24,13 @@ jobs:
     if: >-
       github.event_name == 'pull_request_target' ||
       (github.event.issue.pull_request &&
-       (startsWith(github.event.comment.body, 'Review finished at ') ||
-        startsWith(github.event.comment.body, '/storm:ready') ||
-        startsWith(github.event.comment.body, '/storm:stop')) &&
-       github.event.comment.user.type != 'Bot' &&
-       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))
+       ((startsWith(github.event.comment.body, 'Review finished at ') &&
+         github.event.comment.user.login == 'stormlight-thunderbot[bot]') ||
+        ((startsWith(github.event.comment.body, 'Review finished at ') ||
+          startsWith(github.event.comment.body, '/storm:ready') ||
+          startsWith(github.event.comment.body, '/storm:stop')) &&
+         github.event.comment.user.type != 'Bot' &&
+         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/create-github-app-token@v2

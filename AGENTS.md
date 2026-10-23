@@ -49,6 +49,9 @@ Follow arclightning's conventions, since the two share crates:
   attribution.
 - The owner's approval merges the PR. Agents never approve or merge.
 - Keep the PR body to what changed and why. Put verification in a PR comment.
+- Agents post PR comments as stormlight-thunderbot through the Bot comment
+  workflow (`.github/workflows/comment.yml`), never with their own GitHub
+  access.
 - The agent that opens a PR reviews it with the `storm` skill and ends with a
   `Review finished at <sha>` comment. That turns `storm/review`, which `main`
   requires, green for that head. `/storm:ready <sha>` from the owner, a member
