@@ -92,8 +92,8 @@ export default function (pi: ExtensionAPI) {
     handler: async (args) => {
       if (!monitor || !journal) throw new Error("Worker monitoring has not started");
       const worker = await workerOperation("inspect", args.trim(), [], undefined, host);
-      journal.checkpoint({ worker, cursor: 0, reported: false, done: false });
-      monitor.track(worker);
+      const state = journal.checkpoint({ worker, cursor: 0, reported: false, done: false });
+      if (!state.done) monitor.track(worker, { cursor: state.cursor, reported: state.reported });
     },
   });
 

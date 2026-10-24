@@ -90,6 +90,17 @@ test("undelivered outbox survives restart and duplicate queued messages are dedu
   assert.equal(dedupeNotifications(messages).length, 1);
 });
 
+test("watching an existing worker cannot rewind a checkpoint or reopen completion", () => {
+  const session = sessionJournal();
+  const journal = new WorkerJournal(session.options);
+  const worker = { worker_id: "watched", state: "succeeded" };
+  journal.checkpoint({ worker, cursor: 250, reported: true, done: true });
+  const state = journal.checkpoint({ worker, cursor: 0, reported: false, done: false });
+  assert.equal(state.cursor, 250); assert.equal(state.reported, true); assert.equal(state.done, true);
+  assert.equal(session.entries.length, 1);
+  assert.equal(new WorkerJournal(session.options).states.get("watched").cursor, 250);
+});
+
 test("committed custom-message receipt prevents delivery after restart", () => {
   const session = sessionJournal();
   const journal = new WorkerJournal(session.options);

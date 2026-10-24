@@ -23,9 +23,16 @@ export class WorkerJournal {
     const worker = { ...value.worker };
     delete worker.result; // The host retains the full result; do not duplicate it in checkpoints.
     const state = { worker, cursor: value.cursor, reported: value.reported, done: value.done };
-    if (JSON.stringify(this.states.get(worker.worker_id)) === JSON.stringify(state)) return;
+    const previous = this.states.get(worker.worker_id);
+    if (previous) {
+      state.cursor = Math.max(previous.cursor, state.cursor);
+      state.reported ||= previous.reported;
+      state.done ||= previous.done;
+    }
+    if (JSON.stringify(previous) === JSON.stringify(state)) return previous;
     this.append("fabrial.worker", state);
     this.states.set(worker.worker_id, state);
+    return state;
   }
 
   enqueue(event) {
