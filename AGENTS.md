@@ -109,10 +109,11 @@ drifted.
   `<!-- fabrial:footer` line, `Merged from <branch>.` and the owner's
   `Co-authored-by` line from `.github/fabrial.toml`. Attribution lines and
   session links in the body are dropped, so nothing on `main` carries AI
-  attribution. Editing the title or body changes the squash message without
-  asking for a new approval.
+  attribution. Editing the title or body of a reviewed PR posts the new
+  squash message. Auto-merge keeps the message it was turned on with.
 - Before pushing, run the command `gates` names in `.github/fabrial.toml`.
-- The owner's approval merges the PR. Agents never approve or merge.
+- The owner approves the PR and merges it with the posted squash message.
+  Agents never approve or merge.
 - Keep the PR body to what changed and why. Put verification in a PR comment.
   Leave out attribution lines and session links.
 - Agents post PR comments as stormlight-thunderbot through the Bot comment
@@ -120,10 +121,11 @@ drifted.
   access.
 - The agent that opens a PR reviews it with the `storm` skill and ends with a
   `Review finished at <sha>` comment. That turns `storm/review` green for that
-  head, marks the draft ready and turns on squash auto-merge. A PR that can
-  merge already gets the squash message in a comment, for a manual merge.
-  `/storm:ready <sha>` from the owner, a member or a collaborator accepts that
-  head as it is, and `/storm:stop` halts auto-merge.
+  head, marks the draft ready and posts the squash message in a comment. The
+  owner merges, by hand or with auto-merge they turn on; agents and the gate
+  never turn it on. `/storm:ready <sha>` from the owner, a member or a
+  collaborator accepts that head as it is, and `/storm:stop` turns auto-merge
+  off.
 
 ## Writing
 
