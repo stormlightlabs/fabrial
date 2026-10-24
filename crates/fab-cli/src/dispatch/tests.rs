@@ -9,6 +9,12 @@ fn root() -> PathBuf {
         .unwrap()
 }
 
+fn collect(
+    command: Command, timeout: Duration, cancelled: impl Fn() -> bool, progress: impl FnMut(Value) -> Result<()>,
+) -> Result<String> {
+    bridge::collect(command, timeout, cancelled, progress, || Ok(Vec::new()), "test")
+}
+
 fn shell(source: &str) -> Command {
     let mut c = Command::new("bash");
     c.args(["-c", source]);
@@ -114,11 +120,20 @@ fn assistant_validation_does_not_expose_provider_error() {
 #[test]
 fn real_subprocess_frames_final_not_delta_or_user() {
     let records = [
+        json!({"type": "response", "id": "initial", "success": true, "data": {"disposition": "started"}}),
         json!({"type": "message_update", "delta": "wrong"}),
         json!({"type": "message_end", "message": {"role": "assistant", "stopReason": "stop", "content": [{"type": "text", "text": "correct\u{2028}result"}]}}),
         json!({"type": "message_end", "message": {"role": "user", "content": "wrong"}}),
+        json!({"type": "agent_settled", "aborted": false}),
     ].map(|v| v.to_string()).join("\n");
-    let command = shell(&format!("printf '%s\\n' {}", quote(&records)));
+    let ready =
+        json!({"type":"response", "id":"ready", "success":true, "data":{"commands":[{"name":"fabrial-worker-ready"}]}})
+            .to_string();
+    let command = shell(&format!(
+        "read -r ready; printf '%s\\n' {}; read -r prompt; printf '%s\\n' {}",
+        quote(&ready),
+        quote(&records)
+    ));
     assert_eq!(
         collect(command, Duration::from_secs(2), || false, |_| Ok(())).unwrap(),
         "correct\u{2028}result"
@@ -127,6 +142,7 @@ fn real_subprocess_frames_final_not_delta_or_user() {
         "exit 9",
         "printf 'not-json\\n'",
         "printf '{}'",
+        "printf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"stopReason\":\"stop\",\"content\":[{\"type\":\"text\",\"text\":\"missing settlement\"}]}}'",
         "printf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"stopReason\":\"error\",\"errorMessage\":\"secret\"}}'",
     ] {
         assert!(collect(shell(source), Duration::from_secs(2), || false, |_| Ok(())).is_err());

@@ -2,8 +2,8 @@
 
 This is the planned coordination and lifecycle behavior for fabrial's Pi
 setup. The current Rust recorder provides worker supervision and durable
-records; asynchronous dispatch and the bridge below are not yet implemented
-by the `agent` tool. For the shipped worker command and host setup, read
+records, detached CLI dispatch, and a worker RPC bridge. The `agent` tool
+still waits synchronously; non-blocking Pi integration is the next layer. For the shipped worker command and host setup, read
 [Pi dispatch](pi.md). The
 [status area](pi-statusline.md) presents state; [PLAN.md](../PLAN.md) tracks
 implementation work.
@@ -45,12 +45,21 @@ remain untrusted data; neither can grant new authority.
 The current tool streams progress and returns a final result. It forwards
 cancellation but does not provide ongoing two-way messaging or steering.
 
-Add a host-owned bridge for progress, blocked state, questions, results,
-cancellation, and driver-authorized steering. Address every message to a run
+The host bridge uses Pi JSONL RPC over anonymous stdin/stdout pipes. A private
+filesystem mailbox accepts driver-authorized steering; the worker never reads
+host mailbox files or opens host sockets. Progress, reports, and results are
+available through replayable `fab worker events`. Address every message to a run
 and worker; include its task head where relevant. Acknowledge delivery and
 whether a request was acted on. Reject stale or completed-worker requests.
-Decide the transport before implementation; do not invent a second supervisor
-or copy a worker's history into another role.
+The supervisor checks the embedded extension's readiness before sending a
+model prompt. The extension is part of the trusted binary, not PR-loaded code.
+It adds only `worker_report`; a blocker or question stops the worker and
+persists its report before cleanup. Each role still starts a fresh session.
+
+Steering receipts distinguish queued, delivered, and processed. Processed means
+an assistant response followed delivery, not that the requested task succeeded.
+Launch and receipt acknowledgments are not completion. Event cursors identify
+complete LF-delimited records; consumers can replay from their last cursor.
 
 A worker must report a blocker when it occurs rather than spend the rest of
 its deadline investigating outside its task. The orchestrator reports that

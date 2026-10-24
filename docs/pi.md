@@ -122,8 +122,10 @@ read-only.
 The host copies the role and its supporting skills into read-only inputs.
 Symlinks escaping the trusted checkout are rejected. Workers use
 `--no-approve`, disable resource discovery and context files, and load only
-explicit trusted skill paths. They receive no session history, extensions,
-project packages, host settings, or MCP servers. PR files remain task data,
+explicit trusted skill paths. The only extension is the embedded reporting
+tool, loaded from read-only inputs after discovery is disabled. Workers receive
+no session history, owner/project extensions, project packages, host settings,
+or MCP servers. PR files remain task data,
 not trusted executable configuration or role instructions.
 
 Tmux creates a detached session without requiring an orchestrator TUI. Dispatch
@@ -133,7 +135,8 @@ metadata. The host recorder starts the sandbox from the named worktree and
 pipes both worker streams. Node never writes directly to host recorder files. The pane
 shows progress; stdout from `fab dispatch` is JSONL progress followed by a
 `result` or `error`. The final answer comes from the last assistant
-`message_end`, never a delta or user message. Only `stopReason: stop` with
+`message_end`, never a delta or user message. RPC also requires `agent_settled`
+and a successful readiness handshake before any model prompt. Only `stopReason: stop` with
 nonempty text and no `errorMessage` counts as success, even if Pi exits zero.
 Provider stderr and raw tool arguments/results are not persisted.
 
@@ -195,6 +198,28 @@ worker's outcome when recorded; timing out or interrupting a wait does not
 cancel the worker. Progress and results remain beside `worker.json` after
 private issuer state is removed. Synchronous dispatch still streams progress
 and waits for recorder exit.
+
+## Worker events and steering
+
+Read `fab worker events <worker-id> --config <config> --after <cursor>` to
+receive at most 64 complete events plus the next byte cursor and current state.
+An unchanged cursor means no new complete record. Keep the cursor when
+reconnecting; do not split JSONL on Unicode line separators.
+
+Use `fab worker steer <worker-id> --config <config> --head <starting-sha>
+--message <text>` only for driver-authorized steering. Completed workers and
+mismatched heads are rejected. Submission is followed by separate queued,
+delivered, and processed events. Processed means a model response followed
+message delivery, not proof that the instruction succeeded. Queues allow at
+most 64 outstanding requests per worker; processed receipts free their slots.
+Each message is limited to 16 KiB. Requests receive a durable sequence and are
+delivered in submission order. Concurrent admission and claiming share a
+per-worker lock; a busy submission returns an error to retry.
+
+Workers use `worker_report` for progress, blockers, and questions. The host
+redacts known credentials before persisting reports. Blockers and questions
+stop the worker and retain its report for the driver; they do not authorize
+replacement agents or another review cycle.
 
 ## Pi package
 

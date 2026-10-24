@@ -9,6 +9,10 @@ workflow moves Unreleased under the new version's heading.
 - Keep completed reviews green for native GitHub stacks. GitHub does not support
   their auto-merge, so the bot posts the squash message for manual stack merging.
 
+- Add a pipe-based Pi RPC bridge, replayable `fab worker events`, and explicit
+  head-pinned `steer`. Workers can report progress, blockers, and questions;
+  blockers and questions stop the worker and return control to the driver.
+
 - Add `fab dispatch --detach` and `fab worker inspect`, `cancel`, and `wait`.
   The recorder cleans up independently of the caller; results and progress
   remain in the private registry.

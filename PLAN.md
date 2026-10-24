@@ -30,11 +30,11 @@ backends follow this milestone. The design lives in
       inspect reads progress or a completed result; cancel targets one worker.
       Waiting is explicit and optional. Keep synchronous dispatch available
       for callers that need it, without making Pi hold a tool call open.
-- [ ] Add the host-owned worker event and control bridge. Deliver progress,
+- [x] Add the host-owned worker event and control bridge. Deliver progress,
       completion, failure, blockers, and questions; support cancellation and
       driver-authorized steering. Address messages by run/worker and task head,
       acknowledge actions, and reject stale or completed-worker requests.
-      Choose the transport before implementation. Preserve fresh role sessions;
+      Use Pi JSONL RPC over anonymous pipes and private host mailboxes. Preserve fresh role sessions;
       do not share histories or launch replacement agents automatically.
 - [ ] Make the Pi agent tool non-blocking. Return the worker ID after launch,
       then deliver events through the extension independently of that tool

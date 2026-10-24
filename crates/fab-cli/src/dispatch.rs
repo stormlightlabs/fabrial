@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -20,6 +20,7 @@ use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+mod bridge;
 pub(crate) mod operations;
 mod state;
 
@@ -505,6 +506,21 @@ fn oauth(path: &Path, timeout: u64) -> Result<Value> {
     Ok(Value::Object(selected))
 }
 
+fn redact(text: &str, token: &str, credential: &Value) -> String {
+    let mut text = text.to_string();
+    for secret in [
+        Some(token),
+        credential["access"].as_str(),
+        credential["refresh"].as_str(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        text = text.replace(secret, "[redacted]");
+    }
+    text
+}
+
 fn final_message(message: &Value) -> Result<String> {
     if message["stopReason"] != "stop" || message.get("errorMessage").is_some_and(|v| !v.is_null() && v != "") {
         return Err("worker has no successful final assistant message".into());
@@ -530,12 +546,18 @@ fn emit(event: &Value) {
 }
 
 fn output(directory: &Path, event: &Value) -> Result<()> {
+    let path = directory.join("events.jsonl");
+    let existed = path.exists();
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(directory.join("events.jsonl"))
+        .open(&path)
         .map_err(|_| "cannot open recorder events")?;
     writeln!(file, "{event}").map_err(|_| "cannot write recorder event")?;
+    file.sync_data().map_err(|_| "cannot sync recorder event")?;
+    if !existed {
+        state::sync_directory(directory)?;
+    }
     println!("{}", event["type"].as_str().unwrap_or("progress"));
     Ok(())
 }
@@ -574,56 +596,6 @@ fn records(reader: impl Read, tx: mpsc::SyncSender<Result<Value>>) {
     }
 }
 
-fn collect(
-    mut command: Command, timeout: Duration, cancelled: impl Fn() -> bool,
-    mut progress: impl FnMut(Value) -> Result<()>,
-) -> Result<String> {
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .process_group(0);
-    let mut child = Process(command.spawn().map_err(|_| "worker could not start")?);
-    progress(json!({"type": "worker_started", "pid": child.0.id()}))?;
-    let stdout = child.0.stdout.take().unwrap();
-    let (tx, rx) = mpsc::sync_channel(16);
-    thread::spawn(move || records(stdout, tx));
-    let deadline = Instant::now() + timeout;
-    let mut message = Value::Null;
-    loop {
-        if cancelled() {
-            return Err("worker cancelled".into());
-        }
-        if Instant::now() >= deadline {
-            return Err("worker timed out".into());
-        }
-        match rx.recv_timeout(Duration::from_millis(50)) {
-            Ok(event) => {
-                let event = event?;
-                if event["type"] == "message_end" && event["message"]["role"] == "assistant" {
-                    message = event["message"].clone();
-                }
-                if let Some(kind) = event["type"]
-                    .as_str()
-                    .filter(|s| ["turn_start", "tool_execution_start", "tool_execution_end"].contains(s))
-                {
-                    progress(json!({"type": "progress", "event": kind}))?;
-                }
-            }
-            Err(RecvTimeoutError::Timeout) => (),
-            Err(RecvTimeoutError::Disconnected) => {
-                if let Some(status) = child.0.try_wait().map_err(|_| "worker wait failed")? {
-                    if !status.success() {
-                        return Err("worker subprocess failed".into());
-                    }
-                    return final_message(&message);
-                }
-                thread::sleep(Duration::from_millis(10));
-            }
-        }
-    }
-}
-
 fn signals() -> Result<Arc<AtomicBool>> {
     let flag = Arc::new(AtomicBool::new(false));
     for sig in [
@@ -652,6 +624,10 @@ fn recorder(private: &Path, request: &Request) -> u8 {
         Err(_) => return 1,
     };
     let directory = worker.directory().to_path_buf();
+    let identity = match worker.snapshot() {
+        Ok(identity) => identity,
+        Err(_) => return 1,
+    };
     let deadline = Instant::now() + Duration::from_secs(request.timeout);
     let cancelled = || interrupted.load(Ordering::Relaxed) || directory.join("cancel").exists();
     let mut result = (|| {
@@ -679,8 +655,7 @@ fn recorder(private: &Path, request: &Request) -> u8 {
             .env("XDG_STATE_HOME", private.join("sandbox-logs"))
             .args([
                 "--mode",
-                "json",
-                "--print",
+                "rpc",
                 "--no-session",
                 "--no-approve",
                 "--no-extensions",
@@ -689,20 +664,24 @@ fn recorder(private: &Path, request: &Request) -> u8 {
                 "--no-context-files",
                 "--no-prompt-templates",
                 "--no-themes",
+                "--extension",
+            ])
+            .arg(private.join("input/worker.ts"))
+            .args([
                 "--model",
                 &request.model,
                 "--thinking",
                 &request.thinking,
                 "--tools",
-                &request.tools.join(","),
+                &format!("{},worker_report", request.tools.join(",")),
                 "--append-system-prompt",
             ])
             .arg(private.join("input/role.md"));
         for skill in &request.skills {
             command.arg("--skill").arg(private.join("input/skills").join(skill));
         }
-        command.arg("--").arg(read(&private.join("input/task.txt"))?);
-        let mut text = collect(
+        let task = read(&private.join("input/task.txt"))?;
+        let text = bridge::collect(
             command,
             deadline.saturating_duration_since(Instant::now()),
             cancelled,
@@ -710,23 +689,29 @@ fn recorder(private: &Path, request: &Request) -> u8 {
                 if e["type"] == "worker_started" {
                     worker.worker_started(e["pid"].as_u64().ok_or("worker PID missing")? as u32)
                 } else {
-                    if e["type"] == "progress" {
-                        worker.progress(&e)?;
+                    let mut event = e;
+                    if event["type"] == "worker_report" {
+                        event["text"] = json!(redact(event["text"].as_str().unwrap_or(""), &token, &credential));
+                        worker.report(&event)?;
+                    } else if event["type"] == "progress" {
+                        worker.progress(&event)?;
                     }
-                    output(&directory, &e)
+                    output(&directory, &event)?;
+                    if event["type"] == "control_processed" {
+                        let id = event["id"].as_str().ok_or("control receipt ID missing")?;
+                        let id = uuid::Uuid::parse_str(id).map_err(|_| "invalid control receipt UUID")?;
+                        let controls = directory.join("controls");
+                        fs::remove_file(controls.join(format!("{id}.sent")))
+                            .map_err(|_| "cannot retire processed control")?;
+                        state::sync_directory(&controls)?;
+                    }
+                    Ok(())
                 }
             },
+            || bridge::controls(&directory, &identity),
+            &task,
         )?;
-        for secret in [
-            Some(token.as_str()),
-            credential["access"].as_str(),
-            credential["refresh"].as_str(),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            text = text.replace(secret, "[redacted]");
-        }
+        let text = redact(&text, &token, &credential);
         worker.result(&text)?;
         output(&directory, &json!({"type": "result", "text": text}))
     })();
@@ -877,11 +862,12 @@ fn dispatch(options: Options) -> Result<u8> {
     let p = &private.path;
     fs::create_dir(p.join("input")).map_err(|_| "cannot create trusted input directory")?;
     fs::create_dir(p.join("input/skills")).map_err(|_| "cannot create trusted skill directory")?;
+    write(&p.join("input/worker.ts"), include_str!("../../../pi/worker.ts"))?;
     write(&p.join("input/task.txt"), read(&options.task)?)?;
     write(
         &p.join("input/role.md"),
         format!(
-            "{body}\n\nNo GitHub MCP tools exist. Use gh. Skills are files to read.\nNever approve or merge. Never bypass repository rulesets. Do not load PR code as trusted configuration.\nUse the trusted Bot comment workflow. Queue acceptance is not posting: confirm the bot author and first line.\nPush over HTTPS with transient gh auth git-credential; never change shared Git configuration.\nUnmapped role tools (use gh or read the skill): {}\n",
+            "{body}\n\nNo GitHub MCP tools exist. Use gh. Skills are files to read.\nNever approve or merge. Never bypass repository rulesets. Do not load PR code as trusted configuration.\nUse worker_report immediately for blockers or questions; those reports end this worker and return control to the driver.\nUse the trusted Bot comment workflow. Queue acceptance is not posting: confirm the bot author and first line.\nPush over HTTPS with transient gh auth git-credential; never change shared Git configuration.\nUnmapped role tools (use gh or read the skill): {}\n",
             unmapped.join(", ")
         ),
     )?;

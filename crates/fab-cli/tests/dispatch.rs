@@ -128,6 +128,16 @@ esac
         let worker = match mode {
             "failure" => "printf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"stopReason\":\"error\",\"errorMessage\":\"a-secret\"}}'".to_string(),
             "worker-timeout" | "worker-cancel" => "exec sleep 30".into(),
+            "controlled" => {
+                let id = "11111111-1111-4111-8111-111111111111";
+                let events = [
+                    json!({"type":"response", "id":id, "success":true, "data":{"disposition":"queued"}}),
+                    json!({"type":"message_end", "message":{"role":"user", "content":format!("[fabrial-control:{id}] instruction")}}),
+                    json!({"type":"message_end", "message":{"role":"assistant", "stopReason":"stop", "content":[{"type":"text", "text":"done"}]}}),
+                ].map(|e| e.to_string()).join("' '");
+                format!("IFS= read -r steer; printf '%s\\n' '{events}'; control=\"$FAB_WORKTREE/records/worker-one/controls/{id}.sent\"; for i in {{1..100}}; do if test ! -e \"$control\"; then break; fi; sleep 0.01; done; test ! -e \"$control\"; touch \"$FAB_WORKTREE/retired-before-settlement\"")
+            },
+            "blocked" => "printf '%s\\n' '{\"type\":\"entry_appended\",\"entry\":{\"customType\":\"fabrial.worker-report\",\"data\":{\"kind\":\"blocked\",\"text\":\"a-secret t-secret need driver\"}}}'; exec sleep 30".into(),
             _ => "printf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"stopReason\":\"stop\",\"content\":[{\"type\":\"text\",\"text\":\"a-secret r-secret t-secret done\"}]}}'".into(),
         };
         script(
@@ -144,7 +154,14 @@ test ! -e {}
 [[ "$*" = *--no-context-files* ]]
 [[ "$*" = *--no-extensions* ]]
 ! grep -q owner-secret "$FAB_STATE/auth.json"
+IFS= read -r ready
+[[ "$ready" = *'"type":"get_commands"'* ]]
+printf '%s\n' '{{"type":"response","id":"ready","success":true,"data":{{"commands":[{{"name":"fabrial-worker-ready"}}]}}}}'
+IFS= read -r prompt
+[[ "$prompt" = *'"type":"prompt"'* ]]
+printf '%s\n' '{{"type":"response","id":"initial","success":true,"data":{{"disposition":"started"}}}}'
 {worker}
+printf '%s\n' '{{"type":"agent_settled","aborted":false}}'
 "#,
                 quote(&p.join("launched")),
                 quote(&private.join("app.pem"))
@@ -328,6 +345,38 @@ fn final_record_write_failure_retains_durable_evidence() {
     assert!(f.logs().contains("worker record unconfirmed"));
     assert!(directory.join("result.txt").exists());
     assert_eq!(f.record()["state"], "running");
+}
+
+#[test]
+fn processed_controls_release_their_outstanding_queue_slot() {
+    let f = Fixture::new("controlled");
+    let controls = f.temp.path().join("records/worker-one/controls");
+    fs::create_dir(&controls).unwrap();
+    let id = "11111111-1111-4111-8111-111111111111";
+    fs::write(
+        controls.join(format!("{id}.json")),
+        json!({"id":id,"sequence":1,"worker_id":"worker-one","run_id":"run-one","task_head":"1".repeat(40),"message":"instruction"})
+            .to_string(),
+    )
+    .unwrap();
+    let output = f.run();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+    assert!(f.logs().contains("control_processed"));
+    assert!(f.temp.path().join("retired-before-settlement").exists());
+    assert!(!controls.join(format!("{id}.sent")).exists());
+}
+
+#[test]
+fn blocker_report_stops_worker_and_persists_only_redacted_data() {
+    let f = Fixture::new("blocked");
+    assert!(!f.run().status.success());
+    assert_eq!(f.record()["state"], "blocked");
+    assert_eq!(f.record()["report"]["text"], "[redacted] [redacted] need driver");
+    assert_eq!(f.record()["credential_cleanup"], "complete");
+    assert!(f.temp.path().join("revoked").exists());
+    assert!(!f.private.exists());
+    assert!(!f.logs().contains("a-secret"));
+    assert!(!f.logs().contains("t-secret"));
 }
 
 #[test]

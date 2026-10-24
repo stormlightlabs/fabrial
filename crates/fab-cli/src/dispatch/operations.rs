@@ -1,6 +1,8 @@
 //! Host operations on persistent worker identities, independent of an open tool call.
 
-use std::fs;
+use std::fs::{self, DirBuilder, File};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -10,7 +12,7 @@ use std::time::{Duration, Instant};
 use clap::{Args, Subcommand};
 use serde_json::json;
 
-use super::state::WorkerRecord;
+use super::state::{WorkerRecord, atomic_write};
 use super::{Result, canonical, emit, read, signals};
 
 /// Explicit local worker operations. None starts a replacement worker.
@@ -22,6 +24,10 @@ pub enum Operation {
     Cancel(Reference),
     /// Explicitly wait for one worker; ending this wait does not cancel it.
     Wait(Wait),
+    /// Read a bounded batch of events after a byte cursor.
+    Events(Events),
+    /// Send driver-authorized steering to this worker at its starting head.
+    Steer(Steer),
 }
 
 impl Operation {
@@ -43,6 +49,26 @@ pub struct Reference {
     worker_id: String,
     #[arg(long)]
     config: PathBuf,
+}
+
+/// Replay cursor for one immutable worker identity.
+#[derive(Args)]
+pub struct Events {
+    #[command(flatten)]
+    reference: Reference,
+    #[arg(long, default_value_t = 0)]
+    after: u64,
+}
+
+/// Steering is an explicit host action, never authority granted by worker output.
+#[derive(Args)]
+pub struct Steer {
+    #[command(flatten)]
+    reference: Reference,
+    #[arg(long)]
+    head: String,
+    #[arg(long)]
+    message: String,
 }
 
 /// A bounded, optional observer of an independently supervised worker.
@@ -88,10 +114,56 @@ pub(super) fn lookup(root: &Path, id: &str) -> Result<WorkerRecord> {
     WorkerRecord::open(&root.join("records").join(id).join("worker.json"))
 }
 
+pub(super) fn events(worker: &WorkerRecord, after: u64) -> Result<serde_json::Value> {
+    let path = worker.directory().join("events.jsonl");
+    let mut cursor = after;
+    let mut events = Vec::new();
+    if path.exists() {
+        let mut file = File::open(path).map_err(|_| "cannot open worker events")?;
+        let length = file.metadata().map_err(|_| "cannot inspect events")?.len();
+        if after > length {
+            return Err("event cursor exceeds stream length".into());
+        }
+        if after > 0 {
+            file.seek(SeekFrom::Start(after - 1))
+                .map_err(|_| "cannot seek event cursor")?;
+            let mut last = [0];
+            file.read_exact(&mut last).map_err(|_| "cannot validate event cursor")?;
+            if last[0] != b'\n' {
+                return Err("event cursor is not a record boundary".into());
+            }
+        }
+        file.seek(SeekFrom::Start(after)).map_err(|_| "cannot seek events")?;
+        let mut reader = BufReader::new(file);
+        for _ in 0..64 {
+            let mut line = Vec::new();
+            reader
+                .by_ref()
+                .take((super::RECORD_LIMIT * 2 + 1) as u64)
+                .read_until(b'\n', &mut line)
+                .map_err(|_| "cannot read worker events")?;
+            if line.len() > super::RECORD_LIMIT * 2 {
+                return Err("worker event exceeds limit".into());
+            }
+            if !line.ends_with(b"\n") {
+                break;
+            }
+            let event: serde_json::Value = serde_json::from_slice(&line).map_err(|_| "invalid worker event")?;
+            cursor += line.len() as u64;
+            events.push(json!({"sequence": cursor, "event": event}));
+        }
+    } else if after != 0 {
+        return Err("event stream missing for cursor".into());
+    }
+    Ok(json!({"worker": worker.snapshot()?, "events": events, "cursor": cursor}))
+}
+
 fn operate(operation: Operation) -> Result<u8> {
     let reference = match &operation {
         Operation::Inspect(r) | Operation::Cancel(r) => r,
         Operation::Wait(w) => &w.reference,
+        Operation::Events(e) => &e.reference,
+        Operation::Steer(s) => &s.reference,
     };
     let root = registry(&reference.config)?;
     let worker = lookup(&root, &reference.worker_id)?;
@@ -103,6 +175,59 @@ fn operate(operation: Operation) -> Result<u8> {
         Operation::Cancel(_) => {
             worker.cancel()?;
             emit(&json!({"type": "cancel_requested", "worker": worker.snapshot()?}));
+            Ok(0)
+        }
+        Operation::Events(options) => {
+            emit(&events(&worker, options.after)?);
+            Ok(0)
+        }
+        Operation::Steer(options) => {
+            let _submission =
+                super::state::control_lock(worker.directory())?.ok_or("control submission busy; retry")?;
+            let worker = WorkerRecord::open(worker.path())?;
+            let identity = worker.snapshot()?;
+            if worker.terminal() || identity["task_head"] != options.head {
+                return Err("stale head or completed worker".into());
+            }
+            if options.message.is_empty() || options.message.len() > 16384 {
+                return Err("steering must contain 1–16384 bytes".into());
+            }
+            let directory = worker.directory().join("controls");
+            DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(&directory)
+                .map_err(|_| "cannot create controls")?;
+            if fs::read_dir(&directory)
+                .map_err(|_| "cannot inspect controls")?
+                .take(65)
+                .count()
+                >= 64
+            {
+                return Err("control queue full".into());
+            }
+            let counter = worker.directory().join("control-sequence");
+            let sequence = if counter.exists() {
+                read(&counter)?.parse::<u64>().map_err(|_| "invalid control sequence")?
+            } else {
+                0
+            };
+            let sequence = sequence.checked_add(1).ok_or("control sequence exhausted")?;
+            atomic_write(&counter, sequence.to_string().as_bytes())?;
+            let id = uuid::Uuid::new_v4().to_string();
+            let path = directory.join(format!("{id}.json"));
+            atomic_write(
+                &path,
+                json!({"id": id, "sequence": sequence, "worker_id": identity["worker_id"], "run_id": identity["run_id"],
+                "task_head": options.head, "message": options.message})
+                .to_string()
+                .as_bytes(),
+            )?;
+            if WorkerRecord::open(worker.path())?.terminal() {
+                let _ = fs::remove_file(path);
+                return Err("worker completed before steering was submitted".into());
+            }
+            emit(&json!({"type": "control_submitted", "id": id, "sequence": sequence}));
             Ok(0)
         }
         Operation::Wait(options) => {
@@ -122,3 +247,6 @@ fn operate(operation: Operation) -> Result<u8> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

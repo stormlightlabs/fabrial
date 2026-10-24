@@ -2,7 +2,7 @@
 
 use std::fs::{DirBuilder, File, OpenOptions};
 use std::io::Write;
-use std::os::unix::fs::DirBuilderExt;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -20,6 +20,7 @@ enum WorkerState {
     Failed,
     Cancelled,
     TimedOut,
+    Blocked,
 }
 
 /// Credential cleanup is separate from the task worktree and retained evidence.
@@ -50,6 +51,8 @@ pub(super) struct WorkerRecord {
     result_file: Option<PathBuf>,
     #[serde(default)]
     last_progress: Option<serde_json::Value>,
+    #[serde(default)]
+    report: Option<serde_json::Value>,
     error: Option<String>,
     resources: Resources,
 }
@@ -88,6 +91,7 @@ impl WorkerRecord {
             credential_cleanup: CredentialCleanup::Pending,
             result_file: None,
             last_progress: None,
+            report: None,
             error: None,
         };
         record.save()?;
@@ -153,6 +157,11 @@ impl WorkerRecord {
         self.save()
     }
 
+    pub(super) fn report(&mut self, report: &serde_json::Value) -> Result<()> {
+        self.report = Some(report.clone());
+        self.save()
+    }
+
     pub(super) fn finish(
         &mut self, result: &Result<()>, cleaned: bool, cancelled: bool, timed_out: bool,
     ) -> Result<()> {
@@ -161,6 +170,12 @@ impl WorkerRecord {
             WorkerState::Failed
         } else if result.is_ok() {
             WorkerState::Succeeded
+        } else if self
+            .report
+            .as_ref()
+            .is_some_and(|r| r["kind"] == "blocked" || r["kind"] == "question")
+        {
+            WorkerState::Blocked
         } else if cancelled {
             WorkerState::Cancelled
         } else if timed_out {
@@ -183,7 +198,11 @@ impl WorkerRecord {
     pub(super) fn terminal(&self) -> bool {
         matches!(
             self.state,
-            WorkerState::Succeeded | WorkerState::Failed | WorkerState::Cancelled | WorkerState::TimedOut
+            WorkerState::Succeeded
+                | WorkerState::Failed
+                | WorkerState::Cancelled
+                | WorkerState::TimedOut
+                | WorkerState::Blocked
         )
     }
 
@@ -222,8 +241,25 @@ struct Resources {
     worker_pid: Option<u32>,
 }
 
+/// Serialize submission and claiming so capacity and order share one boundary.
+pub(super) fn control_lock(directory: &Path) -> Result<Option<File>> {
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .mode(0o600)
+        .open(directory.join("control-submission.lock"))
+        .map_err(|_| "cannot open control submission lock")?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(_) => Err("cannot lock control submissions".into()),
+    }
+}
+
 /// Replace a complete file atomically; readers never observe a partial record.
-fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
+pub(super) fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path.parent().ok_or("worker record has no directory")?;
     let mut file = tempfile::NamedTempFile::new_in(parent).map_err(|_| "cannot create worker record file")?;
     file.write_all(bytes).map_err(|_| "cannot write worker record")?;
@@ -232,7 +268,7 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     sync_directory(parent)
 }
 
-fn sync_directory(path: &Path) -> Result<()> {
+pub(super) fn sync_directory(path: &Path) -> Result<()> {
     File::open(path)
         .and_then(|directory| directory.sync_all())
         .map_err(|_| "cannot sync worker record directory".into())
