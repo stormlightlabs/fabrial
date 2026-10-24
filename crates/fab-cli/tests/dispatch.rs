@@ -73,7 +73,16 @@ impl Fixture {
         let revoke = if mode == "revoke-fail" {
             "exit 9".to_string()
         } else if mode == "record-write-fail" {
-            format!("touch {}; chmod 500 {}", quote(&p.join("revoked")), quote(&record_dir))
+            // A directory where the record goes makes the final write fail
+            // for any user; a read-only mode does not stop root.
+            let record = record_dir.join("worker.json");
+            format!(
+                "touch {}; mv {} {}; mkdir {}",
+                quote(&p.join("revoked")),
+                quote(&record),
+                quote(&record_dir.join("worker.json.saved")),
+                quote(&record)
+            )
         } else {
             format!("touch {}", quote(&p.join("revoked")))
         };
@@ -340,7 +349,8 @@ fn final_record_write_failure_retains_durable_evidence() {
     let f = Fixture::new("record-write-fail");
     let out = f.run();
     let directory = f.temp.path().join("records/worker-one");
-    fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::remove_dir(directory.join("worker.json")).unwrap();
+    fs::rename(directory.join("worker.json.saved"), directory.join("worker.json")).unwrap();
     assert!(!out.status.success());
     assert!(f.temp.path().join("revoked").exists());
     assert!(!f.private.join("installation-token").exists());
