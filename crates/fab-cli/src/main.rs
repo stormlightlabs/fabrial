@@ -107,7 +107,7 @@ fn in_repo(
 fn check(dir: &Path) -> Result<ExitCode, fab_core::Error> {
     let drift = install::check(dir)?;
     if drift.is_empty() {
-        println!("fabrial {} is installed with no drift.", fab_core::version());
+        println!("fabrial {} is installed with no drift.", fab_core::VERSION);
         return Ok(ExitCode::SUCCESS);
     }
     for d in &drift {
@@ -122,7 +122,7 @@ fn written(report: &Report, done: &str) -> ExitCode {
     }
     println!(
         "fabrial {} {done}: {} written, {} unchanged.",
-        fab_core::version(),
+        fab_core::VERSION,
         report.written.len(),
         report.unchanged.len()
     );

@@ -12,8 +12,8 @@ use std::path::PathBuf;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The commit this build was made from, or `unknown` outside a git checkout.
 pub const COMMIT: &str = env!("FAB_COMMIT");
-/// The version recorded in an installed repository's settings: the release
-/// and the commit, as `0.1.0+abc1234`.
+/// The release and the commit this build was made from, as `0.2.0+abc1234`,
+/// for `fab --version`. Installs record [`VERSION`] alone.
 pub const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+", env!("FAB_COMMIT"));
 
 /// What can go wrong installing or checking fabrial.

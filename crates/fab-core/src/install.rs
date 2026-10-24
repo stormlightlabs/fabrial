@@ -10,8 +10,8 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
+use crate::Error;
 use crate::settings::{SETTINGS_PATH, Settings};
-use crate::{Error, version};
 
 /// The line that opens fabrial's section of `AGENTS.md`.
 pub const AGENTS_BEGIN: &str = "<!-- fabrial:begin -->";
@@ -240,7 +240,7 @@ pub fn update(root: &Path, change: impl FnOnce(&mut Settings), downgrade: bool) 
         match crate::release(&installed) {
             None => return Err(Error::UnknownVersion(installed)),
             Some(release) if Some(release) > crate::release(crate::VERSION) => {
-                return Err(Error::Downgrade { installed, this: crate::version() });
+                return Err(Error::Downgrade { installed, this: crate::VERSION.into() });
             }
             Some(_) => {}
         }
@@ -334,7 +334,7 @@ pub fn init(root: &Path, settings: &Settings, force: bool) -> Result<Report, Err
 /// A path [`init`] would refuse is reported as [`Drift::Differs`], and
 /// nothing is read through it.
 pub fn check(root: &Path) -> Result<Vec<Drift>, Error> {
-    let running = version();
+    let running = crate::VERSION.to_owned();
     let bad = unmanageable(root, managed_paths())?;
     let blocked = |path: &Path| bad.iter().any(|b| path.starts_with(b));
     let mut drift: Vec<Drift> = bad.iter().cloned().map(Drift::Differs).collect();
@@ -675,7 +675,7 @@ mod tests {
         let stamp = format!(r#"version = "{}""#, crate::VERSION);
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.lines().any(|l| l == stamp), "{text}");
-        // Releases before 0.3 recorded the commit too.
+        // 0.2.0 and earlier recorded the commit too.
         let text = text.replace(&stamp, &format!(r#"version = "{}+abc1234""#, crate::VERSION));
         fs::write(&path, text).unwrap();
         assert_eq!(check(dir.path()).unwrap(), vec![]);
