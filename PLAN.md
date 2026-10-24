@@ -201,7 +201,9 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 - [ ] Let Claude Code and Pi call the same dispatch command for fresh workers,
       passing a role, task, worktree and result without sharing session history.
 - [ ] Show the current pull request, its link and CI state in the fabrial Pi
-      package's status area. Keep general Pi UI preferences outside fabrial.
+      package's status area, following `docs/pi-statusline.md`. Add run and
+      worker progress when dispatch exposes it. Keep general Pi UI preferences
+      outside fabrial.
 - [ ] Pi dispatch for every role, into tmux, Zellij and herdr, with per-role models
       and effort caps (port thunderstorm's `internal/dispatch` and
       `internal/roles`).

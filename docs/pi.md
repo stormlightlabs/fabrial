@@ -167,7 +167,8 @@ not appear; never post `Review finished` after a partial run.
 Next, let Claude Code call the same dispatch command to start a Pi worker.
 The result is the role's answer and run status, not a shared conversation.
 Keep PR and CI status in the fabrial Pi package's status area as a separate
-change; the dispatch path must work without a TUI.
+change; [the status area design](pi-statusline.md) records its fields and
+refresh behavior. The dispatch path must work without a TUI.
 
 Each task gets a worktree beside the primary checkout. Keep Cargo targets
 per worktree to avoid concurrent builds fighting over one target directory;
@@ -177,6 +178,37 @@ confirm the worktree is clean. If either differs, stop: there may be local
 work to keep. Otherwise remove it with `git worktree remove`, then delete
 its local branch. A squash merge may require `git branch -D` after those
 checks. Do not delete an open PR's worktree.
+
+## Changing orchestrator sessions
+
+A Pi session is not the task's durable record. The existing `handoff` skill
+records unfinished work on the arcl task, issue or PR; no second handoff skill
+is needed. Until `fab` owns durable run state, the next session reconstructs
+progress from that note, git and the PR's comments and checks.
+
+Before clearing context, ask for `/skill:handoff <task-or-pr>`. The orchestrator
+waits for workers to finish or stops them, confirms the handoff was stored,
+and reports its link and a pickup command. If a worker must keep running,
+record its identity, run directory, worktree and how to check or stop it.
+Do not start a replacement worker while its predecessor may still be working.
+
+Use `/new` for a fresh Pi conversation, or exit and start `pi` again. Then
+send `/skill:handoff pick-up <task-or-pr>`. Pickup checks the current PR head,
+review results, pending checks and worker state before continuing the next
+unfinished step. It does not repeat completed passes solely because the
+orchestrator changed. A Pi `/resume` restores a saved conversation, while
+`/compact` reduces its context; neither replaces a durable handoff.
+
+If the task is finished, there is nothing to hand off. After a merge, refresh
+the clean primary `main` checkout and remove the old task worktree using the
+checks above. Start the next task with `/skill:storm <task description>` in a
+fresh session. Creating the new task worktree is the orchestrator's job.
+Do not leave a finished task's PR as the pickup target for a new task.
+
+The skills can check PRs while the session runs; they are not a background
+watcher after it exits. A PR waiting for the owner's approval may be left with
+a clear report. If checks or review steps remain, write a handoff before
+leaving. Autonomous watching across sessions belongs to the later daemon.
 
 ## Open questions
 

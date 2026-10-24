@@ -53,7 +53,11 @@ branch its harness gave it, `claude/<topic>` or `codex/<topic>`, and makes no
 worktree.
 
 A local session takes a worktree beside the repository, because the checkout
-is the user's:
+is the user's. First fetch `main`. When the primary checkout is clean and on
+`main`, fast-forward it to `origin/main` with `git merge --ff-only origin/main`.
+If it is dirty, on another branch or has diverged, leave it alone and report
+why. Never reset or stash the user's work to refresh it. Then create the task
+worktree from the fetched base:
 
 ```sh
 git fetch origin main
@@ -120,6 +124,16 @@ it opens, and the Review gate carries an edit into the squash message.
 Post what you verified as a comment on the pull request, not in the body: the
 commands you ran and what they returned, and anything you did not check. Post
 it through the Bot comment workflow, as the `storm` skill's **Posting** says.
+
+## After merge
+
+When the owner reports a merge, confirm it on GitHub. Fetch and refresh the
+clean primary `main` checkout as above. Remove the task worktree only when it
+has no uncommitted changes and its branch tip equals the merged PR's recorded
+head SHA. Otherwise keep it and report what differs. Use `git worktree remove`
+without `--force`, then delete the local branch; a squash merge may require
+`git branch -D` after those checks. This also removes its local Cargo target.
+Do not remove externally configured build output or another task's worktree.
 
 ## Report
 

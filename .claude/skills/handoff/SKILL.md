@@ -13,9 +13,10 @@ the pull request when there is no issue, otherwise.
 
 `/handoff <id>` writes one. `/handoff pick-up <id>` picks one up.
 
-Write one when a session ends with work left: steps not taken, a pull request
-waiting on review, a check only the operator can run. A session that finished
-its task writes none; it reports instead.
+Write one before clearing context or ending with work left: steps not taken,
+a pull request waiting on review, a pending check or an operator-only check.
+A session whose review and required checks passed and needs only the owner's
+approval reports that state; it need not keep running or write a handoff.
 
 Work with no task and no pull request gets one first: `arcl task create` where
 the repository uses arcl, a GitHub issue otherwise, or ask the operator where it
@@ -39,7 +40,9 @@ Written <YYYY-MM-DD> from <branch or worktree>.
 
 ## State
 
-Each branch, worktree and pull request the work touches, and where it stands.
+Each branch, worktree and pull request, with its current head and check state.
+Completed review passes, the SHA each read, findings, verifier verdicts and
+revisions still needed. Link their results rather than copying them.
 If the task was started with `--force`, say so and name what it was forced
 past.
 
@@ -49,12 +52,20 @@ What this session finished, by commit or pull request.
 
 ## Next
 
-The steps left, in order, and what each one depends on.
+The next unfinished step and what it depends on. Worker identities, run
+paths and how to check or stop any worker left running; normally wait for
+workers or stop them before handing off. Do not launch a replacement until
+the earlier worker is known to have stopped.
 
 ## Waiting on the operator
 
 Checks, merges and decisions only the operator can make.
 ```
+
+Confirm the note was stored, then give the operator its link or task ID and
+the pickup command. On Pi, use `/new` or restart Pi, then send
+`/skill:handoff pick-up <task-or-pr>`. `/resume` restores a Pi conversation;
+it is not needed to pick up a task from another harness.
 
 Leave out a section with nothing in it. Record what a session cannot read back
 cheaply; the task, the diff and the git log are already there to read. Use the
@@ -84,7 +95,13 @@ its newest comment opening with `Handoff:`. A handoff describes the repository
 when it was written, so check each claim the next step depends on: that a branch
 and worktree exist, the state of each pull request, and that `main` holds what
 the note says merged. Where the repository disagrees, the repository is right.
-Say what changed before going on.
+Say what changed before going on. Check any recorded worker is stopped or
+attach to its existing run before dispatching another one. Resume the next
+unfinished step, keeping completed passes only when the current head and
+`storm`'s base-only change rule support them. If review evidence is missing
+or conflicting, ask rather than marking a pass complete or rerunning it.
+A merged PR needs local refresh and cleanup, not another review sequence;
+follow `implement`'s **After merge** steps. A new task starts separately.
 
 ## Do not
 

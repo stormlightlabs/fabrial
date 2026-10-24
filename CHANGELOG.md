@@ -6,6 +6,8 @@ workflow moves Unreleased under the new version's heading.
 
 ## Unreleased
 
+- Skills watch checks after review, preserve progress across orchestrator
+  sessions, and refresh local `main` and clean up task worktrees after merge.
 - Quote optional skill argument hints so Pi can load the review, adversarial
   review and handoff skills.
 - `fab init` and `fab update` record the release alone in
