@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import test from "node:test";
-import { dispatch } from "./dispatch.mjs";
+import { dispatch, startWorker } from "./dispatch.mjs";
+import { WorkerMonitor } from "./workers.mjs";
 
 const host = { binary: "/trusted/fab", config: "/private/issuer.toml", trustedCheckout: "/trusted/main" };
 const params = { role: "reviewer", taskFile: "/private/task", worktree: "/work/pr" };
@@ -66,4 +67,109 @@ test("host configuration is required; pre-cancelled calls never spawn", async ()
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(dispatch(params, controller.signal, undefined, host, never), /abort/i);
+});
+
+const worker = { worker_id: "worker-one", run_id: "run-one", task_head: "a".repeat(40), role: "reviewer", state: "running", credential_cleanup: "pending" };
+
+test("launch returns an accepted identity; abort after return does not cancel the worker", async () => {
+  const controller = new AbortController();
+  const accepted = [];
+  let kills = 0;
+  const result = await startWorker(params, controller.signal, host, (w) => accepted.push(w),
+    fakeLaunch((child) => {
+      child.on("killed", () => { kills++; });
+      child.stdout.write(JSON.stringify({ type: "started", worker }) + "\n");
+      child.emit("close", 0);
+    }, (_binary, args) => assert.equal(args.at(-1), "--detach")));
+  assert.equal(result.worker_id, worker.worker_id);
+  assert.equal(accepted.length, 1);
+  controller.abort();
+  assert.equal(kills, 0);
+});
+
+test("aborted launch retains the accepted identity and requests explicit cancellation", async () => {
+  const controller = new AbortController();
+  const accepted = [];
+  const commands = [];
+  await assert.rejects(startWorker(params, controller.signal, host, (w) => accepted.push(w),
+    fakeLaunch((child) => {
+      if (commands.length === 1) {
+        child.on("killed", () => child.emit("close", 0));
+        child.stdout.write(JSON.stringify({ type: "started", worker }) + "\n");
+        controller.abort();
+      } else {
+        child.stdout.write('{"type":"cancel_requested"}\n'); child.emit("close", 0);
+      }
+    }, (_binary, args) => commands.push(args))), /cancelled/);
+  assert.equal(accepted.length, 1);
+  assert.deepEqual(commands[1].slice(0, 3), ["worker", "cancel", worker.worker_id]);
+});
+
+test("monitor progress never wakes a model and completion is delivered once", async () => {
+  const notifications = [];
+  let calls = 0;
+  const monitor = new WorkerMonitor({
+    fetch: async () => ({ worker: calls++ === 0 ? worker : { ...worker, state: "succeeded", credential_cleanup: "complete", result: "done" },
+      cursor: 10, events: [{ sequence: 10, event: { type: "progress" } }] }),
+    notify: (event) => notifications.push(event),
+  });
+  monitor.track(worker);
+  await monitor.poll(); assert.equal(notifications.length, 0);
+  await monitor.poll(); await monitor.poll();
+  assert.equal(notifications.length, 1);
+  assert.equal(calls, 2);
+  monitor.stop(); monitor.stop();
+});
+
+test("blocker notification is immediate and is not repeated on clean completion", async () => {
+  let calls = 0;
+  const notifications = [];
+  const monitor = new WorkerMonitor({
+    fetch: async () => ({ worker: calls++ === 0 ? worker : { ...worker, state: "blocked", credential_cleanup: "complete" },
+      events: [{ sequence: 20, event: { type: "worker_report", kind: "blocked", text: "need input" } }], cursor: 20 }),
+    notify: (event) => notifications.push(event),
+  });
+  monitor.track(worker); await monitor.poll();
+  assert.equal(notifications.length, 1);
+  await monitor.poll(); assert.equal(notifications.length, 1);
+  monitor.stop();
+});
+
+test("shutdown disposes observers, not workers, and rejects late notifications", async () => {
+  let finish;
+  const notifications = [];
+  const monitor = new WorkerMonitor({ fetch: () => new Promise((resolve) => { finish = resolve; }),
+    notify: (event) => notifications.push(event) });
+  monitor.track(worker);
+  const pending = monitor.poll(); monitor.stop();
+  finish({ worker: { ...worker, state: "succeeded" }, events: [], cursor: 0 });
+  await pending; assert.equal(notifications.length, 0);
+});
+
+test("terminal state does not discard events beyond the first replay batch", async () => {
+  let calls = 0;
+  const notifications = [];
+  const monitor = new WorkerMonitor({
+    fetch: async (_id, cursor) => {
+      assert.equal(cursor, calls === 0 ? 0 : 64);
+      return { worker: { ...worker, state: "blocked", credential_cleanup: "complete" },
+        events: calls++ === 0 ? Array.from({ length: 64 }, (_, i) => ({ sequence: i + 1, event: { type: "progress" } }))
+          : [{ sequence: 65, event: { type: "worker_report", kind: "blocked", text: "need input" } }], cursor: 65 };
+    }, notify: (event) => notifications.push(event),
+  });
+  monitor.track(worker); await monitor.poll(); assert.equal(notifications.length, 0);
+  await monitor.poll(); assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].event.text, "need input");
+  monitor.stop();
+});
+
+test("observer errors notify once and back off without launching replacement work", async () => {
+  let calls = 0;
+  const notifications = [];
+  const monitor = new WorkerMonitor({ fetch: async () => { calls++; throw new Error("offline"); },
+    notify: (event) => notifications.push(event) });
+  monitor.track(worker); await monitor.poll(); await monitor.poll();
+  assert.equal(calls, 1); assert.equal(notifications.length, 1);
+  assert.equal(monitor.workers.size, 1);
+  monitor.stop();
 });

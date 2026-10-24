@@ -36,7 +36,7 @@ backends follow this milestone. The design lives in
       acknowledge actions, and reject stale or completed-worker requests.
       Use Pi JSONL RPC over anonymous pipes and private host mailboxes. Preserve fresh role sessions;
       do not share histories or launch replacement agents automatically.
-- [ ] Make the Pi agent tool non-blocking. Return the worker ID after launch,
+- [x] Make the Pi agent tool non-blocking. Return the worker ID after launch,
       then deliver events through the extension independently of that tool
       call. Queue relevant notifications and resume the orchestrator when
       appropriate, without another user prompt or repeated model-driven
