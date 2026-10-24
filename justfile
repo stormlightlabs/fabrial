@@ -3,7 +3,7 @@ check:
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
     cargo test --workspace
-    cargo run -q --bin fab -- init --check
+    cargo run -q --bin fab -- check
 
 fmt:
     cargo fmt --all

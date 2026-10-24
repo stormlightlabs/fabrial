@@ -77,7 +77,9 @@ a paid plan, so rulesets on `main` are enforced.
 - **Dashboard** per machine, reusing arclightning's Svelte `packages/ui`
   (`PlanningTree`, `Readiness`, `ReviewSurface`).
 - **Releases** follow okb: a changelog line in each PR, and a workflow run that
-  tags `vX.Y.Z`.
+  tags `vX.Y.Z`. The run opens a release pull request; the tag lands on its
+  merge commit, so nothing writes to `main` and the owner approves each
+  release. Repositories install a tagged `fab` and refresh with `fab update`.
 
 ### Using the arcl crates
 
@@ -151,6 +153,12 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       record the fabrial version it installed. `--check` reports files that
       differ from the running binary's, and an installed version that differs
       from it.
+- [x] Releases: `fab update` refreshes an install and refuses a downgrade,
+      `fab check` reports drift, `CHANGELOG.md` records each release, the
+      Release workflow opens a release pull request, and Release tag tags its
+      merge commit.
+- [ ] First release, `v0.2.0` (owner runs the Release workflow), then
+      `fab update` in arclightning from it.
 - [ ] Org setup (owner): the bot installed on each repository and the secrets
       shared. A ruleset requiring `storm/review` and the repository's check
       applies to a repository only after its `fab init` pull request merges,
@@ -164,6 +172,8 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 
 ## 4. arcl here
 
+- [ ] A tagged arcl release to pin, and a setup step that installs it in
+      fabrial's cloud sessions (asked of arclightning).
 - [ ] `arcl init` in fabrial, and move `PLAN.md`'s open items into arcl as a
       plan with phases and tasks.
 - [ ] Read tasks, readiness and context from arcl through its crates; write

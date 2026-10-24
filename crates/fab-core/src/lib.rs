@@ -33,14 +33,25 @@ pub enum Error {
     /// so the section's extent is unknown.
     #[error("AGENTS.md: {0}")]
     Agents(String),
+    /// `fab init` found fabrial already installed.
+    #[error("fabrial is installed here; run fab update to refresh it")]
+    Installed,
+    /// `fab update` or `fab check` found no install.
+    #[error("fabrial is not installed here; run fab init first")]
+    NotInstalled,
+    /// `fab update` would replace a newer release's files with this build's.
+    #[error(
+        "fabrial {installed} is installed, newer than this build's {this}; install a newer fab, or pass --force to downgrade"
+    )]
+    Downgrade { installed: String, this: String },
     /// `.agents/skills` is a directory, which `init` never deletes.
-    #[error(".agents/skills is a directory, not a link to ../.claude/skills; remove it and run fab init again")]
+    #[error(".agents/skills is a directory, not a link to ../.claude/skills; remove it and run fab again")]
     SkillsDir,
     /// A managed path, or a directory above one, is a symlink, or is not the
     /// kind of entry fabrial writes there. `init` never follows or deletes
     /// it, with or without `--force`.
     #[error(
-        "these managed paths are symlinks or not the file or directory fabrial writes, and fab init does not follow or delete them; remove them and run fab init again: {}",
+        "these managed paths are symlinks or not the file or directory fabrial writes, and fab does not follow or delete them; remove them and run fab again: {}",
         list(.0)
     )]
     Unmanageable(Vec<PathBuf>),
@@ -57,6 +68,15 @@ pub fn version() -> String {
     FULL_VERSION.to_owned()
 }
 
+/// The release part of a version (`0.2.0` in `0.2.0+abc1234`) as numbers, for
+/// ordering releases. `None` when it is not three dot-separated numbers.
+pub fn release(version: &str) -> Option<(u64, u64, u64)> {
+    let core = version.split('+').next()?;
+    let mut parts = core.split('.').map(|p| p.parse::<u64>().ok());
+    let release = (parts.next()??, parts.next()??, parts.next()??);
+    parts.next().is_none().then_some(release)
+}
+
 fn list(paths: &[PathBuf]) -> String {
     paths
         .iter()
@@ -70,8 +90,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn release_orders_versions_by_their_release_part() {
+        assert_eq!(release("0.2.0+abc1234"), Some((0, 2, 0)));
+        assert_eq!(release("1.10.3"), Some((1, 10, 3)));
+        assert!(release("0.10.0") > release("0.9.9"));
+        for bad in ["", "0.2", "0.2.0.1", "v0.2.0", "0.x.0", "0.2.0-rc.1"] {
+            assert_eq!(release(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
     fn version_is_the_workspace_version_and_commit() {
-        assert_eq!(VERSION, "0.1.0");
-        assert!(version().starts_with("0.1.0+"));
+        assert!(release(VERSION).is_some(), "{VERSION}");
+        assert!(version().starts_with(&format!("{VERSION}+")));
     }
 }

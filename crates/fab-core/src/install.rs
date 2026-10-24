@@ -212,6 +212,32 @@ pub fn read_settings(root: &Path) -> Result<Option<Settings>, Error> {
     }
 }
 
+/// Installs fabrial in a repository that does not have it yet: `fab init`.
+/// A repository with a settings file is refused; [`update`] refreshes it.
+/// `force` replaces managed files someone else wrote, as in [`init`].
+pub fn install(root: &Path, settings: &Settings, force: bool) -> Result<Report, Error> {
+    if read_settings(root)?.is_some() {
+        return Err(Error::Installed);
+    }
+    init(root, settings, force)
+}
+
+/// Replaces an install's files with this build's: `fab update`. `change`
+/// edits the installed settings first, for a new owner, trailer or gate
+/// command. An install that records a newer release than this build is
+/// refused unless `downgrade` is set; one with no recorded version is not.
+pub fn update(root: &Path, change: impl FnOnce(&mut Settings), downgrade: bool) -> Result<Report, Error> {
+    let mut settings = read_settings(root)?.ok_or(Error::NotInstalled)?;
+    if let Some(installed) = settings.version.take()
+        && !downgrade
+        && crate::release(&installed) > crate::release(crate::VERSION)
+    {
+        return Err(Error::Downgrade { installed, this: crate::version() });
+    }
+    change(&mut settings);
+    init(root, &settings, false)
+}
+
 /// Writes fabrial's files into the repository at `root`.
 ///
 /// On a first install (no settings file yet), a managed file that already
@@ -556,6 +582,43 @@ mod tests {
         assert!(toml.contains(r#"gates = "npm test""#));
         let owners = fs::read_to_string(dir.path().join(".github/CODEOWNERS")).unwrap();
         assert!(owners.ends_with("* @desertthunder\n"));
+    }
+
+    #[test]
+    fn install_refuses_an_installed_repository() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        assert!(matches!(install(dir.path(), &settings(), true), Err(Error::Installed)));
+    }
+
+    #[test]
+    fn update_needs_an_install_and_keeps_its_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(matches!(update(dir.path(), |_| {}, false), Err(Error::NotInstalled)));
+        install(dir.path(), &settings(), false).unwrap();
+        fs::write(dir.path().join(".github/storm/gate.sh"), "#!/bin/sh\n").unwrap();
+        let report = update(dir.path(), |s| s.gates = "just check".into(), false).unwrap();
+        assert_eq!(report.written.len(), 2, "{:?}", report.written);
+        let toml = fs::read_to_string(dir.path().join(SETTINGS_PATH)).unwrap();
+        assert!(toml.contains(r#"gates = "just check""#));
+        assert!(toml.contains(r#"owner = "desertthunder""#));
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn update_refuses_to_downgrade_unless_forced() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let path = dir.path().join(SETTINGS_PATH);
+        let newer = fs::read_to_string(&path).unwrap().replace(
+            &format!(r#"version = "{}""#, crate::version()),
+            r#"version = "99.0.0+abc1234""#,
+        );
+        fs::write(&path, newer).unwrap();
+        let err = update(dir.path(), |_| {}, false).unwrap_err();
+        assert!(matches!(&err, Error::Downgrade { installed, .. } if installed == "99.0.0+abc1234"));
+        update(dir.path(), |_| {}, true).unwrap();
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
     }
 
     #[test]
