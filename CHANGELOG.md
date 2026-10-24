@@ -8,6 +8,8 @@ stays, and replaces the generated line for the PR it names as `(#N)`.
 
 ## Unreleased
 
+## 0.3.2 - 2026-10-24
+
 - An edit that lands while the Review gate posts the squash message no longer
   leaves an older message newest: the gate reads the pull request again after
   it posts (#37).
@@ -15,6 +17,8 @@ stays, and replaces the generated line for the PR it names as `(#N)`.
 - The squash body keeps `Session:` lines unless they name a link, and no
   longer tracks code blocks, so a block cannot hide the footer or an
   attribution line (#37).
+
+- Write the changelog in the release pull request (#38)
 
 ## 0.3.1 - 2026-10-24
 
