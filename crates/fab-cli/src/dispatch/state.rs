@@ -58,7 +58,8 @@ impl WorkerRecord {
         root: &Path, role: &str, repository: &str, worktree: &Path, task_head: String, private_state: &Path,
     ) -> Result<Self> {
         let worker_id = uuid::Uuid::new_v4().to_string();
-        let directory = root.join("records").join(&worker_id);
+        let records = root.join("records");
+        let directory = records.join(&worker_id);
         DirBuilder::new()
             .recursive(true)
             .mode(0o700)
@@ -87,6 +88,10 @@ impl WorkerRecord {
             error: None,
         };
         record.save()?;
+        // The record's directory is synced by save; persist its ancestors too.
+        // Otherwise a first dispatch can lose the entire registry after power loss.
+        sync_directory(&records)?;
+        sync_directory(root)?;
         Ok(record)
     }
 
@@ -185,7 +190,11 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
     file.write_all(bytes).map_err(|_| "cannot write worker record")?;
     file.as_file().sync_all().map_err(|_| "cannot sync worker record")?;
     file.persist(path).map_err(|_| "cannot replace worker record")?;
-    File::open(parent)
+    sync_directory(parent)
+}
+
+fn sync_directory(path: &Path) -> Result<()> {
+    File::open(path)
         .and_then(|directory| directory.sync_all())
         .map_err(|_| "cannot sync worker record directory".into())
 }
