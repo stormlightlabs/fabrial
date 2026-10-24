@@ -44,4 +44,5 @@ release's, with `Cargo.lock` to match. It holds no code, so accept it with
 `/storm:ready <sha>` rather than a review. When it merges, the Release tag
 workflow tags `v<version>` on the merge commit and publishes a GitHub release
 with that section of the changelog. Both need the bot to have Contents write
-access.
+access. If Release tag fails, fix the cause and re-run that run from the
+Actions tab; a later push does not retry it.

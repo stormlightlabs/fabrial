@@ -229,15 +229,21 @@ pub fn install(root: &Path, settings: &Settings, force: bool) -> Result<Report, 
 
 /// Replaces an install's files with this build's: `fab update`. `change`
 /// edits the installed settings first, for a new owner, trailer or gate
-/// command. An install that records a newer release than this build is
-/// refused unless `downgrade` is set; one with no recorded version is not.
+/// command. An install that records a newer release than this build, or a
+/// version that is not a release, is refused unless `downgrade` is set; one
+/// with no recorded version is not.
 pub fn update(root: &Path, change: impl FnOnce(&mut Settings), downgrade: bool) -> Result<Report, Error> {
     let mut settings = read_settings(root)?.ok_or(Error::NotInstalled)?;
     if let Some(installed) = settings.version.take()
         && !downgrade
-        && crate::release(&installed) > crate::release(crate::VERSION)
     {
-        return Err(Error::Downgrade { installed, this: crate::version() });
+        match crate::release(&installed) {
+            None => return Err(Error::UnknownVersion(installed)),
+            Some(release) if Some(release) > crate::release(crate::VERSION) => {
+                return Err(Error::Downgrade { installed, this: crate::version() });
+            }
+            Some(_) => {}
+        }
     }
     change(&mut settings);
     init(root, &settings, false)
@@ -619,6 +625,14 @@ mod tests {
         assert!(matches!(&err, Error::Downgrade { installed, .. } if installed == "99.0.0+abc1234"));
         update(dir.path(), |_| {}, true).unwrap();
         assert_eq!(check(dir.path()).unwrap(), vec![]);
+
+        let text = fs::read_to_string(&path).unwrap().replace(
+            &format!(r#"version = "{}""#, crate::version()),
+            r#"version = "0.3.0-rc.1""#,
+        );
+        fs::write(&path, text).unwrap();
+        let err = update(dir.path(), |_| {}, false).unwrap_err();
+        assert!(matches!(&err, Error::UnknownVersion(v) if v == "0.3.0-rc.1"));
     }
 
     #[test]

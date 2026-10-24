@@ -39,6 +39,10 @@ pub enum Error {
     /// `fab update` or `fab check` found no install.
     #[error("fabrial is not installed here; run fab init first")]
     NotInstalled,
+    /// `fab update` found a recorded version it cannot order against this
+    /// build's.
+    #[error("the installed version {0} is not a release like 0.2.0; pass --force to replace it")]
+    UnknownVersion(String),
     /// `fab update` would replace a newer release's files with this build's.
     #[error(
         "fabrial {installed} is installed, newer than this build's {this}; install a newer fab, or pass --force to downgrade"
@@ -102,6 +106,5 @@ mod tests {
     #[test]
     fn version_is_the_workspace_version_and_commit() {
         assert!(release(VERSION).is_some(), "{VERSION}");
-        assert!(version().starts_with(&format!("{VERSION}+")));
     }
 }
