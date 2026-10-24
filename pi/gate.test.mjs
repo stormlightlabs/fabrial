@@ -6,6 +6,10 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const worktree = fileURLToPath(new URL("../", import.meta.url));
+test("Branch PR leaves auto-merge scheduling to the Review gate", () => {
+  const workflow = readFileSync(join(worktree, ".github/workflows/branch-pr.yml"), "utf8");
+  assert.doesNotMatch(workflow, /gh pr merge[^\n]*--auto/);
+});
 for (const [error, expected] of [["GraphQL: Auto-merge is not supported for stacked pull requests. (enablePullRequestAutoMerge)", 0], ["GraphQL: Resource not accessible by integration", 1]]) {
   test(`review gate handles ${expected === 0 ? "native stacks" : "ordinary API refusal"} without merging`, () => {
     const target = join(worktree, "target"); mkdirSync(target, { recursive: true });
