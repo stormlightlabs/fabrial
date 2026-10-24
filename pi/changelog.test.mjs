@@ -12,17 +12,18 @@ const worktree = fileURLToPath(new URL("../", import.meta.url));
 // `changelog` as CHANGELOG.md, tagged v0.1.0 unless `tag` is false, then one
 // empty commit per subject. Returns the exit status, stderr and the
 // CHANGELOG.md that results.
-function release(changelog, subjects, { tag = true } = {}) {
+function release(changelog, subjects, { tag = true, candidate = false } = {}) {
   const target = join(worktree, "target"); mkdirSync(target, { recursive: true });
   const root = mkdtempSync(join(target, "changelog-test-"));
   try {
-    const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: root });
+    const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", ...args], { cwd: root });
     git("init", "-q");
     writeFileSync(join(root, "CHANGELOG.md"), changelog);
     git("add", "CHANGELOG.md");
     git("commit", "-qm", "Start");
     if (tag) git("tag", "v0.1.0");
     for (const subject of subjects) git("commit", "-q", "--allow-empty", "-m", subject);
+    if (candidate) git("tag", "v0.2.0-rc.1");
     const output = spawnSync("bash", [script, "0.2.0", "2026-10-25"], { cwd: root, encoding: "utf8" });
     return { status: output.status, stderr: output.stderr, changelog: readFileSync(join(root, "CHANGELOG.md"), "utf8") };
   } finally { rmSync(root, { recursive: true, force: false }); }
@@ -57,6 +58,11 @@ test("lines under Unreleased alone make a release", () => {
 test("without a tag, every commit is listed", () => {
   const { changelog } = release(`${top}\n${older}`, ["Fix b (#5)"], { tag: false });
   assert.equal(changelog, `${top}\n## 0.2.0 - 2026-10-25\n\n- Fix b (#5)\n\n- Start\n\n${older}`);
+});
+
+test("a pre-release tag is not the base", () => {
+  const { changelog } = release(`${top}\n${older}`, ["Fix b (#5)"], { candidate: true });
+  assert.match(changelog, /- Fix b \(#5\)/);
 });
 
 test("nothing to list changes nothing", () => {

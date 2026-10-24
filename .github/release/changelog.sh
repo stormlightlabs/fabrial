@@ -4,7 +4,8 @@
 #   changelog.sh <version> <date>
 #
 # The section lists the lines under Unreleased, then one line per commit since
-# the last `v` tag behind HEAD, newest first, from its subject. A squash
+# the last release tag behind HEAD (`v` and a version, without a pre-release
+# part), newest first, from its subject. A squash
 # subject ends with its pull request number, so each line names the PR. Lines
 # under Unreleased are the owner's, written by hand; a commit whose `(#N)` one
 # of them names gets no line of its own, and the Release commits themselves are left out. Unreleased stays
@@ -17,7 +18,7 @@ set -euo pipefail
 version=$1 date=$2
 
 grep -qx '## Unreleased' CHANGELOG.md || { echo "CHANGELOG.md has no '## Unreleased' heading." >&2; exit 1; }
-last=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
+last=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude 'v*-*' 2>/dev/null || true)
 range=HEAD
 [[ -z $last ]] || range="$last..HEAD"
 

@@ -53,6 +53,12 @@ jobs:
             echo "::error title=version::$VERSION does not sort above the current $current."
             exit 1
           fi
+          # The changelog starts at the last tag, so an untagged release would
+          # be listed again.
+          if ! git rev-parse -q --verify "refs/tags/v$current" >/dev/null; then
+            echo "::error title=version::v$current is not tagged. Run Release tag from the Actions tab with its merge commit, then run this again."
+            exit 1
+          fi
           if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
             echo "::error title=version::v$VERSION is already tagged."
             exit 1
@@ -75,5 +81,5 @@ jobs:
           git switch -c "$branch"
           git -c user.name='stormlight-thunderbot[bot]' \
             -c user.email='340296662+stormlight-thunderbot[bot]@users.noreply.github.com' \
-            commit -qam "Release $VERSION" -m "Sets the version to $VERSION and lists the pull requests merged since the last release in CHANGELOG.md. Edit those lines on this branch before accepting it. Release tag tags v$VERSION when this merges."
+            commit -qam "Release $VERSION" -m "Sets the version to $VERSION and lists the commit subjects since the last release in CHANGELOG.md. Edit those lines on this branch before accepting it. Release tag tags v$VERSION when this merges."
           git push -u origin "$branch"
