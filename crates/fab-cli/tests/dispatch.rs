@@ -65,7 +65,7 @@ impl Fixture {
             "test \"$*\" != *pem-secret*\ncat >/dev/null\nprintf signature",
         );
         let during = match mode {
-            "cancel" => format!("touch {}", quote(&private.join("cancel"))),
+            "cancel" => format!("touch {}", quote(&record_dir.join("cancel"))),
             "deadline" => "sleep 1.2".into(),
             _ => String::new(),
         };
@@ -174,7 +174,7 @@ test ! -e {}
     }
 
     fn logs(&self) -> String {
-        fs::read_to_string(self.private.join("events.jsonl")).unwrap()
+        fs::read_to_string(self.temp.path().join("records/worker-one/events.jsonl")).unwrap()
     }
 
     fn record(&self) -> Value {
@@ -192,7 +192,7 @@ fn recorder_issues_restricted_token_launches_and_revokes() {
     assert!(f.temp.path().join("launched").exists());
     assert!(!f.private.join("state").exists());
     assert!(!f.private.join("installation-token").exists());
-    assert!(f.private.join("cleanup-complete").exists());
+    assert!(!f.private.exists());
     let ids = fs::read_to_string(f.temp.path().join("secret-ids")).unwrap();
     assert_eq!(ids, "id-one\nid-two\nid-three\n");
     let body: Value = serde_json::from_str(&fs::read_to_string(f.temp.path().join("token-request")).unwrap()).unwrap();
@@ -227,7 +227,7 @@ fn recorder_issues_restricted_token_launches_and_revokes() {
         assert!(!record.to_string().contains(secret));
         assert!(!saved_result.contains(secret));
     }
-    fs::remove_dir_all(&f.private).unwrap();
+    assert!(!f.private.exists());
     assert_eq!(f.record(), record);
     assert_eq!(fs::read_to_string(result_path).unwrap(), saved_result);
 }
@@ -250,7 +250,7 @@ fn recorder_failure_timeout_and_cancellation_revoke_before_cleanup() {
         let f = Fixture::new(mode);
         assert!(!f.run().status.success(), "{mode}");
         assert!(f.temp.path().join("revoked").exists(), "{mode}: {}", f.logs());
-        assert!(f.private.join("cleanup-complete").exists(), "{mode}");
+        assert!(!f.private.exists(), "{mode}");
         assert!(!f.private.join("state").exists());
         if ["cancel", "deadline", "widened"].contains(&mode) {
             assert!(!f.temp.path().join("launched").exists(), "{mode}");
@@ -285,19 +285,19 @@ fn cancellation_file_stops_running_worker_and_revokes() {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
     while !f.temp.path().join("launched").exists() {
         if std::time::Instant::now() >= deadline {
-            fs::write(f.private.join("cancel"), "").unwrap();
+            fs::write(f.temp.path().join("records/worker-one/cancel"), "").unwrap();
             let out = child.wait_with_output().unwrap();
             panic!("worker did not launch: {}", String::from_utf8_lossy(&out.stdout));
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    fs::write(f.private.join("cancel"), "").unwrap();
+    fs::write(f.temp.path().join("records/worker-one/cancel"), "").unwrap();
     let out = child.wait_with_output().unwrap();
     assert!(!out.status.success());
     assert!(f.logs().contains("worker cancelled"));
     assert!(f.temp.path().join("revoked").exists());
-    assert!(f.private.join("cleanup-complete").exists());
-    assert!(!f.private.join("state").exists());
+    assert_eq!(f.record()["credential_cleanup"], "complete");
+    assert!(!f.private.exists());
 }
 
 #[test]
@@ -315,7 +315,7 @@ fn failed_revocation_retains_recovery_state_and_cannot_signal_cleanup() {
 }
 
 #[test]
-fn final_record_write_failure_retains_private_evidence() {
+fn final_record_write_failure_retains_durable_evidence() {
     let f = Fixture::new("record-write-fail");
     let out = f.run();
     let directory = f.temp.path().join("records/worker-one");

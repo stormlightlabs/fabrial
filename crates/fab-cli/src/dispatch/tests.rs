@@ -16,6 +16,44 @@ fn shell(source: &str) -> Command {
 }
 
 #[test]
+fn synchronous_observer_error_requests_cancellation_and_waits_for_the_outcome() {
+    let temp = tempfile::tempdir().unwrap();
+    let record = WorkerRecord::create(
+        temp.path(),
+        "reviewer",
+        "org/repo",
+        temp.path(),
+        "a".repeat(40),
+        temp.path(),
+    )
+    .unwrap();
+    fs::write(record.directory().join("events.jsonl"), b"invalid-json\n").unwrap();
+    let path = record.path().to_owned();
+    let cancel = record.directory().join("cancel");
+    let observed_cancel = cancel.clone();
+    let supervisor = thread::spawn(move || {
+        for _ in 0..100 {
+            if observed_cancel.exists() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        WorkerRecord::open(&path)
+            .unwrap()
+            .finish(&Err("cancelled".into()), true, true, false)
+            .unwrap();
+    });
+    assert!(
+        follow(&record, 1, &AtomicBool::new(false))
+            .unwrap_err()
+            .contains("invalid recorder event")
+    );
+    supervisor.join().unwrap();
+    assert!(cancel.exists());
+    assert!(WorkerRecord::open(record.path()).unwrap().terminal());
+}
+
+#[test]
 fn roles_tools_and_no_fallback() {
     for role in ROLES {
         let (tools, unmapped, body) = role_input(&root(), role).unwrap();
@@ -169,45 +207,13 @@ fn local_config_requires_explicit_paths_version_and_ids() {
 }
 
 #[test]
-fn cleanup_waits_for_exit_even_after_status_and_retains_failures() {
-    for status_ready in [false, true] {
+fn caller_drop_never_removes_launched_supervisor_state() {
+    for started in [false, true] {
         let temp = tempfile::tempdir().unwrap();
         let mut private = Private::new(temp.path()).unwrap();
-        private.started = true;
         let path = private.path.clone();
-        if status_ready {
-            touch(&path.join("status")).unwrap();
-            touch(&path.join("cleanup-complete")).unwrap();
-        }
-        let mut polls = 0;
-        cleanup_with(&path, Duration::from_secs(1), || {
-            assert!(path.join("cancel").exists());
-            polls += 1;
-            if polls == 1 {
-                return Ok(true);
-            }
-            touch(&path.join("status")).unwrap();
-            touch(&path.join("cleanup-complete")).unwrap();
-            Ok(false)
-        })
-        .unwrap();
-        assert_eq!(polls, 2);
-        private.complete = true;
+        private.started = started;
         drop(private);
-        assert!(!path.exists());
-    }
-    for alive in [false, true] {
-        let temp = tempfile::tempdir().unwrap();
-        let mut private = Private::new(temp.path()).unwrap();
-        private.started = true;
-        let path = private.path.clone();
-        touch(&path.join("status")).unwrap();
-        assert!(
-            cleanup_with(&path, Duration::ZERO, || Ok(alive))
-                .unwrap_err()
-                .contains("state retained")
-        );
-        drop(private);
-        assert!(path.join("cancel").exists());
+        assert_eq!(path.exists(), started);
     }
 }

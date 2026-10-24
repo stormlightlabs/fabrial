@@ -48,6 +48,8 @@ pub(super) struct WorkerRecord {
     state: WorkerState,
     credential_cleanup: CredentialCleanup,
     result_file: Option<PathBuf>,
+    #[serde(default)]
+    last_progress: Option<serde_json::Value>,
     error: Option<String>,
     resources: Resources,
 }
@@ -85,6 +87,7 @@ impl WorkerRecord {
             state: WorkerState::Prepared,
             credential_cleanup: CredentialCleanup::Pending,
             result_file: None,
+            last_progress: None,
             error: None,
         };
         record.save()?;
@@ -136,6 +139,12 @@ impl WorkerRecord {
         self.save()
     }
 
+    /// Retain the latest credential-free progress for detached inspection.
+    pub(super) fn progress(&mut self, event: &serde_json::Value) -> Result<()> {
+        self.last_progress = Some(event.clone());
+        self.save()
+    }
+
     /// Persist only the validated and redacted final role text.
     pub(super) fn result(&mut self, text: &str) -> Result<()> {
         let path = self.path.with_file_name("result.txt");
@@ -165,6 +174,36 @@ impl WorkerRecord {
             Some("credential cleanup unconfirmed; private state retained".into())
         };
         self.save()
+    }
+
+    pub(super) fn directory(&self) -> &Path {
+        self.path.parent().expect("record path has a parent")
+    }
+
+    pub(super) fn terminal(&self) -> bool {
+        matches!(
+            self.state,
+            WorkerState::Succeeded | WorkerState::Failed | WorkerState::Cancelled | WorkerState::TimedOut
+        )
+    }
+
+    pub(super) fn exit_code(&self) -> u8 {
+        u8::from(self.state != WorkerState::Succeeded)
+    }
+
+    pub(super) fn cancel(&self) -> Result<()> {
+        if self.terminal() {
+            return Err("worker has already completed".into());
+        }
+        atomic_write(&self.directory().join("cancel"), b"")
+    }
+
+    pub(super) fn snapshot(&self) -> Result<serde_json::Value> {
+        let mut value = serde_json::to_value(self).map_err(|_| "cannot serialize worker record")?;
+        if let Some(path) = &self.result_file {
+            value["result"] = serde_json::json!(super::read(path)?);
+        }
+        Ok(value)
     }
 
     fn save(&mut self) -> Result<()> {

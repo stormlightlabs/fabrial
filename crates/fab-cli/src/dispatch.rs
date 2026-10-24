@@ -20,6 +20,7 @@ use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+pub(crate) mod operations;
 mod state;
 
 use state::WorkerRecord;
@@ -44,6 +45,9 @@ pub struct Options {
     config: PathBuf,
     #[arg(long, default_value_t = 1800, value_parser = clap::value_parser!(u64).range(1..=3000))]
     timeout: u64,
+    /// Return the worker identity once tmux accepts the launch.
+    #[arg(long)]
+    detach: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -88,7 +92,6 @@ impl Drop for Process {
 struct Private {
     path: PathBuf,
     started: bool,
-    complete: bool,
 }
 
 impl Private {
@@ -98,13 +101,13 @@ impl Private {
             .tempdir_in(root)
             .map_err(|_| "cannot create private dispatch state")?
             .keep();
-        Ok(Self { path, started: false, complete: false })
+        Ok(Self { path, started: false })
     }
 }
 
 impl Drop for Private {
     fn drop(&mut self) {
-        if !self.started || self.complete {
+        if !self.started {
             let _ = fs::remove_dir_all(&self.path);
         }
     }
@@ -526,11 +529,11 @@ fn emit(event: &Value) {
     let _ = out.flush();
 }
 
-fn output(private: &Path, event: &Value) -> Result<()> {
+fn output(directory: &Path, event: &Value) -> Result<()> {
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(private.join("events.jsonl"))
+        .open(directory.join("events.jsonl"))
         .map_err(|_| "cannot open recorder events")?;
     writeln!(file, "{event}").map_err(|_| "cannot write recorder event")?;
     println!("{}", event["type"].as_str().unwrap_or("progress"));
@@ -648,9 +651,10 @@ fn recorder(private: &Path, request: &Request) -> u8 {
         Ok(flag) => flag,
         Err(_) => return 1,
     };
+    let directory = worker.directory().to_path_buf();
     let deadline = Instant::now() + Duration::from_secs(request.timeout);
-    let cancelled = || interrupted.load(Ordering::Relaxed) || private.join("cancel").exists();
-    let result = (|| {
+    let cancelled = || interrupted.load(Ordering::Relaxed) || directory.join("cancel").exists();
+    let mut result = (|| {
         if !ROLES.contains(&request.role.as_str()) {
             return Err("invalid recorder role".into());
         }
@@ -706,7 +710,10 @@ fn recorder(private: &Path, request: &Request) -> u8 {
                 if e["type"] == "worker_started" {
                     worker.worker_started(e["pid"].as_u64().ok_or("worker PID missing")? as u32)
                 } else {
-                    output(private, &e)
+                    if e["type"] == "progress" {
+                        worker.progress(&e)?;
+                    }
+                    output(&directory, &e)
                 }
             },
         )?;
@@ -721,13 +728,13 @@ fn recorder(private: &Path, request: &Request) -> u8 {
             text = text.replace(secret, "[redacted]");
         }
         worker.result(&text)?;
-        output(private, &json!({"type": "result", "text": text}))
+        output(&directory, &json!({"type": "result", "text": text}))
     })();
     let cancellation_observed = cancelled();
     let deadline_exceeded = Instant::now() >= deadline;
     let mut status = u8::from(result.is_err());
     if let Err(error) = &result {
-        let _ = output(private, &json!({"type": "error", "message": error}));
+        let _ = output(&directory, &json!({"type": "error", "message": error}));
     }
     let cleanup = (|| {
         if private.join("revocation-failed").exists() {
@@ -740,13 +747,20 @@ fn recorder(private: &Path, request: &Request) -> u8 {
         if private.join("state").exists() {
             fs::remove_dir_all(private.join("state")).map_err(|_| "cannot remove worker credentials")?;
         }
-        touch(&private.join("cleanup-complete"))
+        Ok(())
     })();
     if cleanup.is_err() {
         status = 1;
         let _ = output(
-            private,
+            &directory,
             &json!({"type": "error", "message": "credential cleanup unconfirmed; private state retained"}),
+        );
+    } else if fs::remove_dir_all(private).is_err() {
+        result = Err("temporary state cleanup unconfirmed; evidence retained".into());
+        status = 1;
+        let _ = output(
+            &directory,
+            &json!({"type": "error", "message": result.as_ref().unwrap_err()}),
         );
     }
     if worker
@@ -754,15 +768,10 @@ fn recorder(private: &Path, request: &Request) -> u8 {
         .is_err()
     {
         status = 1;
-        // Do not let the caller discard evidence if the durable record was not committed.
-        let _ = fs::remove_file(private.join("cleanup-complete"));
         let _ = output(
-            private,
-            &json!({"type": "error", "message": "worker record unconfirmed; private state retained"}),
+            &directory,
+            &json!({"type": "error", "message": "worker record unconfirmed; durable evidence retained"}),
         );
-    }
-    if write(&private.join("status"), status.to_string()).is_err() {
-        status = 1;
     }
     status
 }
@@ -815,28 +824,6 @@ fn pane(session: &str) -> Result<bool> {
             return Err("recorder pane inspection timed out".into());
         }
         thread::sleep(Duration::from_millis(10));
-    }
-}
-
-fn wait_for_cleanup(private: &Path, session: &str, grace: Duration) -> Result<()> {
-    cleanup_with(private, grace, || pane(session))
-}
-
-fn cleanup_with(private: &Path, grace: Duration, mut inspect: impl FnMut() -> Result<bool>) -> Result<()> {
-    touch(&private.join("cancel"))?;
-    let deadline = Instant::now() + grace;
-    loop {
-        match inspect() {
-            Ok(false) if private.join("status").exists() && private.join("cleanup-complete").exists() => return Ok(()),
-            Ok(true) if Instant::now() < deadline => thread::sleep(Duration::from_millis(100)),
-            _ => {
-                return Err(format!(
-                    "recorder cleanup unconfirmed after {}s grace; private state retained at {}",
-                    grace.as_secs(),
-                    private.display()
-                ));
-            }
-        }
     }
 }
 
@@ -951,23 +938,58 @@ fn dispatch(options: Options) -> Result<u8> {
     tmux.args(["new-session", "-d", "-s", session, "-c"])
         .arg(&worktree)
         .arg(command);
-    private.started = true; // An ambiguous launch failure must retain issuer state.
-    let launched = execute(tmux, None, Duration::from_secs(30));
-    let result = launched.and_then(|_| follow(p, session, options.timeout, &interrupted));
-    wait_for_cleanup(p, session, GRACE)?;
-    private.complete = true;
-    result
+    if interrupted.load(Ordering::Relaxed) {
+        return Err("dispatch cancelled before launch".into());
+    }
+    private.started = true; // From here the recorder owns cleanup, even if this caller exits.
+    if let Err(error) = execute(tmux, None, Duration::from_secs(30)) {
+        worker.cancel()?;
+        return Err(error);
+    }
+    if options.detach {
+        if interrupted.load(Ordering::Relaxed) {
+            worker.cancel()?;
+            return Err("dispatch cancelled during launch".into());
+        }
+        emit(&json!({"type": "started", "worker": worker.snapshot()?}));
+        Ok(0)
+    } else {
+        follow(&worker, options.timeout, &interrupted)
+    }
 }
 
-fn follow(private: &Path, session: &str, timeout: u64, interrupted: &AtomicBool) -> Result<u8> {
+fn follow(worker: &WorkerRecord, timeout: u64, interrupted: &AtomicBool) -> Result<u8> {
+    let error = match observe(worker, timeout, interrupted) {
+        Ok(code) => return Ok(code),
+        Err(error) => error,
+    };
+    // Synchronous callers own cancellation on observation failure. Detached
+    // dispatch and explicit `worker wait` deliberately do not use this path.
+    let requested = worker.cancel().is_ok();
+    let deadline = Instant::now() + GRACE;
+    while Instant::now() < deadline {
+        if WorkerRecord::open(worker.path()).is_ok_and(|current| current.terminal()) {
+            return Err(error);
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    Err(format!(
+        "{error}; cancellation recorded: {requested}; cleanup unconfirmed: {}",
+        worker.path().display()
+    ))
+}
+
+fn observe(worker: &WorkerRecord, timeout: u64, interrupted: &AtomicBool) -> Result<u8> {
     let deadline = Instant::now() + Duration::from_secs(timeout) + GRACE;
     let mut offset = 0;
+    let events = worker.directory().join("events.jsonl");
     loop {
-        if interrupted.load(Ordering::Relaxed) {
-            touch(&private.join("cancel"))?;
+        let current = WorkerRecord::open(worker.path())?;
+        if interrupted.load(Ordering::Relaxed) && !current.terminal() {
+            current.cancel()?;
         }
-        if private.join("events.jsonl").exists() {
-            let bytes = fs::read(private.join("events.jsonl")).map_err(|_| "cannot read recorder events")?;
+        if events.exists() {
+            let bytes = fs::read(&events).map_err(|_| "cannot read recorder events")?;
             while let Some(end) = bytes[offset..].iter().position(|b| *b == b'\n') {
                 let event: Value =
                     serde_json::from_slice(&bytes[offset..offset + end]).map_err(|_| "invalid recorder event")?;
@@ -975,20 +997,17 @@ fn follow(private: &Path, session: &str, timeout: u64, interrupted: &AtomicBool)
                 offset += end + 1;
             }
         }
-        if private.join("status").exists() {
-            if fs::metadata(private.join("events.jsonl")).is_ok_and(|m| m.len() as usize != offset) {
+        if current.terminal() && !pane(worker.session())? {
+            if fs::metadata(&events).is_ok_and(|m| m.len() as usize != offset) {
                 continue;
             }
-            let status = read(&private.join("status"))?
-                .parse()
-                .map_err(|_| "invalid recorder status")?;
-            return Ok(if interrupted.load(Ordering::Relaxed) { 1 } else { status });
+            return Ok(if interrupted.load(Ordering::Relaxed) { 1 } else { current.exit_code() });
         }
         if Instant::now() >= deadline {
             return Err("host recorder deadline exceeded".into());
         }
-        if !pane(session)? && !private.join("status").exists() {
-            return Err("worker pane exited without status".into());
+        if !pane(worker.session())? && !WorkerRecord::open(worker.path())?.terminal() {
+            return Err("worker pane exited without terminal record; recovery state retained".into());
         }
         thread::sleep(Duration::from_millis(100));
     }
