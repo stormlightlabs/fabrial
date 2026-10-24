@@ -190,12 +190,18 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 
 ## 6. Workers
 
-- [ ] Pi spike, on Pi 1.x, as `docs/pi.md` lays out: `fab dispatch` for the
-      four review roles (reviewer, verifier, adversarial reviewer, reviser),
-      a Pi package whose extension registers an `agent` tool over it, and
-      workers that run untrusted with a token that cannot approve, merge or
-      push to `main`. Run the `storm` sequence from a Pi orchestrator on one
-      real pull request.
+- [ ] Local Pi spike, on Pi 1.x, as `docs/pi.md` lays out: `fab dispatch` for
+      reviewer, verifier, adversarial reviewer and reviser; a Pi package with
+      an `agent` tool; Terra for the standard pass and Sol for the adversarial
+      pass. Run the `storm` sequence on one real pull request from a task
+      worktree, including gates, bot comments and `Review finished`. Workers
+      load trusted role instructions by path and cannot reach the owner's
+      GitHub credentials or push to `main`. Remove the clean worktree after
+      the pull request merges.
+- [ ] Let Claude Code and Pi call the same dispatch command for fresh workers,
+      passing a role, task, worktree and result without sharing session history.
+- [ ] Show the current pull request, its link and CI state in the fabrial Pi
+      package's status area. Keep general Pi UI preferences outside fabrial.
 - [ ] Pi dispatch for every role, into tmux, Zellij and herdr, with per-role models
       and effort caps (port thunderstorm's `internal/dispatch` and
       `internal/roles`).
@@ -217,11 +223,13 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       orchestrate.
 - [ ] Dashboard: runs, steps, logs, and the same operations the comments
       trigger.
-- [ ] Explore [Mire](https://github.com/stormlightlabs/mire) for the owner's
-      review of fabrial pull requests. It already captures a Git comparison
-      in a review file, accepts agent findings and records human decisions.
-      Try it on one pull request, then decide how findings reach the existing
-      review comments without making Mire a second approval gate.
+- [ ] Try [Mire](https://github.com/stormlightlabs/mire) on one pull request
+      as the owner's local review surface. In a fetched PR worktree, capture
+      the comparison in a review file outside the repository, inspect it in
+      Mire, and export anchored findings and human decisions. Decide whether
+      an adapter should send findings through fabrial's Bot comment workflow.
+      Mire has no GitHub integration; the existing gate and owner approval
+      remain the source of merge decisions.
 
 ## 9. Migration
 
