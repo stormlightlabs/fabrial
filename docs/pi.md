@@ -91,11 +91,11 @@ host:
 
 ```toml
 [reviewer.pi]
-model = "openai/gpt-5.6-terra"
+model = "openai/gpt-6-sol"
 thinking = "low"
 
 [adversarial-reviewer.pi]
-model = "openai/gpt-5.6-sol"
+model = "openai/gpt-6.1-sol"
 thinking = "low"
 ```
 
@@ -160,7 +160,7 @@ Land the work in separate pull requests. First, prove `fab dispatch` for the
 four review roles and the Pi package's `agent` tool on one real pull request.
 A fresh worker gets only the role instructions and skills from a trusted
 checkout, not the pull request's branch or the orchestrator's history. The
-standard reviewer uses Terra and the adversarial reviewer uses Sol. Fail the
+standard reviewer uses GPT-6 Sol and the adversarial reviewer uses GPT-6.1 Sol. Fail the
 run if the final JSON event reports an error, a worker stops or a comment does
 not appear; never post `Review finished` after a partial run.
 

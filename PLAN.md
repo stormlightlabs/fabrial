@@ -192,8 +192,8 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 
 - [ ] Local Pi spike, on Pi 1.x, as `docs/pi.md` lays out: `fab dispatch` for
       reviewer, verifier, adversarial reviewer and reviser; a Pi package with
-      an `agent` tool; Terra for the standard pass and Sol for the adversarial
-      pass. Run the `storm` sequence on one real pull request from a task
+      an `agent` tool; GPT-6 Sol for the standard pass and GPT-6.1 Sol for the
+      adversarial pass. Run the `storm` sequence on one real pull request from a task
       worktree, including gates, bot comments and `Review finished`. Workers
       load trusted role instructions by path and cannot reach the owner's
       GitHub credentials or push to `main`. Remove the clean worktree after
