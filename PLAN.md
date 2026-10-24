@@ -196,8 +196,8 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       adversarial pass. Run the `storm` sequence on one real pull request from a task
       worktree, including gates, bot comments and `Review finished`. Workers
       load trusted role instructions by path and cannot reach the owner's
-      GitHub credentials or push to `main`. Remove the clean worktree after
-      the pull request merges.
+      GitHub credentials or push to `main`. Remove the clean worktree only
+      after its branch tip matches the merged pull request's head.
 - [ ] Let Claude Code and Pi call the same dispatch command for fresh workers,
       passing a role, task, worktree and result without sharing session history.
 - [ ] Show the current pull request, its link and CI state in the fabrial Pi

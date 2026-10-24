@@ -172,10 +172,11 @@ change; the dispatch path must work without a TUI.
 Each task gets a worktree beside the primary checkout. Keep Cargo targets
 per worktree to avoid concurrent builds fighting over one target directory;
 use a compiler cache to share compiled work. After GitHub reports the PR
-merged, confirm the worktree is clean, remove it with `git worktree remove`,
-then delete its local branch. A squash merge may require `git branch -D`
-after confirming the PR merged. Do not delete an open PR's worktree or a
-worktree with uncommitted changes.
+merged, compare its recorded head SHA with the worktree's branch tip and
+confirm the worktree is clean. If either differs, stop: there may be local
+work to keep. Otherwise remove it with `git worktree remove`, then delete
+its local branch. A squash merge may require `git branch -D` after those
+checks. Do not delete an open PR's worktree.
 
 ## Open questions
 
