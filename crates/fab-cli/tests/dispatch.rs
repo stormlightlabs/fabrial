@@ -385,7 +385,7 @@ fn blocker_report_stops_worker_and_persists_only_redacted_data() {
 
 #[test]
 fn recovery_is_idempotent_and_retains_uncertain_credentials_or_live_owners() {
-    for mode in ["invalid-token", "transport-failure", "live-owner"] {
+    for mode in ["invalid-token", "transport-failure", "live-owner", "unpersisted-token"] {
         let f = Fixture::new("revoke-fail");
         assert!(!f.run().status.success());
         let id = uuid::Uuid::new_v4().to_string();
@@ -407,6 +407,14 @@ fn recovery_is_idempotent_and_retains_uncertain_credentials_or_live_owners() {
             serde_json::from_str(&fs::read_to_string(f.private.join("request.json")).unwrap()).unwrap();
         request["record"] = json!(directory.join("worker.json"));
         fs::write(f.private.join("request.json"), request.to_string()).unwrap();
+        if mode == "unpersisted-token" {
+            fs::remove_file(f.private.join("installation-token")).unwrap();
+            fs::write(
+                f.private.join("revocation-failed"),
+                b"token was issued but not persisted",
+            )
+            .unwrap();
+        }
         script(&f.bin.join("tmux"), "exit 1");
         let calls = f.temp.path().join("recovery-calls");
         let response = if mode == "invalid-token" {

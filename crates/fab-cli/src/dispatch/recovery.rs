@@ -98,6 +98,9 @@ pub(super) fn recover(root: &Path, worker: &mut WorkerRecord) -> Result<()> {
         return Err("worker processes may still be alive; private recovery state retained".into());
     }
     if private_exists {
+        if private.join("revocation-failed").exists() {
+            return Err("issued token invalidation unconfirmed; recovery evidence retained".into());
+        }
         let owned = worker.directory().join("cleanup-owned");
         if private.join("request.json").exists() {
             let request: Request = read_json(&private.join("request.json"))?;
