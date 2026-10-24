@@ -128,7 +128,7 @@ dependencies = [
 
 [[package]]
 name = "fab-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "fab-core",
@@ -136,7 +136,7 @@ dependencies = [
 
 [[package]]
 name = "fab-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "tempfile",
