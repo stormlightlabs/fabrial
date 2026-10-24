@@ -94,18 +94,22 @@ Review finished at <full head sha>
 
 Before posting it, check that the pull request still merges. The review
 passes read the diff, not the base, so they do not see a conflict. `gh pr
-view <n> --json mergeable` must say `MERGEABLE`, or `pull_request_read` must
-give a `mergeable_state` of `clean`, `unstable` or `blocked`. GitHub answers
-`UNKNOWN` (or `unknown`) for a while after a push: read it again until it
-settles, and never post on an unknown answer.
+view <n> --json mergeable` must say `MERGEABLE`. In `pull_request_read`, a
+`mergeable_state` of `clean`, `unstable`, `blocked`, `draft` or `has_hooks`
+means it merges; the pull request is still a draft at this point, so `draft`
+is the usual answer. GitHub answers `UNKNOWN` (or `unknown`) for a while after
+a push: read it again until it settles, and never post on an unknown answer.
 
-On `CONFLICTING` (or `dirty`), merge `main` into the branch with a merge
-commit, not a rebase, and resolve it. Regenerate a generated file with its
-tool rather than editing it, as `fab update` does for `.github/fabrial.toml`.
-Stop and report when both sides changed the same logic. Run the gates and
-push. When the resolution only took `main`'s side, the gate treats the new head
-as the reviewed change with the base moved; otherwise run both passes again on
-the new head before posting.
+On `behind`, merge `main` into the branch; with no conflict only the base
+moves, so the review stands. On `CONFLICTING` (or `dirty`), merge `main` with a
+merge commit, not a rebase, and resolve it. Regenerate a generated file with
+its tool rather than editing it, as `fab update` does for
+`.github/fabrial.toml`. Stop and report when both sides changed the same
+logic. Run the gates and push. A resolved conflict changes the branch's own
+diff, so the gate takes the new head as unreviewed: run both passes again on
+it before posting, or ask the owner to accept it with `/storm:ready <sha>`.
+The `resync` skill does not resolve conflicts; this step does, for the pull
+request this run reviews.
 
 Post it through the Bot comment workflow like the rest. The Review gate
 workflow then turns `storm/review` green for that head, marks the draft ready

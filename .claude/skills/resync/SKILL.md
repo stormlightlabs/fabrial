@@ -42,8 +42,8 @@ difference, whitespace included, means the change itself differs, as when
 `main` already held part of it or changed a line next to it.
 
 A conflict is a decision about the change. Abort with `git rebase --abort`,
-name the conflicting files, and stop: a `revise` pass or the operator resolves
-it.
+name the conflicting files, and stop: a `revise` pass, a `storm` run's
+**Finish** step or the operator resolves it.
 
 ## Verify and push
 
