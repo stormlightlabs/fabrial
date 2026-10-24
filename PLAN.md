@@ -195,7 +195,7 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       and a Pi package whose extension registers an `agent` tool over it and
       blocks merges and approvals in the orchestrator and every worker. Run
       the `storm` sequence from a Pi orchestrator on one real pull request.
-- [ ] Pi dispatch for every role, into tmux and Zellij, with per-role models
+- [ ] Pi dispatch for every role, into tmux, Zellij and herdr, with per-role models
       and effort caps (port thunderstorm's `internal/dispatch` and
       `internal/roles`).
 - [ ] Cloud workers: start a Claude Code or Codex cloud task for a task and
