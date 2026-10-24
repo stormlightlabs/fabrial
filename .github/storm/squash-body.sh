@@ -10,9 +10,9 @@
 # footer counts as empty. Lines that attribute the work to an agent are
 # dropped, quoted or not and in any case: trailers (Co-authored-by,
 # Claude-Session, Session), "Generated with" lines, the robot emoji, and Claude
-# Code session and Codex task links. No agent attribution reaches main. A description with nothing left gives the plain
-# `Merged from <branch>.` body. Branch PR and the Review gate both run this, so
-# the two set the same message.
+# Code session and Codex task links. No agent attribution reaches main. A
+# description with nothing left gives the plain `Merged from <branch>.` body.
+# Branch PR and the Review gate both run this, so the two set the same message.
 set -euo pipefail
 
 text=$(tr -d '\r' | awk '
