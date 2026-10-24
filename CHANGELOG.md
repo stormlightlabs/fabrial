@@ -6,6 +6,8 @@ workflow moves Unreleased under the new version's heading.
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-24
+
 - `fab update` refreshes an install and refuses to downgrade one, and
   `fab check` reports drift. `fab init` is now for the first install only.
 - The gate leaves auto-merge off on a pull request GitHub would merge now and
