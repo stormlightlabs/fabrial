@@ -283,6 +283,40 @@ reload dispose observers and their in-flight reads, not worker processes.
 Interactive and RPC modes can receive completion while idle. Print mode can
 exit after launch; the worker and result remain available through the CLI.
 
+## Real asynchronous acceptance
+
+With the three host variables set to the candidate or reviewed build, run:
+
+```sh
+node scripts/async-acceptance.mjs --worktree /absolute/linked/task-worktree
+```
+
+This opt-in test uses real subscription calls and repository-scoped tokens.
+It never substitutes an unsandboxed worker. It owns its scratch worktrees and
+Pi session, removes them on success, and retains recovery evidence on failure.
+
+The 2026-10-24 run returned `ASYNC-ACCEPTANCE-PASSED` with four workers:
+
+- Pi answered the driver while its worker was running. Closing and resuming Pi
+  did not cancel the worker. Completion resumed Pi without another prompt and
+  appeared exactly once in the session.
+- Stale-head steering was rejected; authorized steering was accepted.
+- Explicit cancellation recorded `cancelled`; deadline expiry recorded
+  `timed_out`; unexpected pane loss recovered as `failed`.
+- All four workers confirmed credential cleanup. Their private roots, sandbox
+  temporary state, panes, and worker process groups were gone. Final evidence
+  remained available from their records.
+
+The conversation worker was `5a944f0d-c4ff-4bc5-8099-d3d102d28cee`.
+Cancellation, timeout, and pane-loss records were
+`9ee1ce71-6302-4970-9a03-44f1c1a82f02`,
+`81a551ec-dc92-4975-b678-9d5e0fb14d64`, and
+`48559bf9-2a7f-4aa5-a8ab-54f3490a54bf`. Unit tests additionally cover replay
+batch boundaries, duplicate queued context, and interrupted outbox delivery.
+Host-reboot handling is tested with changed boot identities, not a physical
+reboot. The sandbox's Rust-linker `libiconv` limitation remains; Rust gates run
+on the host, not inside this acceptance worker.
+
 ## Verification
 
 `just check` includes Rust subprocess/issuer tests and Node tool tests. Rust

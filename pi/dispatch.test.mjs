@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import test from "node:test";
-import { dispatch, startWorker } from "./dispatch.mjs";
+import { dispatch, invoke, startWorker } from "./dispatch.mjs";
 import { WorkerMonitor } from "./workers.mjs";
 import { WorkerJournal, dedupeNotifications } from "./journal.mjs";
 
@@ -128,6 +128,15 @@ test("completed checkpoints still replay an undelivered notification without rel
 });
 
 const worker = { worker_id: "worker-one", run_id: "run-one", task_head: "a".repeat(40), role: "reviewer", state: "running", credential_cleanup: "pending" };
+
+test("native launch identity is captured even when dispatch exits nonzero afterward", async () => {
+  const accepted = [];
+  await assert.rejects(invoke(["dispatch"], undefined, undefined, host, fakeLaunch((child) => {
+    child.stdout.write(JSON.stringify({ type: "started", worker }) + "\n");
+    child.emit("close", 1);
+  }), (record) => { if (record.type === "started") accepted.push(record.worker.worker_id); }));
+  assert.deepEqual(accepted, [worker.worker_id]);
+});
 
 test("launch returns an accepted identity; abort after return does not cancel the worker", async () => {
   const controller = new AbortController();

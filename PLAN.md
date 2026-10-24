@@ -49,7 +49,7 @@ backends follow this milestone. The design lives in
       temporary state on completion, failure, or cancellation. Retain and
       report restricted recovery state if cleanup cannot be confirmed. Recover
       unfinished cleanup after a host restart without dispatching another agent.
-- [ ] Prove the asynchronous path on the real local sandbox. Launch a worker,
+- [x] Prove the asynchronous path on the real local sandbox. Launch a worker,
       answer the driver while it runs, and receive completion or a blocker
       without a user prompt. Test Pi restart, missed/duplicate events, stale
       controls, cancellation, timeout, unexpected pane exit, and cleanup after
@@ -59,6 +59,14 @@ backends follow this milestone. The design lives in
 Asynchronous execution does not parallelize dependent review stages. Keep
 implement → review → implement fixes → adversarial review → implement fixes
 → driver. Skip empty fix stages; events cannot add agents or review cycles.
+
+### Follow-up: queued messages during active work
+
+- [ ] Build a Pi extension that queues incoming questions and steering messages
+      while an agreed task is active. Let the driver mark an interruption as
+      urgent; otherwise answer at a safe boundary and continue the task without
+      ending the run. Show queued messages and keep them through reload/resume.
+      Do not turn queued questions into new tasks or extra worker stages.
 
 ## Decisions
 
