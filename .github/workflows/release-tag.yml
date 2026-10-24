@@ -43,6 +43,12 @@ jobs:
             echo "v$now is already released."
             exit 0
           fi
+          # gh would publish on an existing tag and ignore --target, so a tag
+          # made by hand elsewhere stops the run instead.
+          if git ls-remote --exit-code --tags origin "refs/tags/v$now" >/dev/null; then
+            echo "::error title=tag::v$now is tagged but not released; check that the tag is on $GITHUB_SHA and publish it by hand."
+            exit 1
+          fi
           # The section from this version's heading to the next heading.
           awk -v v="$now" '
             $0 ~ "^## " v "( |$)" { on = 1; next }

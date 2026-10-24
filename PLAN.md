@@ -31,7 +31,7 @@ a paid plan, so rulesets on `main` are enforced.
 - **`fab init` installs fabrial by copying.** It writes the Branch PR, Review
   gate and Bot comment workflows, `gate.sh`, `CODEOWNERS`, the skills, the
   agents and an `AGENTS.md` section into a repository, from files built into
-  the binary. `fab init --check` reports drift. While fabrial is private, a
+  the binary. `fab check` reports drift. While fabrial is private, a
   public repository such as arclightning cannot call its reusable workflows.
 - **fabrial executes it.** It picks ready tasks, claims one, runs the review
   loop on a `storm/<task>` branch in its own worktree, opens the PR, and writes

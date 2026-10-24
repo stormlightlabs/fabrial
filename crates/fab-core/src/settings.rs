@@ -80,7 +80,7 @@ impl Settings {
              # The command agents run before pushing.\n\
              gates = \"{}\"\n\
              \n\
-             # The fabrial version that wrote the installed files. `fab init --check`\n\
+             # The fabrial version that wrote the installed files. `fab check`\n\
              # compares it with its own.\n\
              version = \"{}\"\n",
             self.owner, self.trailer, self.gates, version

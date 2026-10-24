@@ -11,6 +11,6 @@ trailer = "Owais <desertthunder.dev@gmail.com>"
 # The command agents run before pushing.
 gates = "just check"
 
-# The fabrial version that wrote the installed files. `fab init --check`
+# The fabrial version that wrote the installed files. `fab check`
 # compares it with its own.
-version = "0.1.0+8057308"
+version = "0.1.0+4c2160c"

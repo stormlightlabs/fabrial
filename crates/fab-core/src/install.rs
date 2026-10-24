@@ -338,7 +338,8 @@ pub fn check(root: &Path) -> Result<Vec<Drift>, Error> {
         return Ok(drift);
     };
 
-    if settings.version.as_deref().map(release) != Some(release(&running)) {
+    // Only the release counts: a new commit with the same files is not drift.
+    if settings.version.as_deref().map(crate::release) != Some(crate::release(&running)) {
         drift.push(Drift::Version { installed: settings.version.clone(), running: running.clone() });
     }
     // The settings file is compared with the render of its own values, so a
@@ -439,12 +440,6 @@ fn codeowners(owner: &str) -> String {
          # approve them. `fab init` writes this file from `.github/fabrial.toml`.\n\
          * @{owner}\n"
     )
-}
-
-/// The part of a version before any `+build` suffix, which is what `check`
-/// compares: a new commit with the same files is not drift.
-fn release(version: &str) -> &str {
-    version.split('+').next().unwrap_or(version)
 }
 
 /// `text` with CRLF line endings turned into LF, which is what `init` writes.

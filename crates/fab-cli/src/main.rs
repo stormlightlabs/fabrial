@@ -76,9 +76,15 @@ fn main() -> ExitCode {
         }),
         Command::Update { repo, owner, trailer, gates, force } => in_repo(&repo, |dir| {
             let change = |s: &mut Settings| {
-                s.owner = owner.unwrap_or(std::mem::take(&mut s.owner));
-                s.trailer = trailer.unwrap_or(std::mem::take(&mut s.trailer));
-                s.gates = gates.unwrap_or(std::mem::take(&mut s.gates));
+                if let Some(owner) = owner {
+                    s.owner = owner;
+                }
+                if let Some(trailer) = trailer {
+                    s.trailer = trailer;
+                }
+                if let Some(gates) = gates {
+                    s.gates = gates;
+                }
             };
             install::update(dir, change, force).map(|r| written(&r, "updated"))
         }),

@@ -52,8 +52,14 @@ jobs:
             echo "::error title=version::v$VERSION is already tagged."
             exit 1
           fi
-          if ! grep -qx '## Unreleased' CHANGELOG.md; then
-            echo "::error title=changelog::CHANGELOG.md has no '## Unreleased' heading."
+          unreleased=$(awk '/^## Unreleased$/ { on = 1; next } on && /^## / { exit } on && NF' CHANGELOG.md)
+          if [[ -z $unreleased ]]; then
+            echo "::error title=changelog::CHANGELOG.md has nothing under '## Unreleased'."
+            exit 1
+          fi
+          branch="storm/release-$VERSION"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "::error title=branch::$branch exists. Delete it, or close its pull request and delete it, then run again."
             exit 1
           fi
 
@@ -63,7 +69,6 @@ jobs:
           # Unreleased stays as an empty heading above the release's.
           sed -i "s/^## Unreleased$/## Unreleased\n\n## $VERSION - $(date -u +%F)/" CHANGELOG.md
 
-          branch="storm/release-$VERSION"
           git switch -c "$branch"
           git -c user.name='stormlight-thunderbot[bot]' \
             -c user.email='340296662+stormlight-thunderbot[bot]@users.noreply.github.com' \
