@@ -8,6 +8,12 @@ stays, and replaces the generated line for the PR it names as `(#N)`.
 
 ## Unreleased
 
+## 0.3.3 - 2026-10-24
+
+- Run CI only when it has work to do (#41)
+
+- Give the controlled dispatch test more time (#40)
+
 ## 0.3.2 - 2026-10-24
 
 - An edit that lands while the Review gate posts the squash message no longer
