@@ -1,10 +1,10 @@
 //! `fab`, the fabrial command-line interface.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
-use fab_core::install;
+use clap::{Args, Parser, Subcommand};
+use fab_core::install::{self, Report};
 use fab_core::settings::Settings;
 
 /// fabrial: a software factory that takes tasks to reviewed pull requests.
@@ -17,45 +17,94 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Install fabrial's workflows, gate, skills and agents into a repository,
-    /// or report where an installed copy has drifted.
+    /// Install fabrial's workflows, gate, skills and agents into a repository
+    /// that does not have them yet.
     Init {
-        /// The repository root.
-        #[arg(long, default_value = ".")]
-        dir: PathBuf,
-        /// Report drift instead of writing; exits 1 when there is any.
-        #[arg(long)]
-        check: bool,
+        #[command(flatten)]
+        repo: Repo,
         /// GitHub login of the person who approves pull requests.
         #[arg(long)]
-        owner: Option<String>,
+        owner: String,
         /// The squash commit's Co-authored-by value, as "Name <email>".
         #[arg(long)]
-        trailer: Option<String>,
+        trailer: String,
         /// The command agents run before pushing.
         #[arg(long)]
-        gates: Option<String>,
-        /// On a first install, replace files fabrial did not write.
+        gates: String,
+        /// Replace files fabrial did not write.
         #[arg(long)]
         force: bool,
     },
+    /// Replace an installed copy's files with this build's, keeping its
+    /// settings unless a flag changes one.
+    Update {
+        #[command(flatten)]
+        repo: Repo,
+        /// A new GitHub login for the person who approves pull requests.
+        #[arg(long)]
+        owner: Option<String>,
+        /// A new Co-authored-by value for the squash commit.
+        #[arg(long)]
+        trailer: Option<String>,
+        /// A new command for agents to run before pushing.
+        #[arg(long)]
+        gates: Option<String>,
+        /// Install this build's files over a newer release's.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Report where an installed copy differs from this build; exits 1 when
+    /// there is any drift.
+    Check {
+        #[command(flatten)]
+        repo: Repo,
+    },
+}
+
+#[derive(Args)]
+struct Repo {
+    /// The repository root.
+    #[arg(long, default_value = ".")]
+    dir: PathBuf,
 }
 
 fn main() -> ExitCode {
-    match Cli::parse().command {
-        Command::Init { dir, check, owner, trailer, gates, force } => {
-            let result = install::require_repo_root(&dir).and_then(|()| {
-                if check { run_check(&dir) } else { run_init(&dir, owner, trailer, gates, force) }
-            });
-            result.unwrap_or_else(|e| {
-                eprintln!("fab: {e}");
-                ExitCode::from(2)
-            })
-        }
-    }
+    let result = match Cli::parse().command {
+        Command::Init { repo, owner, trailer, gates, force } => in_repo(&repo, |dir| {
+            let settings = Settings { owner, trailer, gates, version: None };
+            install::install(dir, &settings, force).map(|r| written(&r, "installed"))
+        }),
+        Command::Update { repo, owner, trailer, gates, force } => in_repo(&repo, |dir| {
+            let change = |s: &mut Settings| {
+                if let Some(owner) = owner {
+                    s.owner = owner;
+                }
+                if let Some(trailer) = trailer {
+                    s.trailer = trailer;
+                }
+                if let Some(gates) = gates {
+                    s.gates = gates;
+                }
+            };
+            install::update(dir, change, force).map(|r| written(&r, "updated"))
+        }),
+        Command::Check { repo } => in_repo(&repo, check),
+    };
+    result.unwrap_or_else(|e| {
+        eprintln!("fab: {e}");
+        ExitCode::from(2)
+    })
 }
 
-fn run_check(dir: &std::path::Path) -> Result<ExitCode, fab_core::Error> {
+/// Runs `run` on the repository root `repo` names, once it is known to be one.
+fn in_repo(
+    repo: &Repo, run: impl FnOnce(&Path) -> Result<ExitCode, fab_core::Error>,
+) -> Result<ExitCode, fab_core::Error> {
+    install::require_repo_root(&repo.dir)?;
+    run(&repo.dir)
+}
+
+fn check(dir: &Path) -> Result<ExitCode, fab_core::Error> {
     let drift = install::check(dir)?;
     if drift.is_empty() {
         println!("fabrial {} is installed with no drift.", fab_core::version());
@@ -67,29 +116,15 @@ fn run_check(dir: &std::path::Path) -> Result<ExitCode, fab_core::Error> {
     Ok(ExitCode::from(1))
 }
 
-fn run_init(
-    dir: &std::path::Path, owner: Option<String>, trailer: Option<String>, gates: Option<String>, force: bool,
-) -> Result<ExitCode, fab_core::Error> {
-    let existing = install::read_settings(dir)?;
-    let pick = |flag: Option<String>, old: Option<&String>, name: &str| {
-        flag.or_else(|| old.cloned())
-            .ok_or_else(|| fab_core::Error::Settings(format!("no `{name}` yet; pass --{name} on the first install")))
-    };
-    let settings = Settings {
-        owner: pick(owner, existing.as_ref().map(|s| &s.owner), "owner")?,
-        trailer: pick(trailer, existing.as_ref().map(|s| &s.trailer), "trailer")?,
-        gates: pick(gates, existing.as_ref().map(|s| &s.gates), "gates")?,
-        version: None,
-    };
-    let report = install::init(dir, &settings, force)?;
+fn written(report: &Report, done: &str) -> ExitCode {
     for path in &report.written {
         println!("wrote {}", path.display());
     }
     println!(
-        "fabrial {} installed: {} written, {} unchanged.",
+        "fabrial {} {done}: {} written, {} unchanged.",
         fab_core::version(),
         report.written.len(),
         report.unchanged.len()
     );
-    Ok(ExitCode::SUCCESS)
+    ExitCode::SUCCESS
 }

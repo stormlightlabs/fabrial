@@ -1,0 +1,68 @@
+# Tags a release when the Release workflow's pull request merges: the push to
+# main raises the workspace version and its squash commit says it came from
+# storm/release-<version>. It publishes a GitHub release with that version's
+# section of CHANGELOG.md, on the merge commit the owner approved. A revert or
+# a hand edit of the version tags nothing. If this run fails, re-run it from
+# the Actions tab once the cause is fixed; it reads only its own commit.
+name: Release tag
+
+on:
+  push:
+    branches: [main]
+    paths: [Cargo.toml]
+
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.THUNDERBOT_APP_ID }}
+          private-key: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+
+      - name: Tag and publish
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          version() {
+            sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p'
+          }
+          now=$(version < Cargo.toml)
+          before=$(git show HEAD^:Cargo.toml | version)
+          if [[ $now == "$before" || $(printf '%s\n%s\n' "$before" "$now" | sort -V | tail -n 1) != "$now" ]]; then
+            echo "The version did not rise ($before to $now); nothing to tag."
+            exit 0
+          fi
+          if ! git log -1 --format=%B | grep -qxF "Merged from storm/release-$now."; then
+            echo "::error title=release::The version rose to $now outside a Release pull request; nothing was tagged."
+            exit 1
+          fi
+          if gh release view "v$now" >/dev/null 2>&1; then
+            echo "v$now is already released."
+            exit 0
+          fi
+          # gh would publish on an existing tag and ignore --target, so a tag
+          # made by hand elsewhere stops the run instead.
+          if git ls-remote --exit-code --tags origin "refs/tags/v$now" >/dev/null; then
+            echo "::error title=tag::v$now is tagged but not released; check that the tag is on $GITHUB_SHA and publish it by hand."
+            exit 1
+          fi
+          # The section from this version's heading to the next heading.
+          awk -v v="$now" '
+            $0 ~ "^## " v "( |$)" { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error title=changelog::CHANGELOG.md has no notes under '## $now'."
+            exit 1
+          fi
+          gh release create "v$now" --target "$GITHUB_SHA" --title "v$now" --notes-file notes.md

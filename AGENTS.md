@@ -8,7 +8,7 @@ the phases.
 ## Gates
 
 ```sh
-just check    # fmt --check, clippy with warnings denied, tests, fab init --check
+just check    # fmt --check, clippy with warnings denied, tests, fab check
 ```
 
 `gates` in `.github/fabrial.toml` names this command for the skills. CI runs
@@ -44,6 +44,8 @@ Follow arclightning's conventions, since the two share crates:
 ## Plan and ledger
 
 - Include `PLAN.md` updates in the PR they describe.
+- Add a line under Unreleased in `CHANGELOG.md` for a change a repository that
+  installs fabrial would notice, in the PR that makes it.
 - The [Fabrial Ledger](https://claude.ai/artifact/FeWinSfPXLQYoGyRAHoE39)
   shows `PLAN.md`'s items and a log of pull requests from its database. When a
   PR opens or merges, update its rows in the `items` and `log` collections.
@@ -52,7 +54,8 @@ Follow arclightning's conventions, since the two share crates:
 ## Branches and pull requests
 
 This repository uses fabrial. `fab init` wrote this section and the files it
-names; `fab init --check` reports where they have drifted.
+names, `fab update` refreshes them, and `fab check` reports where they have
+drifted.
 
 - Never commit to `main`. Push a `claude/<topic>`, `codex/<topic>` or
   `storm/<task>` branch; the Branch PR workflow opens the pull request as a

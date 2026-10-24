@@ -1,7 +1,8 @@
 ## Branches and pull requests
 
 This repository uses fabrial. `fab init` wrote this section and the files it
-names; `fab init --check` reports where they have drifted.
+names, `fab update` refreshes them, and `fab check` reports where they have
+drifted.
 
 - Never commit to `main`. Push a `claude/<topic>`, `codex/<topic>` or
   `storm/<task>` branch; the Branch PR workflow opens the pull request as a
