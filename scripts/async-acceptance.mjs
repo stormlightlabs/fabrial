@@ -11,6 +11,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { invoke, workerOperation } from "../pi/dispatch.mjs";
+import { WorkerJournal } from "../pi/journal.mjs";
 
 const { values } = parseArgs({ options: { worktree: { type: "string" }, pi: { type: "string", default: "pi" } } });
 assert(values.worktree, "--worktree must name a linked task worktree, never the primary checkout");
@@ -112,6 +113,7 @@ async function cleaned(id) {
 }
 
 let complete = false;
+let sessionFile;
 try {
   await invoke(["worker", "list", "--config", host.config], undefined, undefined, host);
   mkdirSync(join(root, "sessions"), { mode: 0o700 });
@@ -120,8 +122,11 @@ try {
   assert(commands.commands.some((c) => c.name === "worker-watch"), "Fabrial extension did not load; no model prompt sent");
   const state = await first.request("get_state");
   assert(state.sessionFile, "Acceptance needs a persistent Pi session");
+  sessionFile = state.sessionFile;
   const taskFile = task("conversation", 45, "ASYNC-WORKER-PASSED");
   const accepted = first.wait((e) => e.type === "tool_execution_end" && e.toolName === "agent" && e.result?.details?.workerId);
+  // Startup can fail before we reach the await below; cleanup must still run.
+  void accepted.catch(() => {});
   await first.request("prompt", { message: `Call agent exactly once with role reviewer, taskFile ${JSON.stringify(taskFile)}, worktree ${JSON.stringify(worktree)}. Do not poll or wait. After launch reply exactly LAUNCHED. If the driver asks a question, answer it while the worker runs. When a later completion notification arrives, reply exactly ASYNC-PROOF-DONE. Never launch another worker.` });
   const event = await accepted;
   const id = event.result.details.workerId; workers.push(id);
@@ -174,10 +179,19 @@ try {
     facts.push({ case: mode, worker: id, state: result.state, cleanup: result.credential_cleanup });
   }
   complete = true;
-  console.log(JSON.stringify({ head: git("rev-parse", "HEAD"), facts, modelWorkers: workers.length, result: "ASYNC-ACCEPTANCE-PASSED" }, null, 2));
 } finally {
   for (const client of clients) await client.close();
   let uncertain = false;
+  if (sessionFile) {
+    try {
+      const entries = readFileSync(sessionFile, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+      const journal = new WorkerJournal({ entries: () => entries });
+      for (const id of journal.states.keys()) if (!workers.includes(id)) workers.push(id);
+    } catch {
+      uncertain = true;
+      console.error("YOUR ATTENTION IS REQUIRED: Pi acceptance journal could not confirm worker ownership; scratch evidence is retained.");
+    }
+  }
   for (const id of workers) {
     try {
       const worker = await op("inspect", id);
@@ -191,4 +205,6 @@ try {
   if (!uncertain) rmSync(root, { recursive: true, force: false });
   else console.error(`Recovery evidence retained at ${root}`);
   if (!complete) console.error("Acceptance failed; no success or readiness is claimed.");
+  if (uncertain) throw new Error("Acceptance cleanup unconfirmed; retained state requires attention");
 }
+console.log(JSON.stringify({ head: git("rev-parse", "HEAD"), facts, modelWorkers: workers.length, result: "ASYNC-ACCEPTANCE-PASSED" }, null, 2));
