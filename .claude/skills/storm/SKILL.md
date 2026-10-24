@@ -79,7 +79,8 @@ Nits are left in the comments for the owner; they start no revise.
 
 Dispatch each agent fresh. On Claude Code, use the Agent tool with the
 agent's name; on Codex, `spawn_agent` with `fork_turns` set to `"none"` and the
-role's text from `.claude/agents/`. A reviewer that inherits this session's
+role's text from `.claude/agents/`; on Pi, the fabrial package's `agent` tool
+with the role's name. A reviewer that inherits this session's
 history is not a fresh reader.
 
 ## Finish
