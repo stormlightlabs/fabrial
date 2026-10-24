@@ -113,8 +113,10 @@ git push -u origin <branch>
 
 The Branch PR workflow then opens the pull request as a draft from
 stormlight-thunderbot, on the push that creates the branch. Do not open one
-yourself. If the branch had no commits ahead of `main` on that push, run the
-Branch PR workflow on it from the Actions tab. It stays a draft until the
+yourself. If no pull request appears, because the branch had no commits
+ahead of `main` on that push or the run failed, run
+`gh workflow run branch-pr.yml --ref <branch>`, or ask the owner to run Branch
+PR on it from the Actions tab. It stays a draft until the
 `storm` skill's review finishes; GitHub requests the owner's review when it is
 marked ready. When the task is an issue, add `Closes #<n>` as the
 description's last line above the footer; GitHub reads the closing keyword
