@@ -114,6 +114,8 @@ async function cleaned(id) {
 
 let complete = false;
 let sessionFile;
+let conversationLaunched = false;
+let nativeLaunchUnconfirmed = false;
 try {
   await invoke(["worker", "list", "--config", host.config], undefined, undefined, host);
   mkdirSync(join(root, "sessions"), { mode: 0o700 });
@@ -127,6 +129,7 @@ try {
   const accepted = first.wait((e) => e.type === "tool_execution_end" && e.toolName === "agent" && e.result?.details?.workerId);
   // Startup can fail before we reach the await below; cleanup must still run.
   void accepted.catch(() => {});
+  conversationLaunched = true;
   await first.request("prompt", { message: `Call agent exactly once with role reviewer, taskFile ${JSON.stringify(taskFile)}, worktree ${JSON.stringify(worktree)}. Do not poll or wait. After launch reply exactly LAUNCHED. If the driver asks a question, answer it while the worker runs. When a later completion notification arrives, reply exactly ASYNC-PROOF-DONE. Never launch another worker.` });
   const event = await accepted;
   const id = event.result.details.workerId; workers.push(id);
@@ -163,8 +166,15 @@ try {
     // Native dispatch timeout is intentionally bounded separately from the observer.
     const args = ["dispatch", "reviewer", "--task", taskFile, "--worktree", path, "--trusted-checkout", host.trustedCheckout,
       "--config", host.config, "--timeout", mode === "timeout" ? "60" : "180", "--detach"];
-    const started = await invoke(args, undefined, undefined, host);
-    const id = started.worker.worker_id; workers.push(id);
+    nativeLaunchUnconfirmed = true;
+    const started = await invoke(args, undefined, undefined, host, undefined, (event) => {
+      if (event.type === "started") {
+        assert(event.worker?.worker_id, "Native launch acceptance has no worker identity");
+        if (!workers.includes(event.worker.worker_id)) workers.push(event.worker.worker_id);
+        nativeLaunchUnconfirmed = false;
+      }
+    });
+    const id = started.worker.worker_id;
     await inspectUntil(id, (w) => w.last_progress?.event === "tool_execution_start");
     if (mode === "cancel") await op("cancel", id);
     if (mode === "pane-exit") {
@@ -181,11 +191,13 @@ try {
   complete = true;
 } finally {
   for (const client of clients) await client.close();
-  let uncertain = false;
+  let uncertain = nativeLaunchUnconfirmed;
+  if (uncertain) console.error("YOUR ATTENTION IS REQUIRED: native launch ownership is unconfirmed; scratch evidence is retained.");
   if (sessionFile) {
     try {
       const entries = readFileSync(sessionFile, "utf8").trim().split("\n").map((line) => JSON.parse(line));
       const journal = new WorkerJournal({ entries: () => entries });
+      if (conversationLaunched && journal.states.size === 0) throw new Error("Pi accepted identity missing");
       for (const id of journal.states.keys()) if (!workers.includes(id)) workers.push(id);
     } catch {
       uncertain = true;
