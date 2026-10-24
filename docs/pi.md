@@ -137,6 +137,24 @@ shows progress; stdout from `fab dispatch` is JSONL progress followed by a
 nonempty text and no `errorMessage` counts as success, even if Pi exits zero.
 Provider stderr and raw tool arguments/results are not persisted.
 
+Each dispatch registers a version 1 worker record under
+`state_dir/records/<worker-id>/worker.json` before the recorder issues
+credentials. It contains run/worker UUIDs, the worktree's starting head,
+role, repository, state, result location, and owned resources: private state,
+tmux session, supervisor PID, and worker process-group PID. PIDs are last
+observations, not proof that a process is still alive or safe to signal.
+The task worktree and shared sandbox Nix root are not worker-owned resources.
+
+The recorder claims the record once and replaces updates atomically. Record
+files have mode `0600` in a `0700` directory. A validated final answer is
+redacted before being saved as `result.txt` beside the record. Both survive
+temporary issuer-state cleanup. Credential cleanup has its own pending,
+complete, or unconfirmed state; it does not imply task or worktree cleanup.
+Records contain no issuer configuration, credential values, or raw tool output.
+A missing record prevents issuance; a final record-write failure retains
+private evidence and fails dispatch. A host crash can leave the last recorded
+state stale; automatic recovery is planned, not implemented.
+
 `--timeout` defaults to 1800 seconds and accepts 1–3000 seconds, below the App
 token lifetime. Cancellation reaches the recorder, kills the worker process
 group, revokes the token, and removes worker auth state. Unexpected pane exit

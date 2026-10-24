@@ -20,6 +20,10 @@ use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+mod state;
+
+use state::WorkerRecord;
+
 const ROLES: &[&str] = &["reviewer", "verifier", "adversarial-reviewer", "reviser"];
 const GRACE: Duration = Duration::from_secs(120);
 const RECORD_LIMIT: usize = 4 * 1024 * 1024;
@@ -58,6 +62,7 @@ struct Config {
 
 #[derive(Serialize, Deserialize)]
 struct Request {
+    record: PathBuf,
     config: Config,
     role: String,
     worktree: PathBuf,
@@ -576,6 +581,7 @@ fn collect(
         .stderr(Stdio::null())
         .process_group(0);
     let mut child = Process(command.spawn().map_err(|_| "worker could not start")?);
+    progress(json!({"type": "worker_started", "pid": child.0.id()}))?;
     let stdout = child.0.stdout.take().unwrap();
     let (tx, rx) = mpsc::sync_channel(16);
     thread::spawn(move || records(stdout, tx));
@@ -628,6 +634,16 @@ fn signals() -> Result<Arc<AtomicBool>> {
 }
 
 fn recorder(private: &Path, request: &Request) -> u8 {
+    let mut worker = match WorkerRecord::open(&request.record).and_then(|mut worker| {
+        worker.start(private)?;
+        Ok(worker)
+    }) {
+        Ok(worker) => worker,
+        Err(error) => {
+            emit(&json!({"type": "error", "message": error}));
+            return 1;
+        }
+    };
     let interrupted = match signals() {
         Ok(flag) => flag,
         Err(_) => return 1,
@@ -686,7 +702,13 @@ fn recorder(private: &Path, request: &Request) -> u8 {
             command,
             deadline.saturating_duration_since(Instant::now()),
             cancelled,
-            |e| output(private, &e),
+            |e| {
+                if e["type"] == "worker_started" {
+                    worker.worker_started(e["pid"].as_u64().ok_or("worker PID missing")? as u32)
+                } else {
+                    output(private, &e)
+                }
+            },
         )?;
         for secret in [
             Some(token.as_str()),
@@ -698,10 +720,13 @@ fn recorder(private: &Path, request: &Request) -> u8 {
         {
             text = text.replace(secret, "[redacted]");
         }
+        worker.result(&text)?;
         output(private, &json!({"type": "result", "text": text}))
     })();
+    let cancellation_observed = cancelled();
+    let deadline_exceeded = Instant::now() >= deadline;
     let mut status = u8::from(result.is_err());
-    if let Err(error) = result {
+    if let Err(error) = &result {
         let _ = output(private, &json!({"type": "error", "message": error}));
     }
     let cleanup = (|| {
@@ -722,6 +747,18 @@ fn recorder(private: &Path, request: &Request) -> u8 {
         let _ = output(
             private,
             &json!({"type": "error", "message": "credential cleanup unconfirmed; private state retained"}),
+        );
+    }
+    if worker
+        .finish(&result, cleanup.is_ok(), cancellation_observed, deadline_exceeded)
+        .is_err()
+    {
+        status = 1;
+        // Do not let the caller discard evidence if the durable record was not committed.
+        let _ = fs::remove_file(private.join("cleanup-complete"));
+        let _ = output(
+            private,
+            &json!({"type": "error", "message": "worker record unconfirmed; private state retained"}),
         );
     }
     if write(&private.join("status"), status.to_string()).is_err() {
@@ -868,7 +905,25 @@ fn dispatch(options: Options) -> Result<u8> {
             &p.join("input/skills").join(name),
         )?;
     }
+    let mut git = host_command("git")?;
+    git.arg("-C").arg(&worktree).args(["rev-parse", "--verify", "HEAD"]);
+    let task_head = String::from_utf8(execute(git, None, Duration::from_secs(30))?)
+        .map_err(|_| "invalid task head")?
+        .trim()
+        .to_string();
+    if ![40, 64].contains(&task_head.len()) || !task_head.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("invalid task head".into());
+    }
+    let worker = WorkerRecord::create(
+        &config.state_dir,
+        &options.role,
+        &config.repository,
+        &worktree,
+        task_head,
+        p,
+    )?;
     let request = Request {
+        record: worker.path().into(),
         config,
         role: options.role,
         worktree: worktree.clone(),
@@ -886,20 +941,20 @@ fn dispatch(options: Options) -> Result<u8> {
     if binary.starts_with(&worktree) || binary.starts_with(&common) {
         return Err("fab executable must be outside worker worktree and Git metadata".into());
     }
-    let session = format!("fab-{}", uuid::Uuid::new_v4().simple());
+    let session = worker.session();
     let command = format!(
         "{} dispatch-record {}",
         quote(binary.to_str().ok_or("invalid binary path")?),
         quote(p.to_str().ok_or("invalid state path")?)
     );
     let mut tmux = host_command("tmux")?;
-    tmux.args(["new-session", "-d", "-s", &session, "-c"])
+    tmux.args(["new-session", "-d", "-s", session, "-c"])
         .arg(&worktree)
         .arg(command);
     private.started = true; // An ambiguous launch failure must retain issuer state.
     let launched = execute(tmux, None, Duration::from_secs(30));
-    let result = launched.and_then(|_| follow(p, &session, options.timeout, &interrupted));
-    wait_for_cleanup(p, &session, GRACE)?;
+    let result = launched.and_then(|_| follow(p, session, options.timeout, &interrupted));
+    wait_for_cleanup(p, session, GRACE)?;
     private.complete = true;
     result
 }
