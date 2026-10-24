@@ -145,7 +145,7 @@ esac
                     json!({"type":"message_end", "message":{"role":"user", "content":format!("[fabrial-control:{id}] instruction")}}),
                     json!({"type":"message_end", "message":{"role":"assistant", "stopReason":"stop", "content":[{"type":"text", "text":"done"}]}}),
                 ].map(|e| e.to_string()).join("' '");
-                format!("IFS= read -r steer; printf '%s\\n' '{events}'; control=\"$FAB_WORKTREE/records/worker-one/controls/{id}.sent\"; for i in {{1..100}}; do if test ! -e \"$control\"; then break; fi; sleep 0.01; done; test ! -e \"$control\"; touch \"$FAB_WORKTREE/retired-before-settlement\"")
+                format!("while IFS= read -r line; do case \"$line\" in *'[fabrial-control:{id}]'*) break;; esac; done; printf '%s\\n' '{events}'; control=\"$FAB_WORKTREE/records/worker-one/controls/{id}.sent\"; for i in {{1..1000}}; do if test ! -e \"$control\"; then break; fi; sleep 0.01; done; test ! -e \"$control\"; touch \"$FAB_WORKTREE/retired-before-settlement\"")
             },
             "blocked" => "printf '%s\\n' '{\"type\":\"entry_appended\",\"entry\":{\"customType\":\"fabrial.worker-report\",\"data\":{\"kind\":\"blocked\",\"text\":\"a-secret t-secret need driver\"}}}'; exec sleep 30".into(),
             _ => "printf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"stopReason\":\"stop\",\"content\":[{\"type\":\"text\",\"text\":\"a-secret r-secret t-secret done\"}]}}'".into(),
