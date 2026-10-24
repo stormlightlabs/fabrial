@@ -91,6 +91,12 @@ is exactly:
 Review finished at <full head sha>
 ```
 
+Before posting it, check that the pull request still merges: `gh pr view <n>
+--json mergeable` or `pull_request_read` must not report a conflict
+(`CONFLICTING`, or a `dirty` merge state). The review passes read the diff, not
+the base, so they do not see one. On a conflict, merge `main` into the branch
+as the `resync` skill says, run the gates, push, and post for the new head.
+
 Post it through the Bot comment workflow like the rest. The Review gate
 workflow then turns `storm/review` green for that head, marks the draft ready
 and turns on auto-merge. A pull request that GitHub would merge already takes

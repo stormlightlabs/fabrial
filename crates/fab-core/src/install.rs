@@ -267,7 +267,9 @@ pub fn init(root: &Path, settings: &Settings, force: bool) -> Result<Report, Err
         return Err(Error::Unmanageable(bad));
     }
     let first_install = !root.join(SETTINGS_PATH).exists();
-    let files = expected_files(settings, &version());
+    // The release alone, so a new commit leaves the settings file as it is
+    // and pull requests do not all change the same line.
+    let files = expected_files(settings, crate::VERSION);
 
     let agents = root.join(AGENTS_PATH);
     let current = read_optional(&agents)?;
@@ -617,7 +619,7 @@ mod tests {
         install(dir.path(), &settings(), false).unwrap();
         let path = dir.path().join(SETTINGS_PATH);
         let newer = fs::read_to_string(&path).unwrap().replace(
-            &format!(r#"version = "{}""#, crate::version()),
+            &format!(r#"version = "{}""#, crate::VERSION),
             r#"version = "99.0.0+abc1234""#,
         );
         fs::write(&path, newer).unwrap();
@@ -627,7 +629,7 @@ mod tests {
         assert_eq!(check(dir.path()).unwrap(), vec![]);
 
         let text = fs::read_to_string(&path).unwrap().replace(
-            &format!(r#"version = "{}""#, crate::version()),
+            &format!(r#"version = "{}""#, crate::VERSION),
             r#"version = "0.3.0-rc.1""#,
         );
         fs::write(&path, text).unwrap();
@@ -659,20 +661,22 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         init(dir.path(), &settings(), false).unwrap();
         let path = dir.path().join(SETTINGS_PATH);
-        let text = fs::read_to_string(&path).unwrap().replace(&version(), "0.0.1+old");
+        let text = fs::read_to_string(&path).unwrap().replace(crate::VERSION, "0.0.1");
         fs::write(&path, text).unwrap();
         let drift = check(dir.path()).unwrap();
-        assert!(matches!(&drift[..], [Drift::Version { installed: Some(v), .. }] if v == "0.0.1+old"));
+        assert!(matches!(&drift[..], [Drift::Version { installed: Some(v), .. }] if v == "0.0.1"));
     }
 
     #[test]
-    fn check_ignores_a_new_commit_of_the_same_release() {
+    fn init_records_the_release_alone_and_check_accepts_an_older_stamp() {
         let dir = tempfile::tempdir().unwrap();
         init(dir.path(), &settings(), false).unwrap();
         let path = dir.path().join(SETTINGS_PATH);
-        let text = fs::read_to_string(&path)
-            .unwrap()
-            .replace(&version(), &format!("{}+other", crate::VERSION));
+        let stamp = format!(r#"version = "{}""#, crate::VERSION);
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.lines().any(|l| l == stamp), "{text}");
+        // Releases before 0.3 recorded the commit too.
+        let text = text.replace(&stamp, &format!(r#"version = "{}+abc1234""#, crate::VERSION));
         fs::write(&path, text).unwrap();
         assert_eq!(check(dir.path()).unwrap(), vec![]);
     }
