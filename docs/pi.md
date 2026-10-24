@@ -100,8 +100,9 @@ fab dispatch reviewer --task /private/task.txt \
 Dispatch reads roles from the explicit trusted checkout's `.claude/agents` and
 models from `.github/fabrial-roles.toml`. `fab init` and `fab update` install
 that roles file. Reviewer uses `openai/gpt-6-sol`; the other three roles use
-`openai/gpt-6.1-sol`. All four use `low` thinking. A missing or invalid role
-configuration fails with the role's name; there is no fallback model.
+`openai/gpt-6.1-sol`. Reviewer and adversarial reviewer use `medium` thinking;
+verifier and reviser use `low`. A missing or invalid role configuration fails
+with the role's name; there is no fallback model.
 
 The role tool mapping is `Read` → `read`, `Grep` → `grep`, `Glob` → `find,ls`,
 `Bash` → `bash`, `Write` → `write`, and `Edit` → `edit`. Unmapped tools,
@@ -174,13 +175,16 @@ auth, token scope, redaction, cancellation during issuance, deadline expiry,
 worker failure, timeout, revocation, and retained cleanup state. They never
 access Keychain or BWS.
 
-The implementer sandbox has neither Nix nor tmux. The orchestrator must build
-the wrapper on the host and test real pane exit, cancellation, timeout, Git
-push, Rust builds, App issuance/revocation, and subscription execution. Check
-that both denied Mach lookups fail while HTTPS and Pi tools work. The supplied
-patch and the earlier Python launcher have host evidence; the Rust port still
-needs its own host integration check. Do not mark the real-PR review proof complete until the
-separate fresh readers finish it.
+PR #21 exercised the Pi `agent` tool through Rust dispatch, real App issuance,
+subscription authentication, tmux, and the pinned sandbox. A fresh adversarial
+review completed, and the tmux session exited. Host checks also confirmed the
+two denied Mach lookups while HTTPS and Pi tools worked.
+
+Forced cancellation, timeout, and unexpected pane death still need live host
+checks for the Rust port. Its subprocess regressions cover cleanup failures.
+Rust builds inside the dispatched worker could not link `libiconv`; host gates
+and CI passed. The earlier bootstrap workers could build and push, but that
+is not proof of those operations through the shipped Rust launcher.
 
 Implementer dispatch, herdr, Zellij, daemon renewal, Claude Code integration,
 and the [status area](pi-statusline.md) are later work. For unfinished work

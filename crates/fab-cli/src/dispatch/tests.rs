@@ -27,7 +27,10 @@ fn roles_tools_and_no_fallback() {
         assert!(unmapped.contains(&"mcp__github__pull_request_read".into()));
         assert!(!body.is_empty());
         let (model, thinking) = role_config(&root(), role).unwrap();
-        assert_eq!(thinking, "low");
+        assert_eq!(
+            thinking,
+            if ["reviewer", "adversarial-reviewer"].contains(role) { "medium" } else { "low" }
+        );
         assert_eq!(
             model,
             if *role == "reviewer" { "openai/gpt-6-sol" } else { "openai/gpt-6.1-sol" }

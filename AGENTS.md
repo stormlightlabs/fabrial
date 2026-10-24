@@ -5,6 +5,31 @@ review, adversarial review and revise until a pull request is ready for a
 person to merge. The CLI is `fab`. [PLAN.md](PLAN.md) holds the decisions and
 the phases.
 
+## Delivery sequence
+
+Run this sequence once per task:
+
+1. Implement the task, including integration checks and required gates.
+2. Review with one fresh standard reviewer.
+3. Implement the accepted review fixes.
+4. Review with one fresh adversarial reviewer.
+5. Implement the accepted adversarial fixes, then hand the PR to the driver.
+
+Check host tools, credentials, permissions, and isolation early. Run the smallest
+real end-to-end integration smoke during implementation, before review. Report
+missing prerequisites and host-only failures as soon as they appear.
+
+Skip a fix stage when there are no actionable findings. After the final fixes,
+run the required gates, post `Review finished at <head>`, and hand off. Do not
+start another review cycle or wait for the driver's approval.
+
+This sequence takes precedence over extra verifier stages or dispatch loops in
+skills. Reviewers must validate their own findings. Extra agents, review passes,
+probes, helper scripts, or polish require the driver's explicit request.
+Apply corrections to the current stage without repeating completed stages.
+If a blocker prevents finishing a stage, report it and hand off; do not dispatch
+more agents to work around it. Never mark an incomplete review finished.
+
 ## Gates
 
 ```sh

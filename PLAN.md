@@ -61,8 +61,10 @@ a paid plan, so rulesets on `main` are enforced.
   with" and "Not covered" never reach `main`: verification goes in the review
   comment and in arcl's completion evidence. PR bodies stay short.
 - **The agent that opens a PR reviews it,** in its own Claude Code (or Codex)
-  session: one standard review and one adversarial review by fresh agents,
-  each checked by a verifier and followed by a revise. It ends with
+  session: implement, one standard review by a fresh agent, implement its fixes,
+  one adversarial review by a fresh agent, implement its fixes, then hand off
+  to the driver. Skip fix stages without actionable findings. Extra verifier
+  stages or review cycles require the driver's request. It ends with
   `Review finished at <sha>`. A model-free workflow turns the required
   `storm/review` check green when that comment names the head. It runs from
   `main` through `pull_request_target`, so a change cannot alter its own gate.
@@ -205,9 +207,14 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       issuance, deadline expiry, worker failure, revocation, and retained
       cleanup state. App JWT requests use curl Bearer headers over stdin;
       installation-token requests stay on GitHub CLI. Node tests cover the Pi tool.
-- [ ] Host-check the Rust Nix/tmux launcher, issuer cleanup, subscription auth,
-      denied Mach lookups, Git push, and Rust gates inside its worker sandbox.
-      The Python launcher's earlier host smoke does not verify the Rust port.
+- [x] Exercise the Pi `agent` tool through Rust dispatch, real App issuance,
+      subscription auth, tmux, and the pinned sandbox on PR #21. A fresh
+      adversarial review completed and the tmux session exited. Standard review
+      and its cleanup revision ran in fresh bootstrap workers.
+- [ ] Host-check forced cancellation, timeout, unexpected pane death, Git push,
+      and Rust gates through the shipped Rust launcher. The dispatched worker
+      could not link `libiconv`; host gates and CI passed. Earlier bootstrap
+      builds and pushes do not verify these operations through Rust dispatch.
 - [ ] Make sandbox settings configurable for deployment needs. Keep the
       pinned isolation policy fixed for this spike; choose the settings and
       validation before adding configuration options.
