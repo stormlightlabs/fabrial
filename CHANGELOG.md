@@ -6,6 +6,13 @@ workflow moves Unreleased under the new version's heading.
 
 ## Unreleased
 
+- The squash message the Review gate posts ends its subject with the pull
+  request number, such as `Add Pi dispatch (#21)`.
+
+- Release tag finds the release pull request from the merge commit, so a
+  release merged with any squash message is tagged. Run it from the Actions
+  tab with a commit to tag a release merge it missed.
+
 ## 0.3.0 - 2026-10-24
 
 - The Review gate no longer turns on auto-merge. A finished review marks the

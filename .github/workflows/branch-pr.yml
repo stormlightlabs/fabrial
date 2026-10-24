@@ -7,9 +7,9 @@
 # hand or by an agent is kept. The PR stays a draft until its review finishes;
 # the Review gate then marks it ready and posts the squash message, and the
 # owner merges it, by hand or with auto-merge. Nothing here turns auto-merge
-# on. The squash commit takes the PR title, and its body from the PR body through
-# .github/storm/squash-body.sh, whose only trailer is a Co-authored-by line for
-# the owner.
+# on. The suggested squash message takes the PR title and number, and its body
+# from the PR body through .github/storm/squash-body.sh, whose only trailer is a
+# Co-authored-by line for the owner.
 name: Branch PR
 
 on:

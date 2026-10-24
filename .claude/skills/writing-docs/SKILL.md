@@ -57,8 +57,9 @@ line and a line count measures nothing. Those are counted in words.
 | `SKILL.md`                       | lines      | 200    |
 | Docs page, README, internal spec | lines      | 300    |
 
-The pull request title is the subject of the squash commit on `main`. The body
-never reaches `main`: the squash commit carries the title, a `Merged from`
+The pull request title and number are the subject of the squash commit on
+`main`, such as `Add Pi dispatch (#21)`. The body above its
+`<!-- fabrial:footer` line becomes the squash body, followed by a `Merged from`
 line and the owner's trailer. Keep the body to what changed and why, and put
 verification in a pull request comment.
 

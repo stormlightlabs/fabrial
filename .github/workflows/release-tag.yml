@@ -1,15 +1,22 @@
 # Tags a release when the Release workflow's pull request merges: the push to
-# main raises the workspace version and its squash commit says it came from
-# storm/release-<version>. It publishes a GitHub release with that version's
-# section of CHANGELOG.md, on the merge commit the owner approved. A revert or
-# a hand edit of the version tags nothing. If this run fails, re-run it from
-# the Actions tab once the cause is fixed; it reads only its own commit.
+# main raises the workspace version, and GitHub names storm/release-<version>
+# as the merged pull request behind the commit, whatever its squash message
+# says. It publishes a GitHub release with that version's section of
+# CHANGELOG.md, on the merge commit the owner approved. A revert or a hand edit
+# of the version tags nothing. To tag a release merge a run missed, run this
+# from the Actions tab with that commit; a re-run uses the workflow as it was
+# at that commit.
 name: Release tag
 
 on:
   push:
     branches: [main]
     paths: [Cargo.toml]
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: The release pull request's merge commit on main
+        required: true
 
 permissions:
   contents: read
@@ -26,12 +33,21 @@ jobs:
 
       - uses: actions/checkout@v5
         with:
+          ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 2
 
       - name: Tag and publish
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
         run: |
+          sha=$(git rev-parse HEAD)
+          # A dispatched commit must be on main, not only somewhere in the repository.
+          status=$(gh api "repos/$REPO/compare/$sha...main" --jq .status)
+          if [[ $status != ahead && $status != identical ]]; then
+            echo "::error title=release::$sha is not on main; nothing was tagged."
+            exit 1
+          fi
           version() {
             sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p'
           }
@@ -41,8 +57,21 @@ jobs:
             echo "The version did not rise ($before to $now); nothing to tag."
             exit 0
           fi
-          if ! git log -1 --format=%B | grep -qxF "Merged from storm/release-$now."; then
-            echo "::error title=release::The version rose to $now outside a Release pull request; nothing was tagged."
+          # The commit must be the merge of a storm/release-<version> pull
+          # request from this repository; the owner's approval of it is the
+          # gate. GitHub can take a moment to link a fresh merge to its pull
+          # request, so ask three times.
+          set -o pipefail
+          for attempt in 1 2 3; do
+            release=$(gh api "repos/$REPO/commits/$sha/pulls" | jq --arg sha "$sha" --arg ref "storm/release-$now" --arg repo "$REPO" \
+              '[.[] | select(.merge_commit_sha == $sha and .merged_at != null and .head.ref == $ref
+                and .head.repo.full_name == $repo)] | length')
+            [[ $release =~ ^[0-9]+$ ]] || { echo "::error title=release::Cannot read the pull request behind $sha."; exit 1; }
+            (( release > 0 )) && break
+            (( attempt < 3 )) && sleep 10
+          done
+          if (( release == 0 )); then
+            echo "::error title=release::The version rose to $now outside a storm/release-$now pull request; nothing was tagged. If it was one, run Release tag from the Actions tab with $sha."
             exit 1
           fi
           if gh release view "v$now" >/dev/null 2>&1; then
@@ -52,7 +81,7 @@ jobs:
           # gh would publish on an existing tag and ignore --target, so a tag
           # made by hand elsewhere stops the run instead.
           if git ls-remote --exit-code --tags origin "refs/tags/v$now" >/dev/null; then
-            echo "::error title=tag::v$now is tagged but not released; check that the tag is on $GITHUB_SHA and publish it by hand."
+            echo "::error title=tag::v$now is tagged but not released; check that the tag is on $sha and publish it by hand."
             exit 1
           fi
           # The section from this version's heading to the next heading.
@@ -65,4 +94,4 @@ jobs:
             echo "::error title=changelog::CHANGELOG.md has no notes under '## $now'."
             exit 1
           fi
-          gh release create "v$now" --target "$GITHUB_SHA" --title "v$now" --notes-file notes.md
+          gh release create "v$now" --target "$sha" --title "v$now" --notes-file notes.md

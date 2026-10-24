@@ -50,7 +50,7 @@ for (const autoMergeRequest of [null, { mergeMethod: "SQUASH", commitHeadline: "
     assert.equal(status, 0, stderr);
     assert(calls.some(c => c.args[0] === "pr" && c.args[1] === "ready"));
     const message = calls.find(c => c.args[1] === "comment")?.body;
-    assert(message?.includes("Test change") && message.includes("Merged from storm/test.") && message.includes("Co-authored-by:"));
+    assert(message?.includes("Test change (#1)\n") && message.includes("Merged from storm/test.") && message.includes("Co-authored-by:"));
     assert.equal(message.includes("Auto-merge is on"), Boolean(autoMergeRequest));
     assert(calls.some(c => c.args.includes("conclusion=success")));
     assert(!calls.some(c => c.args[1] === "merge"), "the gate must not touch auto-merge");
@@ -116,3 +116,14 @@ for (const [permission, posts] of [["write", true], ["read", false]]) {
     assert.equal(calls.some(c => c.args.some(a => a.includes("collaborators/someone/permission"))), true);
   });
 }
+
+test("a title ending with another number still gets its own", () => {
+  const { calls } = gate(finished, { title: "Fix (#12)" });
+  assert(calls.find(c => c.args[1] === "comment").body.includes("Fix (#12) (#1)\n"));
+});
+
+test("a title that already ends with its number keeps one", () => {
+  const { calls } = gate(finished, { title: "Test change (#1)" });
+  const message = calls.find(c => c.args[1] === "comment").body;
+  assert(message.includes("Test change (#1)\n") && !message.includes("(#1) (#1)"));
+});

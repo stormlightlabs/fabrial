@@ -95,7 +95,8 @@ unit test. Check what you claim about the output against the output itself.
 ## Commit and push
 
 The first commit's subject becomes the pull request title, and the title
-becomes the subject of the squash commit on `main`. Make it under 60
+becomes the subject of the squash commit on `main`, followed by the pull
+request number, such as `Add Pi dispatch (#21)`. Make it under 60
 characters, in the imperative, saying what changed. Later commits on the branch
 are discarded at merge.
 
