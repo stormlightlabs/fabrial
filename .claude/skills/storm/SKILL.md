@@ -122,6 +122,8 @@ never on a command a comment carries.
 
 Any of these ends the run without `Review finished`. Report the reason.
 
+- The implementer stopped before pushing, for example because arcl refused to
+  start the task.
 - A fix needs a decision the task and its spec do not record.
 - A gate fails and the fix is outside the task.
 - The pull request is labelled `storm:stopped`.
