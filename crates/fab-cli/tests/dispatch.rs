@@ -128,6 +128,7 @@ esac
         let worker = match mode {
             "failure" => "printf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"stopReason\":\"error\",\"errorMessage\":\"a-secret\"}}'".to_string(),
             "worker-timeout" | "worker-cancel" => "exec sleep 30".into(),
+            "blocked" => "printf '%s\\n' '{\"type\":\"entry_appended\",\"entry\":{\"customType\":\"fabrial.worker-report\",\"data\":{\"kind\":\"blocked\",\"text\":\"a-secret t-secret need driver\"}}}'; exec sleep 30".into(),
             _ => "printf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"stopReason\":\"stop\",\"content\":[{\"type\":\"text\",\"text\":\"a-secret r-secret t-secret done\"}]}}'".into(),
         };
         script(
@@ -144,7 +145,14 @@ test ! -e {}
 [[ "$*" = *--no-context-files* ]]
 [[ "$*" = *--no-extensions* ]]
 ! grep -q owner-secret "$FAB_STATE/auth.json"
+IFS= read -r ready
+[[ "$ready" = *'"type":"get_commands"'* ]]
+printf '%s\n' '{{"type":"response","id":"ready","success":true,"data":{{"commands":[{{"name":"fabrial-worker-ready"}}]}}}}'
+IFS= read -r prompt
+[[ "$prompt" = *'"type":"prompt"'* ]]
+printf '%s\n' '{{"type":"response","id":"initial","success":true,"data":{{"disposition":"started"}}}}'
 {worker}
+printf '%s\n' '{{"type":"agent_settled","aborted":false}}'
 "#,
                 quote(&p.join("launched")),
                 quote(&private.join("app.pem"))
@@ -328,6 +336,19 @@ fn final_record_write_failure_retains_durable_evidence() {
     assert!(f.logs().contains("worker record unconfirmed"));
     assert!(directory.join("result.txt").exists());
     assert_eq!(f.record()["state"], "running");
+}
+
+#[test]
+fn blocker_report_stops_worker_and_persists_only_redacted_data() {
+    let f = Fixture::new("blocked");
+    assert!(!f.run().status.success());
+    assert_eq!(f.record()["state"], "blocked");
+    assert_eq!(f.record()["report"]["text"], "[redacted] [redacted] need driver");
+    assert_eq!(f.record()["credential_cleanup"], "complete");
+    assert!(f.temp.path().join("revoked").exists());
+    assert!(!f.private.exists());
+    assert!(!f.logs().contains("a-secret"));
+    assert!(!f.logs().contains("t-secret"));
 }
 
 #[test]
