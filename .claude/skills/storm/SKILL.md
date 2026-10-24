@@ -72,8 +72,10 @@ its revise. It runs once per pull request, never in a loop.
    pushes and replies.
 5. **Adversarial pass.** Pin the new head. Dispatch the `adversarial-reviewer`
    agent with it, the standard pass's findings and the reviser's reply.
-6. **Verify, post and revise** as in steps 2 to 4, opening the comment with
-   `Adversarial pass on <short sha> · <model>`.
+6. **Verify and revise** as in steps 2 and 4, but tell the reviser to report
+   back rather than reply on the pull request. The findings and its report
+   go in the Finish comment, under `Adversarial pass on <short sha> ·
+   <model>`, so the run posts one comment fewer.
 
 Nits are left in the comments for the owner; they start no revise.
 
@@ -91,6 +93,9 @@ is exactly:
 ```text
 Review finished at <full head sha>
 ```
+
+Below a blank line, the same comment carries the adversarial pass's findings
+and what the revise did about them. Each comment is one Bot comment run.
 
 Before posting it, check that the pull request still merges. The review
 passes read the diff, not the base, so they do not see a conflict. `gh pr

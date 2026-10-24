@@ -1,5 +1,9 @@
 # The check a pull request into main must pass. The ruleset on main requires
-# the job named `check`.
+# the job named `check`, so the job always runs and reports. On a pull request
+# that changes only PLAN.md, README.md, CHANGELOG.md or docs/, nothing here
+# reads those files, so it passes without building. A newer push to the same
+# pull request cancels the run still going. The run on main builds the cache
+# that pull requests restore.
 name: Check
 
 on:
@@ -10,19 +14,50 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+
+concurrency:
+  group: check-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      - name: Find what changed
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          build=true
+          if [[ -n $PR ]]; then
+            # The files API pages past the diff endpoint's size limits. A
+            # rename counts its old path too. When the call fails the list is
+            # empty, and at the API's 3000-file cap it may be cut short; both
+            # build.
+            files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" \
+              --jq '.[] | .filename, (.previous_filename // empty)') || files=
+            if [[ -n $files ]] && (( $(wc -l <<<"$files") < 3000 )) && ! grep -qvE '^(PLAN\.md|README\.md|CHANGELOG\.md|docs/.+)$' <<<"$files"; then
+              build=false
+              echo "Only documentation changed; nothing to build."
+            fi
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v5
+        if: steps.scope.outputs.build == 'true'
 
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.scope.outputs.build == 'true'
         with:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
+        if: steps.scope.outputs.build == 'true'
 
       - uses: extractions/setup-just@v3
+        if: steps.scope.outputs.build == 'true'
 
       - run: just check
+        if: steps.scope.outputs.build == 'true'

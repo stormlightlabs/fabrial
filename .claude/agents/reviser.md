@@ -21,7 +21,8 @@ never weaken, skip or delete a test to clear a finding.
 Run the narrowest relevant test, then the gates (the command `gates` names in
 `.github/fabrial.toml`). Push to the pull request's branch and confirm it landed
 before writing a reply that names a commit. Post one reply listing each finding
-and its outcome, under 150 words, through the Bot comment workflow. `Fixed in
+and its outcome, under 150 words, through the Bot comment workflow, unless your
+invoker asks you to report back instead; then return the reply to it. `Fixed in
 <sha>` is a complete outcome.
 
 The `revise` skill's stop conditions are yours too, and each stop is an
