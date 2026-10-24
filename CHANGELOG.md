@@ -6,6 +6,8 @@ workflow moves Unreleased under the new version's heading.
 
 ## Unreleased
 
+## 0.3.0 - 2026-10-24
+
 - The Review gate no longer turns on auto-merge. A finished review marks the
   pull request ready, sets `storm/review` and posts the squash message; the
   owner merges it by hand or turns on auto-merge. `/storm:stop` still turns
