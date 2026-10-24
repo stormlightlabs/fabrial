@@ -217,6 +217,11 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       orchestrate.
 - [ ] Dashboard: runs, steps, logs, and the same operations the comments
       trigger.
+- [ ] Explore [Mire](https://github.com/stormlightlabs/mire) for the owner's
+      review of fabrial pull requests. It already captures a Git comparison
+      in a review file, accepts agent findings and records human decisions.
+      Try it on one pull request, then decide how findings reach the existing
+      review comments without making Mire a second approval gate.
 
 ## 9. Migration
 
