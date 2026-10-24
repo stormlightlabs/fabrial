@@ -27,6 +27,7 @@ crates/fab-cli    the `fab` binary
                   squash-body.sh, which turns a PR body into the squash body
 .github/fabrial.toml  the owner, the squash trailer and the gate command
 docs/hosts.md     what each host reads, and where they differ
+docs/pi.md        the design for running fabrial on Pi 1.x
 PLAN.md           decisions and phases
 AGENTS.md         this file (CLAUDE.md links to it)
 ```

@@ -21,6 +21,8 @@ under `.claude/skills/`.
 `.agents/skills` is a symlink to `.claude/skills`, so the one copy serves all
 three. Pi reads a skill under `.agents/skills` only as a subdirectory holding
 `SKILL.md`, which is the form used here, and only once the project is trusted.
+Pi 1.4.0's docs confirm that it follows the symlink and does not read
+`.claude/skills`; `docs/pi.md` covers Pi 1.x.
 
 Claude Code answers `/<name>` for a project skill and passes the rest of the
 line as arguments, so no command files are needed. `argument-hint` in the
@@ -33,7 +35,7 @@ frontmatter shows what to pass. Codex invokes a skill by name; Pi names one
 | ----------- | ------------------------ | ------------------------------ |
 | Claude Code | `.claude/agents/*.md`    | Markdown with frontmatter      |
 | Codex       | `.codex/agents/*.toml`   | TOML, in a trusted project     |
-| Pi          | nothing                  | no subagents; dispatch starts a session per role |
+| Pi          | nothing                  | no subagents; dispatch starts a session per role ([`docs/pi.md`](pi.md)) |
 
 The roles live once, in `.claude/agents/`. On Codex and Pi, the orchestrator
 reads a role's Markdown and passes its body as the instructions of a built-in

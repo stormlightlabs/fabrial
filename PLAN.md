@@ -190,8 +190,13 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 
 ## 6. Workers
 
-- [ ] Pi dispatch into tmux and zellij, with roles and effort caps (port
-      thunderstorm's `internal/dispatch` and `internal/roles`).
+- [ ] Pi spike, on Pi 1.x, as `docs/pi.md` lays out: `fab dispatch` for the
+      reviewer role in a tmux window, and a Pi package whose extension
+      registers an `agent` tool over it and blocks merges and approvals. Run
+      the `storm` sequence from a Pi orchestrator on one real pull request.
+- [ ] Pi dispatch for every role, into tmux and Zellij, with per-role models
+      and effort caps (port thunderstorm's `internal/dispatch` and
+      `internal/roles`).
 - [ ] Cloud workers: start a Claude Code or Codex cloud task for a task and
       follow its branch.
 - [ ] Jules spike.
