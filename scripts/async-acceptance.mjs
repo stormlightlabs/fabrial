@@ -113,6 +113,7 @@ async function cleaned(id) {
 
 let complete = false;
 try {
+  await invoke(["worker", "list", "--config", host.config], undefined, undefined, host);
   mkdirSync(join(root, "sessions"), { mode: 0o700 });
   const first = new Rpc();
   const commands = await first.request("get_commands");
