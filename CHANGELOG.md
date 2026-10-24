@@ -9,6 +9,10 @@ workflow moves Unreleased under the new version's heading.
 - Keep completed reviews green for native GitHub stacks. GitHub does not support
   their auto-merge, so the bot posts the squash message for manual stack merging.
 
+- Make the Pi `agent` tool return a worker ID after launch. A session-scoped
+  observer delivers completion and blockers without model polling. Add
+  `agent_control` and the driver-only `/worker-steer` command.
+
 - Add a pipe-based Pi RPC bridge, replayable `fab worker events`, and explicit
   head-pinned `steer`. Workers can report progress, blockers, and questions;
   blockers and questions stop the worker and return control to the driver.

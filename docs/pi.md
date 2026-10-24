@@ -236,9 +236,22 @@ export FAB_TRUSTED_CHECKOUT=/trusted/fabrial
 
 The package registers `agent` with `role`, `taskFile`, and `worktree`
 parameters. Host configuration and trusted instructions are operator-selected,
-not model-selected tool arguments. The tool calls shared `fab dispatch`,
-streams progress through `onUpdate`, forwards cancellation, throws on failure,
-and returns the final role text. It works in headless and interactive Pi.
+not model-selected tool arguments. The tool calls `fab dispatch --detach`,
+persists the accepted identity, and promptly returns the worker ID. Pi remains
+available while a session-scoped observer reads events once per second.
+Progress goes to `fabrial:worker` extension events without a model call.
+Completion or a blocker queues a custom message and triggers a turn, including
+when Pi was idle. Worker output is marked as untrusted task data.
+
+Use `agent_control` to inspect or explicitly cancel a worker. Driver steering
+uses `/worker-steer` with a JSON object containing `workerId`, `head`, and
+`message`; it is not a model-callable steering tool. Cancellation during launch
+requests worker cancellation if an identity was already accepted. Cancelling a
+later Pi turn or closing Pi does not cancel accepted workers. Shutdown and
+reload dispose observers and their in-flight reads, not worker processes.
+
+Interactive and RPC modes can receive completion while idle. Print mode can
+exit after launch; the worker and result remain available through the CLI.
 
 ## Verification
 

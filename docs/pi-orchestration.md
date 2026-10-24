@@ -2,9 +2,9 @@
 
 This is the planned coordination and lifecycle behavior for fabrial's Pi
 setup. The current Rust recorder provides worker supervision and durable
-records, detached CLI dispatch, and a worker RPC bridge. The `agent` tool
-still waits synchronously; non-blocking Pi integration is the next layer. For the shipped worker command and host setup, read
-[Pi dispatch](pi.md). The
+records, detached CLI dispatch, a worker RPC bridge, and non-blocking Pi
+integration. PR collection and restart recovery below remain planned. For the
+shipped worker command and host setup, read [Pi dispatch](pi.md). The
 [status area](pi-statusline.md) presents state; [PLAN.md](../PLAN.md) tracks
 implementation work.
 
@@ -42,8 +42,10 @@ remain untrusted data; neither can grant new authority.
 
 ## Worker communication
 
-The current tool streams progress and returns a final result. It forwards
-cancellation but does not provide ongoing two-way messaging or steering.
+The `agent` tool returns launch acceptance and observes worker events without
+holding a tool call open. Completion and blockers resume Pi; progress does not
+make model calls. Cancellation is explicit after launch. Driver steering uses
+the host bridge, not shared session history.
 
 The host bridge uses Pi JSONL RPC over anonymous stdin/stdout pipes. A private
 filesystem mailbox accepts driver-authorized steering; the worker never reads
