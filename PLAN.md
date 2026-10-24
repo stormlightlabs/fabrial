@@ -148,8 +148,9 @@ implement → review → implement fixes → adversarial review → implement fi
   they are needed.
 - **Dashboard** per machine, reusing arclightning's Svelte `packages/ui`
   (`PlanningTree`, `Readiness`, `ReviewSurface`).
-- **Releases** follow okb: a changelog line in each PR, and a workflow run that
-  tags `vX.Y.Z`. The run opens a release pull request; the tag lands on its
+- **Releases:** a workflow run opens a release pull request whose changelog
+  section lists the squash subjects since the last tag, which the owner
+  edits there; pull requests do not edit `CHANGELOG.md`. The tag lands on its
   merge commit, so nothing writes to `main` and the owner approves each
   release. Repositories install a tagged `fab` and refresh with `fab update`.
 

@@ -5,9 +5,9 @@
 #
 # The section lists the lines under Unreleased, then one line per commit since
 # the last `v` tag behind HEAD, newest first, from its subject. A squash
-# subject ends with its pull request number, so each line names the PR. A
-# commit whose number a line under Unreleased already names gets no line of
-# its own, and the Release commits themselves are left out. Unreleased stays
+# subject ends with its pull request number, so each line names the PR. Lines
+# under Unreleased are the owner's, written by hand; a commit whose `(#N)` one
+# of them names gets no line of its own, and the Release commits themselves are left out. Unreleased stays
 # as an empty heading above the new section. The owner edits the lines in the
 # release pull request. Exits 1, changing nothing, when there is nothing to
 # list.
@@ -36,7 +36,7 @@ generated=
 while IFS= read -r subject; do
   [[ -n $subject ]] || continue
   [[ $subject =~ ^Release\ [0-9]+\.[0-9]+\.[0-9]+(\ \(#[0-9]+\))?$ ]] && continue
-  if [[ $subject =~ \(#([0-9]+)\)$ ]] && grep -qE "#${BASH_REMATCH[1]}([^0-9]|$)" <<<"$written"; then
+  if [[ $subject =~ \(#([0-9]+)\)$ ]] && grep -qF "(#${BASH_REMATCH[1]})" <<<"$written"; then
     continue
   fi
   generated+="- $subject"$'\n\n'

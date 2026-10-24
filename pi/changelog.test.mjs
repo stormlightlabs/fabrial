@@ -8,10 +8,11 @@ import test from "node:test";
 const script = fileURLToPath(new URL("../.github/release/changelog.sh", import.meta.url));
 const worktree = fileURLToPath(new URL("../", import.meta.url));
 
-// Runs changelog.sh in a scratch repository: an initial commit tagged v0.1.0
-// with `changelog` as CHANGELOG.md, then one empty commit per subject.
-// Returns the exit status, stderr and the CHANGELOG.md that results.
-function release(changelog, subjects) {
+// Runs changelog.sh in a scratch repository: an initial commit with
+// `changelog` as CHANGELOG.md, tagged v0.1.0 unless `tag` is false, then one
+// empty commit per subject. Returns the exit status, stderr and the
+// CHANGELOG.md that results.
+function release(changelog, subjects, { tag = true } = {}) {
   const target = join(worktree, "target"); mkdirSync(target, { recursive: true });
   const root = mkdtempSync(join(target, "changelog-test-"));
   try {
@@ -20,7 +21,7 @@ function release(changelog, subjects) {
     writeFileSync(join(root, "CHANGELOG.md"), changelog);
     git("add", "CHANGELOG.md");
     git("commit", "-qm", "Start");
-    git("tag", "v0.1.0");
+    if (tag) git("tag", "v0.1.0");
     for (const subject of subjects) git("commit", "-q", "--allow-empty", "-m", subject);
     const output = spawnSync("bash", [script, "0.2.0", "2026-10-25"], { cwd: root, encoding: "utf8" });
     return { status: output.status, stderr: output.stderr, changelog: readFileSync(join(root, "CHANGELOG.md"), "utf8") };
@@ -40,6 +41,22 @@ test("lines under Unreleased stay first and replace their PR's line", () => {
   const { changelog } = release(`${top}\n- Add a, in my words (#3).\n\n${older}`, ["Add a (#3)", "Fix b (#5)", "Fix c (#35)"]);
   assert.equal(changelog,
     `${top}\n## 0.2.0 - 2026-10-25\n\n- Add a, in my words (#3).\n\n- Fix c (#35)\n\n- Fix b (#5)\n\n${older}`);
+});
+
+test("a PR named in prose keeps its own line", () => {
+  const { changelog } = release(`${top}\n- Follows #5 up.\n\n${older}`, ["Fix b (#5)"]);
+  assert.equal(changelog, `${top}\n## 0.2.0 - 2026-10-25\n\n- Follows #5 up.\n\n- Fix b (#5)\n\n${older}`);
+});
+
+test("lines under Unreleased alone make a release", () => {
+  const { status, changelog } = release(`${top}\n- By hand.\n\n${older}`, []);
+  assert.equal(status, 0);
+  assert.equal(changelog, `${top}\n## 0.2.0 - 2026-10-25\n\n- By hand.\n\n${older}`);
+});
+
+test("without a tag, every commit is listed", () => {
+  const { changelog } = release(`${top}\n${older}`, ["Fix b (#5)"], { tag: false });
+  assert.equal(changelog, `${top}\n## 0.2.0 - 2026-10-25\n\n- Fix b (#5)\n\n- Start\n\n${older}`);
 });
 
 test("nothing to list changes nothing", () => {
