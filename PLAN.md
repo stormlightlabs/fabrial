@@ -140,6 +140,9 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 - [x] `/storm:review|revise|ready|stop` comment commands.
 - [x] Bot comments: agents post PR comments as stormlight-thunderbot through
       the Bot comment workflow.
+- [ ] Keep the GitHub PR number in the final squash commit subject, for
+      example `Add Pi dispatch (#21)`. Update the merge-message workflows in
+      a follow-up; PR comments alone do not preserve this in git history.
 - [ ] Verify the shared skill layout on Claude Code, Codex and Pi, and record
       what differs. `docs/hosts.md` records Claude Code; Codex and Pi are
       still to check.
@@ -197,9 +200,16 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       review roles, host tmux recorder, root Pi `agent` tool, explicit trusted
       inputs, per-role models, and a local App issuer. Pin agent-sandbox.nix
       v5.6.3 and its nixpkgs, removing only the two owner-Keychain Mach grants.
-      Focused tests cover subprocess and tool boundaries without credentials.
-- [ ] Host-check the new Nix/tmux launcher, issuer cleanup, subscription auth,
+      Dispatch and the recorder now run in Rust in `fab-cli`, without a Python
+      runtime. Rust subprocess tests cover issuance, cancellation during
+      issuance, deadline expiry, worker failure, revocation, and retained
+      cleanup state. Node tests cover the Pi tool.
+- [ ] Host-check the Rust Nix/tmux launcher, issuer cleanup, subscription auth,
       denied Mach lookups, Git push, and Rust gates inside its worker sandbox.
+      The Python launcher's earlier host smoke does not verify the Rust port.
+- [ ] Make sandbox settings configurable for deployment needs. Keep the
+      pinned isolation policy fixed for this spike; choose the settings and
+      validation before adding configuration options.
 - [ ] Local Pi spike, on Pi 1.x, as `docs/pi.md` lays out: `fab dispatch` for
       reviewer, verifier, adversarial reviewer and reviser; a Pi package with
       an `agent` tool; GPT-6 Sol for the standard pass and GPT-6.1 Sol for the

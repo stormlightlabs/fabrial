@@ -42,7 +42,7 @@ host tmux sessions. The whole worker runs in a pinned Nix sandbox. A trusted
 local issuer supplies repository-restricted GitHub App tokens, and the root
 Pi package exposes the same command as an `agent` tool. Follow
 [Pi host setup](docs/pi.md) before running it; a normal development shell is
-not worker isolation. Host integration and the real-PR proof remain open.
+not worker isolation. This feature is under active development.
 
 ## Releases
 

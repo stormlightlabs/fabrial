@@ -29,7 +29,7 @@ in sandbox.mkSandbox {
   binName = "fab-pi";
   outName = "fab-pi-sandboxed";
   allowedPackages = sandbox.commonTools ++ [
-    pkgs.nodejs pkgs.gh pkgs.python3 pkgs.cargo pkgs.rustc pkgs.clippy
+    pkgs.nodejs pkgs.gh pkgs.cargo pkgs.rustc pkgs.clippy
     pkgs.rustfmt pkgs.stdenv.cc pkgs.just
   ];
   workspaceDir = "$FAB_WORKTREE";

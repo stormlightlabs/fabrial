@@ -8,8 +8,8 @@ workflow moves Unreleased under the new version's heading.
 
 - Add preview `fab dispatch` for four fresh Pi review roles and a root Pi
   `agent` tool, with host tmux, pinned whole-worker isolation, explicit trusted
-  instructions, and a local repository-restricted App issuer. Host integration
-  and the real-PR review proof remain open. Installs include Pi role models.
+  instructions, and a local repository-restricted App issuer. Dispatch runs in
+  Rust without a Python runtime. Installs include Pi role models.
 
 - Skills watch checks after review, preserve progress across orchestrator
   sessions, and refresh local `main` and clean up task worktrees after merge.

@@ -2,15 +2,14 @@
 
 `fab dispatch` runs reviewer, verifier, adversarial-reviewer, and reviser as
 fresh headless Pi 1.4.0 workers. The local spike uses host tmux and wraps the
-whole Pi process in agent-sandbox.nix. The real-pull-request review proof in
-[PLAN.md](../PLAN.md) remains open.
+whole Pi process in agent-sandbox.nix.
 
 > **Note:** This is a preview feature currently under active development.
 
 ## Host setup
 
 Run dispatch on the trusted host, outside a worker sandbox. You need Nix with
-flakes enabled, tmux, Python 3.11 or newer, OpenSSL, BWS CLI, and macOS
+flakes enabled, tmux, GitHub CLI, OpenSSL, BWS CLI, and macOS
 `security` for the local issuer. The sandbox wrapper supports Linux, but this
 spike's issuer uses macOS Keychain. There is no alternate issuer backend.
 
@@ -61,7 +60,7 @@ pem_secret = "<BWS secret UUID>"
 The local service `fabrial/bws/issuer` and account `fabrial-issuer-mac` are one
 possible host configuration, not required names. Store the BWS machine-account
 token in that Keychain entry yourself. Dispatch reads only the three configured
-BWS secrets. Use a trusted host PATH for Python, tmux, security, BWS, OpenSSL,
+BWS secrets. Use a trusted host PATH for tmux, gh, security, BWS, OpenSSL,
 and Git. Do not put PR directories on it.
 
 The App must be installed on the named repository. Give it Actions write,
@@ -78,7 +77,12 @@ launch. Installation tokens travel in the worker environment, not argv, logs,
 or the Nix store. The host revokes them on normal completion, worker failure,
 timeout, or cancellation. A host crash, SIGKILL, or network failure during
 revocation can leave a token valid until its one-hour expiry. Revocation
-failure makes dispatch fail. Private worker auth copies are deleted afterward.
+failure makes dispatch fail. Dispatch waits for recorder exit and confirmed
+revocation before deleting private state. Cancellation or a deadline during
+issuance cannot launch a worker. If cleanup cannot finish within a 120-second
+grace period, dispatch fails and retains private state and the cancellation
+file. A failed revocation retains the token recovery file and worker auth;
+restrict access to that state until revocation and cleanup can finish.
 
 ## Run a role
 
@@ -112,8 +116,10 @@ explicit trusted skill paths. They receive no session history, extensions,
 project packages, host settings, or MCP servers. PR files remain task data,
 not trusted executable configuration or role instructions.
 
-Tmux creates a detached session without requiring an orchestrator TUI. Its
-host recorder starts the sandbox from the named worktree and pipes both
+Tmux creates a detached session without requiring an orchestrator TUI. Dispatch
+and its recorder are Rust modules in `fab-cli`; tmux runs the same trusted
+`fab` executable. Install that binary outside worker worktrees and shared Git
+metadata. The host recorder starts the sandbox from the named worktree and pipes both
 worker streams. Node never writes directly to host recorder files. The pane
 shows progress; stdout from `fab dispatch` is JSONL progress followed by a
 `result` or `error`. The final answer comes from the last assistant
@@ -161,16 +167,18 @@ and returns the final role text. It works in headless and interactive Pi.
 
 ## Verification and remaining proof
 
-`just check` includes Python subprocess/issuer tests and Node tool-boundary
-tests, as well as the Rust gates. Tests use fake credential issuance and
-process-group signalling; they never access Keychain or BWS.
+`just check` includes Rust subprocess/issuer tests and Node tool tests. Rust
+tests run the recorder binary with fake host executables and check selected
+auth, token scope, redaction, cancellation during issuance, deadline expiry,
+worker failure, timeout, revocation, and retained cleanup state. They never
+access Keychain or BWS.
 
 The implementer sandbox has neither Nix nor tmux. The orchestrator must build
 the wrapper on the host and test real pane exit, cancellation, timeout, Git
 push, Rust builds, App issuance/revocation, and subscription execution. Check
 that both denied Mach lookups fail while HTTPS and Pi tools work. The supplied
-patch has prior host evidence; this implementation still needs its own host
-integration check. Do not mark the real-PR review proof complete until the
+patch and the earlier Python launcher have host evidence; the Rust port still
+needs its own host integration check. Do not mark the real-PR review proof complete until the
 separate fresh readers finish it.
 
 Implementer dispatch, herdr, Zellij, daemon renewal, Claude Code integration,
