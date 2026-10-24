@@ -6,7 +6,7 @@
 #   squash-body.sh --text < description    the kept text alone
 #
 # The description stops at the footer line Branch PR writes, so the text after
-# it stays out. Co-authored-by and Claude-Session lines, Claude Code's
+# it stays out. The generated body from before the footer counts as empty. Co-authored-by and Claude-Session lines, Claude Code's
 # "Generated with" line and session links are dropped, so no agent attribution
 # reaches main. A description with nothing left gives the plain
 # `Merged from <branch>.` body. Branch PR and the Review gate both run this, so
@@ -14,7 +14,7 @@
 set -euo pipefail
 
 text=$(tr -d '\r' | awk '
-  /^<!-- fabrial:footer/ { exit }
+  /^<!-- fabrial:footer/ { footer = 1; exit }
   tolower($0) ~ /^co-authored-by:/ { next }
   /^Claude-Session:/ { next }
   /Generated with \[Claude Code\]/ { next }
@@ -23,6 +23,9 @@ text=$(tr -d '\r' | awk '
   END {
     first = 1; while (first <= n && lines[first] ~ /^[[:space:]]*$/) first++
     last = n; while (last >= first && lines[last] ~ /^[[:space:]]*$/) last--
+    # The body Branch PR wrote before the footer existed is a list of commit
+    # subjects under `From <branch>:`, which says nothing the title does not.
+    if (!footer && lines[first] ~ /^From `[^`]+`:$/) exit
     for (i = first; i <= last; i++) print lines[i]
   }')
 

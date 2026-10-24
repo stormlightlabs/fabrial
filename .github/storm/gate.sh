@@ -189,6 +189,13 @@ mergeable_now() {
 # stops the script: refused <what was tried> <error>. The run is completed, so
 # a later push that only moves the base does not carry an older success over.
 refused() {
+  # An edit to a reviewed pull request's text leaves its review standing.
+  if [[ $EVENT == edit ]]; then
+    gh_write pr comment "$PR" --repo "$REPO" --body "Could not $1 after the edit: $2
+
+The squash message is not updated. Fix the cause, then edit the pull request or post \`Review finished at $head\` again."
+    exit 1
+  fi
   check "$head" failure "Auto-merge refused" "GitHub refused to $1: $2"
   gh_write pr comment "$PR" --repo "$REPO" --body "Could not $1: $2
 

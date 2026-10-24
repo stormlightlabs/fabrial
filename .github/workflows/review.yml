@@ -20,6 +20,12 @@ on:
 permissions:
   contents: read
 
+# Edits to one pull request run one at a time, so the last run reads the last
+# text. Other events get a group of their own and never wait.
+concurrency:
+  group: ${{ github.event.action == 'edited' && format('gate-edit-{0}', github.event.pull_request.number) || format('gate-{0}', github.run_id) }}
+  cancel-in-progress: false
+
 jobs:
   gate:
     if: >-
