@@ -10,11 +10,17 @@
 # on. The suggested squash message takes the PR title and number, and its body
 # from the PR body through .github/storm/squash-body.sh, whose only trailer is a
 # Co-authored-by line for the owner.
+#
+# It runs only on the push that creates the branch; later pushes skip the job,
+# which costs no runner time. A branch pushed with no commits ahead of main,
+# or one whose pull request was closed, gets its pull request when this is run
+# from the Actions tab on that branch.
 name: Branch PR
 
 on:
   push:
     branches: ["claude/**", "codex/**", "storm/**"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,6 +31,7 @@ concurrency:
 
 jobs:
   pr:
+    if: github.event_name == 'workflow_dispatch' || github.event.created
     runs-on: ubuntu-latest
     steps:
       - uses: actions/create-github-app-token@v2

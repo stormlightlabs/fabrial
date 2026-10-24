@@ -1,5 +1,9 @@
 # The check a pull request into main must pass. The ruleset on main requires
-# the job named `check`.
+# the job named `check`, so the job always runs and reports. On a pull request
+# that changes only PLAN.md, README.md, CHANGELOG.md or docs/, nothing here
+# reads those files, so it passes without building. A newer push to the same
+# pull request cancels the run still going. The run on main builds the cache
+# that pull requests restore.
 name: Check
 
 on:
@@ -10,19 +14,46 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+
+concurrency:
+  group: check-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      - name: Find what changed
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          build=true
+          if [[ -n $PR ]]; then
+            # A failed call stops the step, so an error never skips the build.
+            files=$(gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" --name-only)
+            if [[ -n $files ]] && ! grep -qvE '^(PLAN\.md|README\.md|CHANGELOG\.md|docs/.+)$' <<<"$files"; then
+              build=false
+              echo "Only documentation changed; nothing to build."
+            fi
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v5
+        if: steps.scope.outputs.build == 'true'
 
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.scope.outputs.build == 'true'
         with:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
+        if: steps.scope.outputs.build == 'true'
 
       - uses: extractions/setup-just@v3
+        if: steps.scope.outputs.build == 'true'
 
       - run: just check
+        if: steps.scope.outputs.build == 'true'

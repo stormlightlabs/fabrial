@@ -5,13 +5,13 @@
 #
 # The section lists the lines under Unreleased, then one line per commit since
 # the last release tag behind HEAD (`v` and a version, without a pre-release
-# part), newest first, from its subject. A squash
-# subject ends with its pull request number, so each line names the PR. Lines
-# under Unreleased are the owner's, written by hand; a commit whose `(#N)` one
-# of them names gets no line of its own, and the Release commits themselves are left out. Unreleased stays
-# as an empty heading above the new section. The owner edits the lines in the
-# release pull request. Exits 1, changing nothing, when there is nothing to
-# list.
+# part), newest first, from its subject. A squash subject ends with its pull
+# request number, so each line names the PR. Lines under Unreleased are the
+# owner's, written by hand; a commit whose `(#N)` one of them names gets no
+# line of its own, and the Release commits themselves are left out. Unreleased
+# stays as an empty heading above the new section. The owner edits the lines
+# in the release pull request. Exits 1, changing nothing, when there is
+# nothing to list.
 set -euo pipefail
 
 : "${1:?version}" "${2:?date}"
