@@ -9,26 +9,37 @@ const worktree = fileURLToPath(new URL("../", import.meta.url));
 const head = "a".repeat(40);
 
 // Runs gate.sh against a fake gh that logs every call and answers `pr view`
-// with `pr`, and returns the exit status and the logged calls.
-function gate(env, pr = {}) {
+// with `pr`, plus the comments the run has posted as the bot. After the first
+// post it answers with `later` instead, as if the pull request was edited
+// while the run worked. Returns the exit status and the logged calls.
+function gate(env, pr = {}, later = null) {
   const target = join(worktree, "target"); mkdirSync(target, { recursive: true });
   const root = mkdtempSync(join(target, "gate-test-"));
   try {
     const log = join(root, "calls.jsonl");
-    const view = { state: "OPEN", isDraft: true, title: "Test change", body: "A change.", headRefName: "storm/test",
-      labels: [], comments: [], ...pr };
+    const base = { state: "OPEN", isDraft: true, title: "Test change", body: "A change.", headRefName: "storm/test",
+      labels: [], comments: [] };
     writeFileSync(join(root, "gh"), `#!/usr/bin/env node
 import fs from "node:fs";
 const args = process.argv.slice(2), index = args.indexOf("--body-file");
-fs.appendFileSync(process.env.TEST_GH_LOG, JSON.stringify({args, body:index < 0 ? "" : fs.readFileSync(args[index + 1], "utf8")}) + "\\n");
-if (args[0] === "pr" && args[1] === "view") console.log(process.env.TEST_PR);
+const body = index < 0 ? "" : fs.readFileSync(args[index + 1], "utf8");
+fs.appendFileSync(process.env.TEST_GH_LOG, JSON.stringify({args, body}) + "\\n");
+const posted = fs.readFileSync(process.env.TEST_GH_LOG, "utf8").trim().split("\\n").map(l => JSON.parse(l))
+  .filter(c => c.args[0] === "pr" && c.args[1] === "comment").map(c => ({ author: { login: "stormlight-thunderbot" }, body: c.body }));
+if (args[0] === "pr" && args[1] === process.env.TEST_FAIL) process.exit(1);
+if (args[0] === "pr" && args[1] === "view") {
+  const view = JSON.parse(posted.length && process.env.TEST_PR_LATER ? process.env.TEST_PR_LATER : process.env.TEST_PR);
+  view.comments = [...view.comments, ...posted];
+  console.log(JSON.stringify(view));
+}
 else if (args[0] === "api" && args[1] !== "-X") console.log(process.env.TEST_API ?? "");
 else if (args[0] === "api" || args[0] === "label" || (args[0] === "pr" && ["comment", "ready", "edit", "merge"].includes(args[1]))) console.log("{}");
 else process.exit(91);
 `, { mode: 0o700 });
     const output = spawnSync("bash", [".github/storm/gate.sh"], { cwd: worktree, encoding: "utf8", timeout: 10000,
       env: { ...process.env, PATH: `${root}:${process.env.PATH}`, REPO: "owner/repo", PR: "1", HEAD_SHA: head,
-        HEAD_DIR: join(root, "absent"), TEST_GH_LOG: log, TEST_PR: JSON.stringify(view), ...env } });
+        HEAD_DIR: join(root, "absent"), TEST_GH_LOG: log, TEST_PR: JSON.stringify({ ...base, ...pr }),
+        TEST_PR_LATER: later ? JSON.stringify({ ...base, ...pr, ...later }) : "", ...env } });
     assert.equal(output.error, undefined);
     let calls = [];
     try { calls = readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line)); } catch {}
@@ -126,4 +137,42 @@ test("a title that already ends with its number keeps one", () => {
   const { calls } = gate(finished, { title: "Test change (#1)" });
   const message = calls.find(c => c.args[1] === "comment").body;
   assert(message.includes("Test change (#1)\n") && !message.includes("(#1) (#1)"));
+});
+
+test("a run posts once, then sees its own message and stops", () => {
+  const { calls } = gate(finished);
+  assert.equal(calls.filter(c => c.args[1] === "comment").length, 1);
+});
+
+test("an edit during the run posts the edited text last", () => {
+  const { calls } = gate(finished, {}, { title: "Edited" });
+  const posts = calls.filter(c => c.args[1] === "comment");
+  assert.equal(posts.length, 2);
+  assert(posts[1].body.includes("Edited (#1)\n"));
+});
+
+// squash-body.sh with only the kept text.
+function kept(description) {
+  return spawnSync("bash", [".github/storm/squash-body.sh", "--text"], { cwd: worktree, encoding: "utf8", input: description }).stdout;
+}
+
+test("squash body keeps a Session line in prose and drops one naming a link", () => {
+  assert.equal(kept("Keep.\nSession: tokens now expire.\nSession: https://pi.dev/s/abc\n> Session: <https://pi.dev/s/abc>\nSession: [run](https://x.io/s)\n"),
+    "Keep.\nSession: tokens now expire.\n");
+});
+
+test("squash body treats code blocks like any other text", () => {
+  assert.equal(kept("Keep.\n````\n```\nCo-authored-by: A <a@b>\n````\nAlso kept.\n<!-- fabrial:footer -->\nGone.\n"),
+    "Keep.\n````\n```\n````\nAlso kept.\n");
+});
+
+test("a failed ready posts no success", () => {
+  const { status, calls } = gate({ ...finished, TEST_FAIL: "ready" });
+  assert.notEqual(status, 0);
+  assert(!calls.some(c => c.args.includes("conclusion=success")));
+});
+
+test("a failed squash message fails the run", () => {
+  const { status } = gate({ ...finished, TEST_FAIL: "comment" });
+  assert.notEqual(status, 0);
 });
