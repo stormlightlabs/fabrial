@@ -30,6 +30,24 @@ Apply corrections to the current stage without repeating completed stages.
 If a blocker prevents finishing a stage, report it and hand off; do not dispatch
 more agents to work around it. Never mark an incomplete review finished.
 
+## Lifecycle cleanup
+
+Cleanup is part of completing a worker or a merged task, not a separate task.
+Before dispatch, record which processes, directories, and Nix roots the run owns.
+
+When a worker exits, capture its result, stop its processes and pane, revoke its
+token, and remove credentials and worker-owned temporary state. Keep the task
+worktree for later stages. Retain recovery state only when cleanup cannot be
+confirmed, and report the failure immediately. Do not remove shared resources
+while another worker uses them.
+
+When a PR merges, confirm its recorded head. Remove its worktree only if it is
+clean and its branch tip matches that head, then delete the local branch and
+release task-owned Nix roots and temporary artifacts. Fast-forward a clean
+primary `main` to `origin/main`; never reset, stash, or discard the user's work.
+Leave unrelated worktrees, host credentials, shared runtimes, and Nix profiles
+alone. If cleanup is blocked, name what remains and why in the handoff.
+
 ## Gates
 
 ```sh

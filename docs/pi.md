@@ -1,4 +1,10 @@
-# Pi
+# Pi dispatch
+
+This guide covers the shipped worker command and host setup. The planned
+[orchestration lifecycle](pi-orchestration.md) covers PR events, worker
+communication, cleanup, and ownership of the development Pi setup. The
+[status area](pi-statusline.md) is a separate UI design;
+[PLAN.md](../PLAN.md#6-workers-and-pi-setup) tracks delivery.
 
 `fab dispatch` runs reviewer, verifier, adversarial-reviewer, and reviser as
 fresh headless Pi 1.4.0 workers. The local spike uses host tmux and wraps the
@@ -11,8 +17,9 @@ whole Pi process in agent-sandbox.nix.
 Run dispatch on the trusted host, outside a worker sandbox. You need Nix with
 flakes enabled, tmux, GitHub CLI, curl with `--header @-` support, OpenSSL,
 BWS CLI, and macOS `security` for the local issuer. App JWT requests use curl
-with Bearer headers on stdin; installation-token requests use GitHub CLI. The sandbox wrapper supports Linux, but this
-spike's issuer uses macOS Keychain. There is no alternate issuer backend.
+with Bearer headers on stdin; installation-token requests use GitHub CLI. The
+sandbox wrapper supports Linux, but this spike's issuer uses macOS Keychain.
+There is no alternate issuer backend.
 
 Keep a trusted checkout separate from every PR worktree. Build and install
 `fab` from that checkout. Build the wrapper there, never from a PR branch:
@@ -34,8 +41,9 @@ certificate permissions. Plain `nix develop` or direnv is not isolation.
 Install Pi 1.4.0 on the host in a dedicated runtime directory containing its
 `node_modules` and all dependencies, with no credentials or personal settings.
 Point `pi_runtime` at that directory, not the package below `node_modules`.
-Log in to its `openai` subscription provider on the host. Dispatch copies only that OAuth
-entry from `auth.json`, never an API key or the whole host Pi directory. The
+Log in to its `openai` subscription provider on the host. Dispatch copies only
+that OAuth entry from `auth.json`, never an API key or the whole host Pi
+directory. The
 credential must remain valid past the worker deadline plus one minute;
 refresh it on the host before dispatch if necessary. Worker credential
 changes are discarded, not copied back to the host.
@@ -61,8 +69,8 @@ pem_secret = "<BWS secret UUID>"
 The local service `fabrial/bws/issuer` and account `fabrial-issuer-mac` are one
 possible host configuration, not required names. Store the BWS machine-account
 token in that Keychain entry yourself. Dispatch reads only the three configured
-BWS secrets. Use a trusted host PATH for tmux, gh, security, BWS, OpenSSL,
-and Git. Do not put PR directories on it.
+BWS secrets. Use a trusted host PATH for tmux, gh, curl, security, BWS,
+OpenSSL, and Git. Do not put PR directories on it.
 
 The App must be installed on the named repository. Give it Actions write,
 Contents write, and Pull requests read. Review workers receive only Actions
@@ -121,8 +129,8 @@ not trusted executable configuration or role instructions.
 Tmux creates a detached session without requiring an orchestrator TUI. Dispatch
 and its recorder are Rust modules in `fab-cli`; tmux runs the same trusted
 `fab` executable. Install that binary outside worker worktrees and shared Git
-metadata. The host recorder starts the sandbox from the named worktree and pipes both
-worker streams. Node never writes directly to host recorder files. The pane
+metadata. The host recorder starts the sandbox from the named worktree and
+pipes both worker streams. Node never writes directly to host recorder files. The pane
 shows progress; stdout from `fab dispatch` is JSONL progress followed by a
 `result` or `error`. The final answer comes from the last assistant
 `message_end`, never a delta or user message. Only `stopReason: stop` with
@@ -167,7 +175,7 @@ not model-selected tool arguments. The tool calls shared `fab dispatch`,
 streams progress through `onUpdate`, forwards cancellation, throws on failure,
 and returns the final role text. It works in headless and interactive Pi.
 
-## Verification and remaining proof
+## Verification
 
 `just check` includes Rust subprocess/issuer tests and Node tool tests. Rust
 tests run the recorder binary with fake host executables and check selected
@@ -175,19 +183,13 @@ auth, token scope, redaction, cancellation during issuance, deadline expiry,
 worker failure, timeout, revocation, and retained cleanup state. They never
 access Keychain or BWS.
 
-PR #21 exercised the Pi `agent` tool through Rust dispatch, real App issuance,
-subscription authentication, tmux, and the pinned sandbox. A fresh adversarial
-review completed, and the tmux session exited. Host checks also confirmed the
-two denied Mach lookups while HTTPS and Pi tools worked.
+Run a real host smoke before review; fake subprocess tests do not establish
+that host credentials, tools, permissions, and isolation work together. Keep
+verification results and remaining proof in
+[PLAN.md](../PLAN.md#6-workers-and-pi-setup) and the PR's verification comments,
+rather than treating this setup guide as a run log.
 
-Forced cancellation, timeout, and unexpected pane death still need live host
-checks for the Rust port. Its subprocess regressions cover cleanup failures.
-Rust builds inside the dispatched worker could not link `libiconv`; host gates
-and CI passed. The earlier bootstrap workers could build and push, but that
-is not proof of those operations through the shipped Rust launcher.
-
-Implementer dispatch, herdr, Zellij, daemon renewal, Claude Code integration,
-and the [status area](pi-statusline.md) are later work. For unfinished work
-across orchestrator sessions, use the existing `handoff` skill; a Pi resume
-or compact is not a durable task record. Remove a worktree only after merge,
-a clean tree, and a branch tip matching the PR's recorded head.
+For unfinished work across orchestrator sessions, use the existing `handoff`
+skill. A Pi resume or compact is not a durable task record. Follow the
+[lifecycle cleanup rules](../AGENTS.md#lifecycle-cleanup) when a worker finishes
+or its PR merges.
