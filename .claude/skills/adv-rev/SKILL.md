@@ -1,7 +1,7 @@
 ---
 name: adv-rev
 description: Adversarial review pass on a pull request or branch. Use for /adv-rev, or when asked for a worst-case or adversarial review.
-argument-hint: [pr-number|branch]
+argument-hint: "[pr-number|branch]"
 ---
 
 # Adversarial review

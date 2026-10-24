@@ -1,7 +1,7 @@
 ---
 name: review
 description: Review a pull request or branch for defects and report the findings. Runs a standard pass or an adversarial pass. Use for /review, /adv-rev, code review, PR review, or when asked to check a diff before merge.
-argument-hint: [pr-number|branch] [standard|adversarial]
+argument-hint: "[pr-number|branch] [standard|adversarial]"
 ---
 
 # Review

@@ -6,6 +6,8 @@ workflow moves Unreleased under the new version's heading.
 
 ## Unreleased
 
+- Quote optional skill argument hints so Pi can load the review, adversarial
+  review and handoff skills.
 - `fab init` and `fab update` record the release alone in
   `.github/fabrial.toml`, without the commit, so open pull requests no longer
   conflict on that line. The storm skill checks that a pull request still

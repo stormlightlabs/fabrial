@@ -1,7 +1,7 @@
 ---
 name: handoff
 description: Record the state of unfinished work on its task, in arcl or on its GitHub issue or pull request, so the next session can pick it up, or pick up from the latest handoff. Use for /handoff, when a session ends with work left, or when a session starts by continuing earlier work.
-argument-hint: [task|pick-up <task>]
+argument-hint: "[task|pick-up <task>]"
 ---
 
 # Handoff
