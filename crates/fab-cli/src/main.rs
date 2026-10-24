@@ -17,6 +17,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Run a fresh isolated Pi review worker (host tmux backend).
+    Dispatch {
+        /// Explicit worker role and host dispatch options; see docs/pi.md.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        arguments: Vec<std::ffi::OsString>,
+    },
     /// Install fabrial's workflows, gate, skills and agents into a repository
     /// that does not have them yet.
     Init {
@@ -89,6 +95,18 @@ fn main() -> ExitCode {
             install::update(dir, change, force).map(|r| written(&r, "updated"))
         }),
         Command::Check { repo } => in_repo(&repo, check),
+        Command::Dispatch { arguments } => {
+            #[cfg(unix)]
+            {
+                eprintln!("fab: {}", fab_core::dispatch::exec(arguments));
+                return ExitCode::from(2);
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = arguments;
+                Err(fab_core::Error::Unsupported("dispatch requires Unix"))
+            }
+        }
     };
     result.unwrap_or_else(|e| {
         eprintln!("fab: {e}");

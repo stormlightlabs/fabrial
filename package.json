@@ -1,0 +1,13 @@
+{
+  "name": "@stormlightlabs/fabrial",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": { "extensions": ["./pi/extension.ts"] },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "scripts": { "test": "node --test pi/*.test.mjs" }
+}

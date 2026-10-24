@@ -6,6 +6,11 @@ workflow moves Unreleased under the new version's heading.
 
 ## Unreleased
 
+- Add preview `fab dispatch` for four fresh Pi review roles and a root Pi
+  `agent` tool, with host tmux, pinned whole-worker isolation, explicit trusted
+  instructions, and a local repository-restricted App issuer. Host integration
+  and the real-PR review proof remain open. Installs include Pi role models.
+
 - Skills watch checks after review, preserve progress across orchestrator
   sessions, and refresh local `main` and clean up task worktrees after merge.
 - Quote optional skill argument hints so Pi can load the review, adversarial

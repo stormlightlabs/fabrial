@@ -1,0 +1,15 @@
+[reviewer.pi]
+model = "openai/gpt-6-sol"
+thinking = "low"
+
+[adversarial-reviewer.pi]
+model = "openai/gpt-6.1-sol"
+thinking = "low"
+
+[verifier.pi]
+model = "openai/gpt-6.1-sol"
+thinking = "low"
+
+[reviser.pi]
+model = "openai/gpt-6.1-sol"
+thinking = "low"

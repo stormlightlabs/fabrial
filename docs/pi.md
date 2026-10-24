@@ -1,222 +1,180 @@
 # Pi
 
-How fabrial runs on Pi 1.x, where a Pi session orchestrates the `storm`
-sequence and each role runs in a Pi session of its own. This is the design for
-the phase 6 spike in `PLAN.md`. The design draws on the docs, types and code
-shipped in `@earendil-works/pi-coding-agent` 1.4.0 and herdr 0.9.5. Fresh,
-headless Pi sessions reviewed fabrial PRs #18 and #19; `fab dispatch`, pane
-backends and worker isolation have not been run.
+`fab dispatch` runs reviewer, verifier, adversarial-reviewer, and reviser as
+fresh headless Pi 1.4.0 workers. The local spike uses host tmux and wraps the
+whole Pi process in agent-sandbox.nix. The real-pull-request review proof in
+[PLAN.md](../PLAN.md) remains open.
 
-## What Pi 1.x provides
+> **Note:** This is a preview feature currently under active development.
 
-Pi reads skills from `.agents/skills/<name>/SKILL.md`, searching from the
-working directory up to the git root. Its loader follows symlinks
-(`dist/core/skills.js`), so fabrial's `.agents/skills -> ../.claude/skills`
-link serves it; it does not read `.claude/skills` itself. A skill needs a
-`description`, and its `name` falls back to the directory's. `/skill:storm`
-forces one.
+## Host setup
 
-A Pi package is a `package.json` whose `pi` key lists `extensions`, `skills`
-and `prompts`. `pi install git:github.com/stormlightlabs/fabrial@v<version>`
-installs one for the user, and `-l` for the project. Pi's own packages go in
-`peerDependencies` as `"*"`.
+Run dispatch on the trusted host, outside a worker sandbox. You need Nix with
+flakes enabled, tmux, Python 3.11 or newer, OpenSSL, BWS CLI, and macOS
+`security` for the local issuer. The sandbox wrapper supports Linux, but this
+spike's issuer uses macOS Keychain. There is no alternate issuer backend.
 
-An extension registers a tool with `pi.registerTool(defineTool({ name,
-parameters, execute }))`, where `parameters` is a TypeBox schema and
-`execute(id, params, signal, onUpdate, ctx)` returns `{ content: [{ type:
-"text", text }] }`, calling `onUpdate` for progress. It blocks another tool's
-call from `pi.on("tool_call", ...)` by returning `{ block: true, reason }`.
-There is no ask result; an interactive session can call `ctx.ui.confirm`, and a
-headless one has no UI.
-
-Pi has no subagents. Its `subagent` example extension spawns `pi --mode json
--p --no-session` children with `--model`, `--thinking`, `--tools` and
-`--append-system-prompt`, headless and hidden.
-
-In `--mode json`, the answer is the last `message_end` event whose
-`message.role` is `assistant`. A failed run can still exit 0, so its
-`stopReason` and `errorMessage` are what say it failed. Headless sessions skip
-project skills and extensions unless the project is trusted. Trusting a
-worktree with `--approve` would also run any `.pi/extensions` code or
-`.pi/settings.json` package the pull request's branch adds, so workers run
-with `--no-approve` and load what they need by path (`-e` for an extension,
-`--skill` for a skill). `pi --mode rpc` keeps a session alive for follow-up prompts, and
-`createAgentSession` runs one in-process; neither opens a pane.
-
-## The fabrial Pi package
-
-A `package.json` at the repository root with one extension. The extension
-registers an `agent` tool that takes a role and a task, runs `fab dispatch
-<role>`, and returns the role's answer. While the role works, it reads the
-worker's events as they arrive and passes a line of progress to `onUpdate`.
-The `storm` skill tells a Pi orchestrator to use this tool for each fresh
-agent.
-
-The extension does not parse shell commands to enforce merge policy. A
-worker with `bash` can invoke a script or use another spelling. The
-repository's ruleset and isolated worker credentials enforce that policy.
-
-A restricted token alone is not enough on a local machine: a worker running
-as the owner can still read the owner's GitHub keyring, SSH keys or other
-credentials. Dispatch must give workers a separate user or container with no
-access to the owner's home, agent sockets or environment. Only then give the
-worker a `GH_TOKEN` that can read the repository and run the Bot comment
-workflow, but cannot approve, merge or push to `main`. The ruleset on `main`
-still requires the owner. Phase 7 replaces the spike's restricted token with
-short-lived, repository-scoped tokens.
-
-The orchestrator finds skills through `.agents/skills`. A worker, with no
-trust, is given the extension with `-e` and each skill its role uses with
-`--skill`, both by path into the orchestrator's checkout of `main`, never into
-the pull request's worktree, so a branch cannot change the code or the
-instructions that review it.
-
-## `fab dispatch`
-
-`fab dispatch <role> --task <file>` runs one role in its own pane, so a person
-can watch or stop it and it outlives the orchestrator. It reads the role from
-`.claude/agents/<role>.md`. It writes the body to a trusted temporary file
-for the appended system prompt, with a note that the session has no GitHub
-MCP tools and reaches GitHub through `gh`, and that skills are found, not
-called. The `tools` frontmatter maps to
-Pi's names: `Read` to `read`, `Grep` to `grep`, `Glob` to `find` and `ls`,
-`Bash` to `bash`, `Write` to `write`, `Edit` to `edit`. `Skill` and the
-`mcp__github__*` tools have no Pi tool and are printed, not dropped.
-
-The model and thinking level come from a roles file of their own,
-`.github/fabrial-roles.toml`, since the frontmatter's `model` is a Claude
-alias and `.github/fabrial.toml` holds one-line values the workflows read
-with `sed`. It has a table per role, with a model and thinking level for each
-host:
-
-```toml
-[reviewer.pi]
-model = "openai/gpt-6-sol"
-thinking = "low"
-
-[adversarial-reviewer.pi]
-model = "openai/gpt-6.1-sol"
-thinking = "low"
-```
-
-A role with no entry for the host fails the dispatch with its name, rather
-than falling back to a default model.
-
-There are two ways to run the worker, depending on the backend.
-
-### tmux and Zellij
-
-The pane runs the worker headless:
+Keep a trusted checkout separate from every PR worktree. Build and install
+`fab` from that checkout. Build the wrapper there, never from a PR branch:
 
 ```sh
-pi --mode json -p --no-approve -e <extension> --skill <skill>... \
-   --session-dir <run dir> --model <model> --thinking <level> \
-   --tools <list> --append-system-prompt <role body file> -- '<task>'
+cargo install --path crates/fab-cli
+nix-build nix/worker.nix
 ```
 
-in the worktree the run names, with stdout going to `<run dir>/events.jsonl`
-and the exit status to `<run dir>/status`. `fab dispatch` waits for the status
-file, prints the final assistant message, and exits non-zero when `stopReason`
-or `errorMessage` says the run failed. It also gives up after a timeout (30
-minutes unless the role sets one), and stops waiting when the pane is gone
-without a status: in tmux it asks whether the pane still exists, and in Zellij
-it relies on the timeout. thunderstorm's `tstorm dispatch` does all of this in
-Go and is the reference.
+Record the resulting store executable, `result/bin/fab-pi-sandboxed`, in the
+local config below. The Nix expression pins agent-sandbox.nix v5.6.3 at
+`bda0de5679017097f3a46f32b9d6b35dfd9b6327` and its nixpkgs revision
+`7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f`. It applies
+[`deny-owner-keychain.patch`](../nix/deny-owner-keychain.patch), removing only
+the Mach allowances for `com.apple.securityd.xpc` and
+`com.apple.SecurityServer`. It retains `trustd.agent` and the system
+certificate permissions. Plain `nix develop` or direnv is not isolation.
 
-### herdr
+Install Pi 1.4.0 on the host in a dedicated runtime directory containing its
+`node_modules` and all dependencies, with no credentials or personal settings.
+Point `pi_runtime` at that directory, not the package below `node_modules`.
+Log in to its `openai` subscription provider on the host. Dispatch copies only that OAuth
+entry from `auth.json`, never an API key or the whole host Pi directory. The
+credential must remain valid past the worker deadline plus one minute;
+refresh it on the host before dispatch if necessary. Worker credential
+changes are discarded, not copied back to the host.
 
-[herdr](https://github.com/ogulcancelik/herdr) 0.9.5 is a multiplexer that
-tracks each agent's state, and it knows Pi. Its Pi integration reports state
-only from Pi's TUI, so a headless `--mode json` worker would always read as
-idle there. With herdr, the worker runs as an interactive Pi instead:
+Create a private state directory outside every worktree and Git metadata
+directory with mode `0700`. Keep the local issuer config outside PR worktrees
+as well. All paths below must be absolute. Replace each example value; there
+are no default Keychain identifiers or secret UUIDs:
 
-1. `herdr pane split --current --direction right --cwd <worktree> --no-focus`
-   from the orchestrator's pane, or `herdr workspace create` when
-   `HERDR_ENV` is unset, reading the pane's ID from the JSON reply.
-2. `herdr agent start <name> --kind pi --pane <id> -- --no-approve -e
-   <extension> --skill <skill>... --session-dir <run dir> --model <model>
-   --thinking <level> --tools <list> --append-system-prompt <role body file>`. The
-   agent name is short and plain (`fab-<role>-<n>`, matching herdr's
-   `[a-z][a-z0-9_-]{0,31}`); the run directory is a separate path.
-3. `herdr agent prompt <name> "<task>" --wait --until idle --until done
-   --timeout <ms>`. Without the `--until` flags it returns at the first
-   `blocked`, which is not an answer. A `blocked` state goes to the operator,
-   and `fab dispatch` waits again once it clears.
-4. The final assistant message is read from the session file under the run
-   directory, since a TUI's screen is not a record.
-5. `herdr pane close <id>` on the pane `fab dispatch` opened, since an
-   interactive Pi never exits on its own.
+```toml
+sandbox = "/nix/store/<build>/bin/fab-pi-sandboxed"
+pi_runtime = "/trusted/pi-1.4.0"
+auth_file = "/private/pi/auth.json"
+state_dir = "/private/fabrial-runs"
+repository = "org/repository"
+keychain_service = "your-local-issuer-service"
+keychain_account = "your-local-issuer-account"
+app_id_secret = "<BWS secret UUID>"
+installation_id_secret = "<BWS secret UUID>"
+pem_secret = "<BWS secret UUID>"
+```
 
-The person watching sees a live Pi with herdr's working, blocked and done
-marks, and can step in. herdr does not autostart a server, does not report a
-pane's exit status, and removes a pane when its process exits, so
-`fab dispatch` checks for a running server first, treats a `pane.exited` or
-`pane.closed` event for its pane as a failed run, and keeps its own record in
-the run directory.
+The local service `fabrial/bws/issuer` and account `fabrial-issuer-mac` are one
+possible host configuration, not required names. Store the BWS machine-account
+token in that Keychain entry yourself. Dispatch reads only the three configured
+BWS secrets. Use a trusted host PATH for Python, tmux, security, BWS, OpenSSL,
+and Git. Do not put PR directories on it.
 
-## Local spike and cleanup
+The App must be installed on the named repository. Give it Actions write,
+Contents write, and Pull requests read. Review workers receive only Actions
+write, Contents read, and Pull requests read; reviser receives Contents write.
+GitHub also grants Metadata read. Dispatch rejects widened permissions or a
+token that lists another repository. No owner PAT is accepted. Keep the App
+out of ruleset bypass lists, and require the owner's approval and checks on
+`main`. Workers cannot approve or merge with these permissions.
 
-Land the work in separate pull requests. First, prove `fab dispatch` for the
-four review roles and the Pi package's `agent` tool on one real pull request.
-A fresh worker gets only the role instructions and skills from a trusted
-checkout, not the pull request's branch or the orchestrator's history. The
-standard reviewer uses GPT-6 Sol and the adversarial reviewer uses GPT-6.1 Sol. Fail the
-run if the final JSON event reports an error, a worker stops or a comment does
-not appear; never post `Review finished` after a partial run.
+The host issuer holds the BWS token and App key; neither enters the sandbox.
+The PEM is a private temporary file used for signing and removed before worker
+launch. Installation tokens travel in the worker environment, not argv, logs,
+or the Nix store. The host revokes them on normal completion, worker failure,
+timeout, or cancellation. A host crash, SIGKILL, or network failure during
+revocation can leave a token valid until its one-hour expiry. Revocation
+failure makes dispatch fail. Private worker auth copies are deleted afterward.
 
-Next, let Claude Code call the same dispatch command to start a Pi worker.
-The result is the role's answer and run status, not a shared conversation.
-Keep PR and CI status in the fabrial Pi package's status area as a separate
-change; [the status area design](pi-statusline.md) records its fields and
-refresh behavior. The dispatch path must work without a TUI.
+## Run a role
 
-Each task gets a worktree beside the primary checkout. Keep Cargo targets
-per worktree to avoid concurrent builds fighting over one target directory;
-use a compiler cache to share compiled work. After GitHub reports the PR
-merged, compare its recorded head SHA with the worktree's branch tip and
-confirm the worktree is clean. If either differs, stop: there may be local
-work to keep. Otherwise remove it with `git worktree remove`, then delete
-its local branch. A squash merge may require `git branch -D` after those
-checks. Do not delete an open PR's worktree.
+Write a task file naming the PR, pinned head SHA, acceptance criteria, and any
+findings the role needs. Give each concurrent worker its own linked worktree.
+Do not use the trusted checkout as a worker worktree:
 
-## Changing orchestrator sessions
+```sh
+fab dispatch reviewer --task /private/task.txt \
+  --worktree /work/review-pr --trusted-checkout /trusted/fabrial \
+  --config /private/issuer.toml
+```
 
-A Pi session is not the task's durable record. The existing `handoff` skill
-records unfinished work on the arcl task, issue or PR; no second handoff skill
-is needed. Until `fab` owns durable run state, the next session reconstructs
-progress from that note, git and the PR's comments and checks.
+Dispatch reads roles from the explicit trusted checkout's `.claude/agents` and
+models from `.github/fabrial-roles.toml`. `fab init` and `fab update` install
+that roles file. Reviewer uses `openai/gpt-6-sol`; the other three roles use
+`openai/gpt-6.1-sol`. All four use `low` thinking. A missing or invalid role
+configuration fails with the role's name; there is no fallback model.
 
-Before clearing context, ask for `/skill:handoff <task-or-pr>`. The orchestrator
-waits for workers to finish or stops them, confirms the handoff was stored,
-and reports its link and a pickup command. If a worker must keep running,
-record its identity, run directory, worktree and how to check or stop it.
-Do not start a replacement worker while its predecessor may still be working.
+The role tool mapping is `Read` → `read`, `Grep` → `grep`, `Glob` → `find,ls`,
+`Bash` → `bash`, `Write` → `write`, and `Edit` → `edit`. Unmapped tools,
+including `Skill` and GitHub MCP names, are reported and noted in the role
+prompt. Workers read skills as files and use the sandbox's trusted `gh`.
+Reviewers retain Bash, so tool selection does not make their worktree
+read-only.
 
-Use `/new` for a fresh Pi conversation, or exit and start `pi` again. Then
-send `/skill:handoff pick-up <task-or-pr>`. Pickup checks the current PR head,
-review results, pending checks and worker state before continuing the next
-unfinished step. It does not repeat completed passes solely because the
-orchestrator changed. A Pi `/resume` restores a saved conversation, while
-`/compact` reduces its context; neither replaces a durable handoff.
+The host copies the role and its supporting skills into read-only inputs.
+Symlinks escaping the trusted checkout are rejected. Workers use
+`--no-approve`, disable resource discovery and context files, and load only
+explicit trusted skill paths. They receive no session history, extensions,
+project packages, host settings, or MCP servers. PR files remain task data,
+not trusted executable configuration or role instructions.
 
-If the task is finished, there is nothing to hand off. After a merge, refresh
-the clean primary `main` checkout and remove the old task worktree using the
-checks above. Start the next task with `/skill:storm <task description>` in a
-fresh session. Creating the new task worktree is the orchestrator's job.
-Do not leave a finished task's PR as the pickup target for a new task.
+Tmux creates a detached session without requiring an orchestrator TUI. Its
+host recorder starts the sandbox from the named worktree and pipes both
+worker streams. Node never writes directly to host recorder files. The pane
+shows progress; stdout from `fab dispatch` is JSONL progress followed by a
+`result` or `error`. The final answer comes from the last assistant
+`message_end`, never a delta or user message. Only `stopReason: stop` with
+nonempty text and no `errorMessage` counts as success, even if Pi exits zero.
+Provider stderr and raw tool arguments/results are not persisted.
 
-The skills can check PRs while the session runs; they are not a background
-watcher after it exits. A PR waiting for the owner's approval may be left with
-a clear report. If checks or review steps remain, write a handoff before
-leaving. Autonomous watching across sessions belongs to the later daemon.
+`--timeout` defaults to 1800 seconds and accepts 1–3000 seconds, below the App
+token lifetime. Cancellation reaches the recorder, kills the worker process
+group, revokes the token, and removes worker auth state. Unexpected pane exit
+without a status fails dispatch. There is no unsandboxed retry.
 
-## Open questions
+The sandbox masks the owner home, blocks host sockets and local ports, denies
+Nix daemon access, and restricts outbound domains. It exposes only the worker
+worktree, independent writable worker state, read-only inputs, and the Pi
+runtime. Upstream protects shared Git config, hooks, alternates, and worktree
+pointers. Keep credentials out of shared Git config and remotes. Cargo builds
+use that worktree's `target/`; never share a writable target between workers.
+The sandbox permits access to shared Git history, refs, and objects, so it is
+not isolation between repository branches.
 
-- A reviewer keeps `bash`, so dropping `write` and `edit` does not stop it
-  editing. Separate worktrees isolate the roles from each other; Pi's
-  `sandbox` example (bubblewrap through `@anthropic-ai/sandbox-runtime`) could
-  isolate them from the machine.
-- Whether the reviser should be an RPC worker, or a herdr agent prompted twice,
-  so a second round of findings goes to the same session.
-- Whether herdr's interactive worker is close enough to the headless one that
-  the `storm` sequence gives the same results on both.
+When a worker posts a comment, it uses the trusted Bot comment workflow and
+confirms the result's bot author and first line. A queued workflow is not a
+posted comment. The `storm` skill describes this check. Dispatch itself does
+not post comments or mark reviews complete.
+
+## Pi package
+
+Install the root package from the trusted checkout with `pi install <path>`
+or from a reviewed tag with `pi install git:github.com/stormlightlabs/fabrial@v<version>`.
+Pi dependencies are peers, not bundled copies. Set these host variables before
+starting the orchestrator:
+
+```sh
+export FAB_BINARY=/trusted/bin/fab
+export FAB_DISPATCH_CONFIG=/private/issuer.toml
+export FAB_TRUSTED_CHECKOUT=/trusted/fabrial
+```
+
+The package registers `agent` with `role`, `taskFile`, and `worktree`
+parameters. Host configuration and trusted instructions are operator-selected,
+not model-selected tool arguments. The tool calls shared `fab dispatch`,
+streams progress through `onUpdate`, forwards cancellation, throws on failure,
+and returns the final role text. It works in headless and interactive Pi.
+
+## Verification and remaining proof
+
+`just check` includes Python subprocess/issuer tests and Node tool-boundary
+tests, as well as the Rust gates. Tests use fake credential issuance and
+process-group signalling; they never access Keychain or BWS.
+
+The implementer sandbox has neither Nix nor tmux. The orchestrator must build
+the wrapper on the host and test real pane exit, cancellation, timeout, Git
+push, Rust builds, App issuance/revocation, and subscription execution. Check
+that both denied Mach lookups fail while HTTPS and Pi tools work. The supplied
+patch has prior host evidence; this implementation still needs its own host
+integration check. Do not mark the real-PR review proof complete until the
+separate fresh readers finish it.
+
+Implementer dispatch, herdr, Zellij, daemon renewal, Claude Code integration,
+and the [status area](pi-statusline.md) are later work. For unfinished work
+across orchestrator sessions, use the existing `handoff` skill; a Pi resume
+or compact is not a durable task record. Remove a worktree only after merge,
+a clean tree, and a branch tip matching the PR's recorded head.
