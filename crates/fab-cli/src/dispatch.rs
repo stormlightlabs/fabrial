@@ -696,7 +696,16 @@ fn recorder(private: &Path, request: &Request) -> u8 {
                     } else if event["type"] == "progress" {
                         worker.progress(&event)?;
                     }
-                    output(&directory, &event)
+                    output(&directory, &event)?;
+                    if event["type"] == "control_processed" {
+                        let id = event["id"].as_str().ok_or("control receipt ID missing")?;
+                        let id = uuid::Uuid::parse_str(id).map_err(|_| "invalid control receipt UUID")?;
+                        let controls = directory.join("controls");
+                        fs::remove_file(controls.join(format!("{id}.sent")))
+                            .map_err(|_| "cannot retire processed control")?;
+                        state::sync_directory(&controls)?;
+                    }
+                    Ok(())
                 }
             },
             || bridge::controls(&directory, &identity),

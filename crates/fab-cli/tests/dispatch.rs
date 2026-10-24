@@ -128,6 +128,15 @@ esac
         let worker = match mode {
             "failure" => "printf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"stopReason\":\"error\",\"errorMessage\":\"a-secret\"}}'".to_string(),
             "worker-timeout" | "worker-cancel" => "exec sleep 30".into(),
+            "controlled" => {
+                let id = "11111111-1111-4111-8111-111111111111";
+                let events = [
+                    json!({"type":"response", "id":id, "success":true, "data":{"disposition":"queued"}}),
+                    json!({"type":"message_end", "message":{"role":"user", "content":format!("[fabrial-control:{id}] instruction")}}),
+                    json!({"type":"message_end", "message":{"role":"assistant", "stopReason":"stop", "content":[{"type":"text", "text":"done"}]}}),
+                ].map(|e| e.to_string()).join("' '");
+                format!("IFS= read -r steer; printf '%s\\n' '{events}'")
+            },
             "blocked" => "printf '%s\\n' '{\"type\":\"entry_appended\",\"entry\":{\"customType\":\"fabrial.worker-report\",\"data\":{\"kind\":\"blocked\",\"text\":\"a-secret t-secret need driver\"}}}'; exec sleep 30".into(),
             _ => "printf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"stopReason\":\"stop\",\"content\":[{\"type\":\"text\",\"text\":\"a-secret r-secret t-secret done\"}]}}'".into(),
         };
@@ -336,6 +345,25 @@ fn final_record_write_failure_retains_durable_evidence() {
     assert!(f.logs().contains("worker record unconfirmed"));
     assert!(directory.join("result.txt").exists());
     assert_eq!(f.record()["state"], "running");
+}
+
+#[test]
+fn processed_controls_release_their_outstanding_queue_slot() {
+    let f = Fixture::new("controlled");
+    let controls = f.temp.path().join("records/worker-one/controls");
+    fs::create_dir(&controls).unwrap();
+    let id = "11111111-1111-4111-8111-111111111111";
+    fs::write(
+        controls.join(format!("{id}.json")),
+        json!({"id":id,"worker_id":"worker-one","run_id":"run-one","task_head":"1".repeat(40),"message":"instruction"})
+            .to_string(),
+    )
+    .unwrap();
+    let output = f.run();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+    assert!(f.logs().contains("control_processed"));
+    assert!(controls.exists()); // This layer has not removed the whole mailbox.
+    assert!(!controls.join(format!("{id}.sent")).exists());
 }
 
 #[test]
