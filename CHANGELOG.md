@@ -9,6 +9,10 @@ workflow moves Unreleased under the new version's heading.
 - Keep completed reviews green for native GitHub stacks. GitHub does not support
   their auto-merge, so the bot posts the squash message for manual stack merging.
 
+- Add an opt-in real-sandbox acceptance run for asynchronous Pi workers,
+  including conversation responsiveness, restart, steering, cancellation,
+  timeout, pane loss, and cleanup.
+
 - Restore worker subscriptions and replay undelivered notifications after Pi
   reload or resume. Add `/worker-watch`, `fab worker list`, and conservative
   cleanup recovery. Recovery never starts a replacement or signals old PIDs.

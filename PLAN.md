@@ -49,7 +49,7 @@ backends follow this milestone. The design lives in
       temporary state on completion, failure, or cancellation. Retain and
       report restricted recovery state if cleanup cannot be confirmed. Recover
       unfinished cleanup after a host restart without dispatching another agent.
-- [ ] Prove the asynchronous path on the real local sandbox. Launch a worker,
+- [x] Prove the asynchronous path on the real local sandbox. Launch a worker,
       answer the driver while it runs, and receive completion or a blocker
       without a user prompt. Test Pi restart, missed/duplicate events, stale
       controls, cancellation, timeout, unexpected pane exit, and cleanup after
