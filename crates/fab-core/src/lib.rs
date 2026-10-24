@@ -12,8 +12,8 @@ use std::path::PathBuf;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// The commit this build was made from, or `unknown` outside a git checkout.
 pub const COMMIT: &str = env!("FAB_COMMIT");
-/// The version recorded in an installed repository's settings: the release
-/// and the commit, as `0.1.0+abc1234`.
+/// The release and the commit this build was made from, as `0.2.0+abc1234`,
+/// for `fab --version`. Installs record [`VERSION`] alone.
 pub const FULL_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "+", env!("FAB_COMMIT"));
 
 /// What can go wrong installing or checking fabrial.
@@ -67,11 +67,6 @@ pub enum Error {
     Unsupported(&'static str),
 }
 
-/// [`FULL_VERSION`] as an owned string.
-pub fn version() -> String {
-    FULL_VERSION.to_owned()
-}
-
 /// The release part of a version (`0.2.0` in `0.2.0+abc1234`) as numbers, for
 /// ordering releases. `None` when it is not three dot-separated numbers.
 pub fn release(version: &str) -> Option<(u64, u64, u64)> {
@@ -104,7 +99,7 @@ mod tests {
     }
 
     #[test]
-    fn version_is_the_workspace_version_and_commit() {
+    fn the_workspace_version_is_a_release() {
         assert!(release(VERSION).is_some(), "{VERSION}");
     }
 }

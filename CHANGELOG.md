@@ -6,6 +6,11 @@ workflow moves Unreleased under the new version's heading.
 
 ## Unreleased
 
+- `fab init` and `fab update` record the release alone in
+  `.github/fabrial.toml`, without the commit, so open pull requests no longer
+  conflict on that line. The storm skill checks that a pull request still
+  merges before posting `Review finished`.
+
 ## 0.2.0 - 2026-10-24
 
 - `fab update` refreshes an install and refuses to downgrade one, and
