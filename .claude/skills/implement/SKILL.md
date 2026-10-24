@@ -28,7 +28,9 @@ Stop and ask when any of these is true:
 
 - arcl says the task is not ready (`arcl task explain <id>`), or the issue is
   closed or assigned to someone else. `arcl task start` refuses such a task;
-  pass `--force` only when the person asks for it after seeing the reason.
+  pass `--force` only when the person asks for it after seeing the reason,
+  and say in your report that you did. A dispatched implementer has no one to
+  ask: it reports the reasons and stops.
 - The task is already in progress and its latest handoff is not addressed to
   this session.
 - It has open subtasks. Work those one at a time instead.

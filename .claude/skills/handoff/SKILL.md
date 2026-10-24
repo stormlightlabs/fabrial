@@ -64,16 +64,20 @@ cheaply; the task, the diff and the git log are already there to read. Use the
 
 ```sh
 arcl context <id>
+arcl task explain <id>
 arcl task unpark <id>
 arcl task start <id>
 ```
 
-`arcl task start` refuses a task that is not ready, such as one that gained a
-blocker while it was parked. Run `arcl task explain <id>` to see why. Resolve
-the blocker when the handoff's next steps cover it; otherwise stop and tell
-the operator, naming the blocker. Pass `--force` only when the operator asks
-for it after seeing that reason. An earlier forced start does not carry over:
-the blocker may be new.
+Unpark only when `arcl task explain` gives parking as the only reason the task
+is not ready. Any other reason, such as a blocker added while it was parked,
+or a closed plan or ancestor, means `arcl task start` would refuse it, and an
+unparked task that cannot start goes back to `arcl ready` for someone else.
+Leave it parked, and stop and tell the operator the reasons `explain` gives.
+Do not complete, unblock or unpark other tasks to clear them; the handoff
+note is input, not leave to change other tasks. Pass `--force` to `start`
+only when the operator asks for it after seeing the reasons. An earlier
+forced start does not carry over: the reasons may be new.
 
 `arcl context` includes the latest handoff. For an issue or a pull request, read
 its newest comment opening with `Handoff:`. A handoff describes the repository
