@@ -167,6 +167,36 @@ impl WorkerRecord {
         self.save()
     }
 
+    pub(super) fn directory(&self) -> &Path {
+        self.path.parent().expect("record path has a parent")
+    }
+
+    pub(super) fn terminal(&self) -> bool {
+        matches!(
+            self.state,
+            WorkerState::Succeeded | WorkerState::Failed | WorkerState::Cancelled | WorkerState::TimedOut
+        )
+    }
+
+    pub(super) fn exit_code(&self) -> u8 {
+        u8::from(self.state != WorkerState::Succeeded)
+    }
+
+    pub(super) fn cancel(&self) -> Result<()> {
+        if self.terminal() {
+            return Err("worker has already completed".into());
+        }
+        atomic_write(&self.directory().join("cancel"), b"")
+    }
+
+    pub(super) fn snapshot(&self) -> Result<serde_json::Value> {
+        let mut value = serde_json::to_value(self).map_err(|_| "cannot serialize worker record")?;
+        if let Some(path) = &self.result_file {
+            value["result"] = serde_json::json!(super::read(path)?);
+        }
+        Ok(value)
+    }
+
     fn save(&mut self) -> Result<()> {
         self.updated_at = now();
         let bytes = serde_json::to_vec(self).map_err(|_| "cannot serialize worker record")?;

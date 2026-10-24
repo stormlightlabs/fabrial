@@ -86,12 +86,12 @@ launch. Installation tokens travel in the worker environment, not argv, logs,
 or the Nix store. The host revokes them on normal completion, worker failure,
 timeout, or cancellation. A host crash, SIGKILL, or network failure during
 revocation can leave a token valid until its one-hour expiry. Revocation
-failure makes dispatch fail. Dispatch waits for recorder exit and confirmed
-revocation before deleting private state. Cancellation or a deadline during
-issuance cannot launch a worker. If cleanup cannot finish within a 120-second
-grace period, dispatch fails and retains private state and the cancellation
-file. A failed revocation retains the token recovery file and worker auth;
-restrict access to that state until revocation and cleanup can finish.
+failure makes the worker fail. The recorder confirms revocation before
+removing private state, independently of whether a caller is waiting.
+Cancellation or a deadline during issuance cannot launch a worker. Synchronous
+dispatch allows a 120-second cleanup grace period. A failed revocation retains
+the token recovery file and worker auth; restrict access to that state until
+revocation and cleanup can finish.
 
 ## Run a role
 
@@ -152,7 +152,7 @@ temporary issuer-state cleanup. Credential cleanup has its own pending,
 complete, or unconfirmed state; it does not imply task or worktree cleanup.
 Records contain no issuer configuration, credential values, or raw tool output.
 A missing record prevents issuance; a final record-write failure retains
-private evidence and fails dispatch. A host crash can leave the last recorded
+durable evidence and fails dispatch. A host crash can leave the last recorded
 state stale; automatic recovery is planned, not implemented.
 
 `--timeout` defaults to 1800 seconds and accepts 1–3000 seconds, below the App
@@ -173,6 +173,28 @@ When a worker posts a comment, it uses the trusted Bot comment workflow and
 confirms the result's bot author and first line. A queued workflow is not a
 posted comment. The `storm` skill describes this check. Dispatch itself does
 not post comments or mark reviews complete.
+
+## Detached workers
+
+Add `--detach` to the role command to return a `started` record containing the
+run and worker IDs once tmux accepts the launch. This is launch acceptance,
+not provider readiness or completion. The worker owns cleanup after launch.
+
+Use the returned worker ID for host operations:
+
+```sh
+fab worker inspect <worker-id> --config /private/issuer.toml
+fab worker cancel <worker-id> --config /private/issuer.toml
+fab worker wait <worker-id> --config /private/issuer.toml --timeout 300
+```
+
+Inspection returns the last recorded state and any redacted final result;
+it does not require live OAuth or a current sandbox build. Cancellation is a
+request, not confirmation of process exit or revocation. Wait returns the
+worker's outcome when recorded; timing out or interrupting a wait does not
+cancel the worker. Progress and results remain beside `worker.json` after
+private issuer state is removed. Synchronous dispatch still streams progress
+and waits for recorder exit.
 
 ## Pi package
 

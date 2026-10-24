@@ -169,45 +169,13 @@ fn local_config_requires_explicit_paths_version_and_ids() {
 }
 
 #[test]
-fn cleanup_waits_for_exit_even_after_status_and_retains_failures() {
-    for status_ready in [false, true] {
+fn caller_drop_never_removes_launched_supervisor_state() {
+    for started in [false, true] {
         let temp = tempfile::tempdir().unwrap();
         let mut private = Private::new(temp.path()).unwrap();
-        private.started = true;
         let path = private.path.clone();
-        if status_ready {
-            touch(&path.join("status")).unwrap();
-            touch(&path.join("cleanup-complete")).unwrap();
-        }
-        let mut polls = 0;
-        cleanup_with(&path, Duration::from_secs(1), || {
-            assert!(path.join("cancel").exists());
-            polls += 1;
-            if polls == 1 {
-                return Ok(true);
-            }
-            touch(&path.join("status")).unwrap();
-            touch(&path.join("cleanup-complete")).unwrap();
-            Ok(false)
-        })
-        .unwrap();
-        assert_eq!(polls, 2);
-        private.complete = true;
+        private.started = started;
         drop(private);
-        assert!(!path.exists());
-    }
-    for alive in [false, true] {
-        let temp = tempfile::tempdir().unwrap();
-        let mut private = Private::new(temp.path()).unwrap();
-        private.started = true;
-        let path = private.path.clone();
-        touch(&path.join("status")).unwrap();
-        assert!(
-            cleanup_with(&path, Duration::ZERO, || Ok(alive))
-                .unwrap_err()
-                .contains("state retained")
-        );
-        drop(private);
-        assert!(path.join("cancel").exists());
+        assert_eq!(path.exists(), started);
     }
 }

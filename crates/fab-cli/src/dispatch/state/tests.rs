@@ -4,6 +4,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 
 use super::*;
+use crate::dispatch::operations;
 
 #[test]
 fn registration_is_private_and_survives_temporary_state_removal() {
@@ -38,6 +39,31 @@ fn registration_is_private_and_survives_temporary_state_removal() {
     );
     fs::remove_dir(&private).unwrap();
     assert!(WorkerRecord::open(record.path()).is_ok());
+}
+
+#[test]
+fn lookup_cancel_and_snapshot_do_not_need_live_credentials() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut record = WorkerRecord::create(
+        temp.path(),
+        "reviewer",
+        "org/repo",
+        temp.path(),
+        "a".repeat(40),
+        temp.path(),
+    )
+    .unwrap();
+    let value = record.snapshot().unwrap();
+    let id = value["worker_id"].as_str().unwrap();
+    assert!(operations::lookup(temp.path(), "../../escape").is_err());
+    let found = operations::lookup(temp.path(), id).unwrap();
+    found.cancel().unwrap();
+    assert!(record.directory().join("cancel").exists());
+    record.result("retained result").unwrap();
+    record.finish(&Ok(()), true, false, false).unwrap();
+    assert!(record.terminal());
+    assert!(record.cancel().is_err());
+    assert_eq!(record.snapshot().unwrap()["result"], "retained result");
 }
 
 #[test]

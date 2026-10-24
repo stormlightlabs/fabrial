@@ -23,6 +23,12 @@ enum Command {
     /// Run a fresh isolated Pi review worker (host tmux backend).
     #[cfg(unix)]
     Dispatch(dispatch::Options),
+    /// Inspect, cancel, or explicitly wait for an independently supervised worker.
+    #[cfg(unix)]
+    Worker {
+        #[command(subcommand)]
+        operation: dispatch::operations::Operation,
+    },
     /// Internal trusted tmux recorder.
     #[cfg(unix)]
     #[command(hide = true)]
@@ -101,6 +107,8 @@ fn main() -> ExitCode {
         Command::Check { repo } => in_repo(&repo, check),
         #[cfg(unix)]
         Command::Dispatch(options) => return ExitCode::from(dispatch::run(options)),
+        #[cfg(unix)]
+        Command::Worker { operation } => return ExitCode::from(dispatch::operations::run(operation)),
         #[cfg(unix)]
         Command::DispatchRecord { private } => return ExitCode::from(dispatch::record(&private)),
     };

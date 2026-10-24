@@ -25,8 +25,8 @@ backends follow this milestone. The design lives in
       ownership before credentials are issued. Persist redacted results outside
       temporary issuer state. The host owns the worker process and credentials;
       records preserve current sandboxing and contain no credential values.
-      Dispatch still waits synchronously; detached operations are the next item.
-- [ ] Add detached dispatch operations: start returns a run/worker ID promptly;
+      Synchronous dispatch remains available.
+- [x] Add detached dispatch operations: start returns a run/worker ID promptly;
       inspect reads progress or a completed result; cancel targets one worker.
       Waiting is explicit and optional. Keep synchronous dispatch available
       for callers that need it, without making Pi hold a tool call open.
