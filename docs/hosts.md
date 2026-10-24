@@ -21,8 +21,8 @@ under `.claude/skills/`.
 `.agents/skills` is a symlink to `.claude/skills`, so the one copy serves all
 three. Pi reads a skill under `.agents/skills` only as a subdirectory holding
 `SKILL.md`, which is the form used here, and only once the project is trusted.
-Pi 1.4.0's docs confirm that it follows the symlink and does not read
-`.claude/skills`; `docs/pi.md` covers Pi 1.x.
+Pi 1.4.0's skill loader follows the symlink (`dist/core/skills.js`) and does
+not read `.claude/skills`; `docs/pi.md` covers Pi 1.x.
 
 Claude Code answers `/<name>` for a project skill and passes the rest of the
 line as arguments, so no command files are needed. `argument-hint` in the
@@ -37,9 +37,9 @@ frontmatter shows what to pass. Codex invokes a skill by name; Pi names one
 | Codex       | `.codex/agents/*.toml`   | TOML, in a trusted project     |
 | Pi          | nothing                  | no subagents; dispatch starts a session per role ([`docs/pi.md`](pi.md)) |
 
-The roles live once, in `.claude/agents/`. On Codex and Pi, the orchestrator
-reads a role's Markdown and passes its body as the instructions of a built-in
-agent or a dispatched session. Phase 6 of `PLAN.md` ports Pi's dispatch.
+The roles live once, in `.claude/agents/`. On Codex, the orchestrator reads a
+role's Markdown and passes its body as a built-in agent's instructions. On Pi,
+`fab dispatch` reads it and starts a session with it, as `docs/pi.md` sets out.
 
 A Codex dispatch must set `fork_turns` to `"none"` or a number. A full-history
 fork inherits the parent's context and refuses a model override, so the
