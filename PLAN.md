@@ -11,6 +11,53 @@ its open issues move over and it is archived.
 The repository is private until the first release. The stormlightlabs org is on
 a paid plan, so rulesets on `main` are enforced.
 
+## Next: asynchronous local Pi workers
+
+Do these items next, in order, as the first part of phase 6. They take priority
+over the remaining roadmap phases. Do not wait for arcl migration, distributed
+claims, the full phase 5 run engine, or phase 7's VPS daemon. Use the minimum
+local run operations needed by the supervisor. Status UI and additional worker
+backends follow this milestone. The design lives in
+[Pi orchestration](docs/pi-orchestration.md).
+
+- [ ] Add a local host supervisor and durable worker records. Record run/worker
+      IDs, task head, state, result location, and resource ownership. The host,
+      not an open Pi tool call, owns the worker process and its credentials.
+      Keep secrets out of event records and preserve current sandboxing.
+- [ ] Add detached dispatch operations: start returns a run/worker ID promptly;
+      inspect reads progress or a completed result; cancel targets one worker.
+      Waiting is explicit and optional. Keep synchronous dispatch available
+      for callers that need it, without making Pi hold a tool call open.
+- [ ] Add the host-owned worker event and control bridge. Deliver progress,
+      completion, failure, blockers, and questions; support cancellation and
+      driver-authorized steering. Address messages by run/worker and task head,
+      acknowledge actions, and reject stale or completed-worker requests.
+      Choose the transport before implementation. Preserve fresh role sessions;
+      do not share histories or launch replacement agents automatically.
+- [ ] Make the Pi agent tool non-blocking. Return the worker ID after launch,
+      then deliver events through the extension independently of that tool
+      call. Queue relevant notifications and resume the orchestrator when
+      appropriate, without another user prompt or repeated model-driven
+      polling. Pi must remain available to answer the driver while work runs.
+      A returned tool call does not cancel its worker; cancellation is explicit.
+- [ ] Reconnect after Pi reload or restart. Recover worker state and results,
+      replay missed notifications without duplicate stage transitions, and
+      keep workers alive when Pi disconnects. The supervisor captures evidence,
+      stops leftover processes/panes, revokes tokens, and removes worker-owned
+      temporary state on completion, failure, or cancellation. Retain and
+      report restricted recovery state if cleanup cannot be confirmed. Recover
+      unfinished cleanup after a host restart without dispatching another agent.
+- [ ] Prove the asynchronous path on the real local sandbox. Launch a worker,
+      answer the driver while it runs, and receive completion or a blocker
+      without a user prompt. Test Pi restart, missed/duplicate events, stale
+      controls, cancellation, timeout, unexpected pane exit, and cleanup after
+      disconnect. Results must survive reconnect; credentials and processes
+      must not leak. This must work headlessly and without the status widgets.
+
+Asynchronous execution does not parallelize dependent review stages. Keep
+implement → review → implement fixes → adversarial review → implement fixes
+→ driver. Skip empty fix stages; events cannot add agents or review cycles.
+
 ## Decisions
 
 - **Rust.** fabrial shares crates with arclightning (`arcl-core`, `arcl-store`)
@@ -207,13 +254,17 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 - [ ] `fab run <task>`: the fixed sequence, one worker per step, on a worktree
       per task.
 - [ ] `fab status`: runs, their step and their PR, read from the claims ref.
-- [ ] Track resource ownership and automate worker-exit and post-merge cleanup.
-      Capture results, stop processes/panes, revoke tokens, and remove temporary
-      state. On merge, remove only clean matching worktrees/branches, release
-      task-owned Nix roots, and refresh clean `main`. Retain and report recovery
-      state on failure; support cleanup after restart without another agent.
+- [ ] Automate post-merge task cleanup: remove only clean matching
+      worktrees/branches, release task-owned Nix roots, and refresh clean `main`.
+      Retain and report recovery state on failure; support cleanup after restart
+      without another agent. Worker-exit cleanup belongs to the next milestone
+      above and must not wait for the full run engine.
 
 ## 6. Workers and Pi setup
+
+Start with the ordered [asynchronous local worker milestone](#next-asynchronous-local-pi-workers)
+above. It covers the local supervisor, detached dispatch, worker communication,
+Pi event delivery, reconnect, and worker-exit cleanup before the UI or VPS work.
 
 - [x] Implement the first local dispatch path: four fresh headless Pi 1.4.0
       review roles, host tmux recorder, root Pi `agent` tool, explicit trusted
@@ -246,11 +297,6 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       to the orchestrator without another tool call. Invalidate old-head state,
       handle stale/error states, and bound polling or use webhooks. Follow
       `docs/pi-orchestration.md`; do not let events start extra review cycles.
-- [ ] Add a host-owned orchestrator/worker communication bridge for progress,
-      blockers, questions, results, cancellation, and authorized steering.
-      Address messages by run/worker, acknowledge actions, and reject stale
-      requests. Choose the transport before implementation; preserve fresh
-      role sessions, sandbox isolation, and credential separation.
 - [ ] Show the current pull request, its link and CI state in the fabrial Pi
       package's status area, following `docs/pi-statusline.md`. Consume shared
       PR/worker state instead of creating another status collector.
