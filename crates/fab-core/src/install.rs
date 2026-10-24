@@ -48,6 +48,11 @@ const EMBEDDED: &[(&str, &str, bool)] = &[
         true,
     ),
     (
+        ".github/storm/squash-body.sh",
+        include_str!("../../../.github/storm/squash-body.sh"),
+        true,
+    ),
+    (
         ".claude/agents/adversarial-reviewer.md",
         include_str!("../../../.claude/agents/adversarial-reviewer.md"),
         false,

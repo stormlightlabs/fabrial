@@ -13,4 +13,4 @@ gates = "just check"
 
 # The fabrial version that wrote the installed files. `fab init --check`
 # compares it with its own.
-version = "0.1.0+9054555"
+version = "0.1.0+780c790"
