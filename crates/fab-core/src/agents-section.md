@@ -13,7 +13,7 @@ drifted.
   `Co-authored-by` line from `.github/fabrial.toml`. Attribution lines and
   session links in the body are dropped, so nothing on `main` carries AI
   attribution. Editing the title or body of a reviewed PR posts the new
-  squash message.
+  squash message. Auto-merge keeps the message it was turned on with.
 - Before pushing, run the command `gates` names in `.github/fabrial.toml`.
 - The owner approves the PR and merges it with the posted squash message.
   Agents never approve or merge.

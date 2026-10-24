@@ -117,7 +117,7 @@ names_head() {
 # alone. A failed call stops the script before the success is posted.
 mark_ready() {
   local info title branch body
-  info=$(gh pr view "$PR" --repo "$REPO" --json state,isDraft,title,body,headRefName,labels)
+  info=$(gh pr view "$PR" --repo "$REPO" --json state,isDraft,title,body,headRefName,labels,autoMergeRequest)
   [[ $(jq -r .state <<<"$info") == OPEN ]] || return 0
   jq -e --arg l "$STOP_LABEL" 'any(.labels[]; .name == $l)' <<<"$info" >/dev/null && return 0
   title=$(jq -r .title <<<"$info")
@@ -126,21 +126,29 @@ mark_ready() {
   if [[ $(jq -r .isDraft <<<"$info") == true ]]; then
     gh_write pr ready "$PR" --repo "$REPO" >/dev/null
   fi
-  squash_message "$title" "$body"
+  squash_message "$title" "$body" "$(jq -r '.autoMergeRequest != null' <<<"$info")"
 }
 
 # Posts the squash message for whoever merges the pull request:
-# squash_message <subject> <body>. The same message posts once.
+# squash_message <subject> <body> <auto-merge on: true|false>. Nothing posts
+# when the bot's newest squash message already says the same.
 squash_message() {
-  local text run fence='```'
-  local intro='Reviewed. When you merge, by hand or with auto-merge, squash with this message:'
+  local text run fence='```' newest
+  local intro='When you merge, by hand or with auto-merge, squash with this message:'
   # The fence outgrows any backtick run in the message, so a title cannot
   # close it early.
   run=$(grep -o '`*' <<<"$1$2" | awk '{ if (length > n) n = length } END { print n + 0 }')
   while (( ${#fence} <= run )); do fence+='`'; done
   text=$(printf '%s\n\n%stext\n%s\n\n%s\n%s' "$intro" "$fence" "$1" "$2" "$fence")
-  gh pr view "$PR" --repo "$REPO" --json comments |
-    jq -e --arg t "$text" 'any(.comments[]; .body == $t)' >/dev/null && return 0
+  # GitHub keeps the message auto-merge was turned on with, whatever the
+  # pull request says later.
+  if [[ $3 == true ]]; then
+    text+=$'\n\nAuto-merge is on and squashes with the message it was turned on with. To use this one, turn auto-merge off and on again with it.'
+  fi
+  newest=$(gh pr view "$PR" --repo "$REPO" --json comments | jq -r --arg slug "$BOT_SLUG" --arg intro "$intro" '
+    [.comments[] | select((.author.login // "") | test("^(app/)?\($slug)(\\[bot\\])?$"))
+      | select(.body | startswith($intro))] | last | .body // ""')
+  [[ $newest == "$text" ]] && return 0
   printf '%s' "$text" >"$scratch/comment"
   gh_write pr comment "$PR" --repo "$REPO" --body-file "$scratch/comment"
 }
