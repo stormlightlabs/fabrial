@@ -6,6 +6,11 @@ workflow moves Unreleased under the new version's heading.
 
 ## Unreleased
 
+- The Review gate no longer turns on auto-merge. A finished review marks the
+  pull request ready, sets `storm/review` and posts the squash message; the
+  owner merges it by hand or turns on auto-merge. `/storm:stop` still turns
+  auto-merge off (#32).
+
 - Keep completed reviews green for native GitHub stacks. GitHub does not support
   their auto-merge, so the bot posts the squash message for manual stack merging.
 

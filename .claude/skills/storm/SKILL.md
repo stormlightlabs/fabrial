@@ -113,8 +113,8 @@ request this run reviews.
 
 Post it through the Bot comment workflow like the rest. The Review gate
 workflow then turns `storm/review` green for that head, marks the draft ready
-and turns on auto-merge. A pull request that GitHub would merge already takes
-no auto-merge; the bot posts the squash message instead. Post it only once the
+and posts the squash message. It never turns on auto-merge: the owner merges,
+by hand or with auto-merge they turn on. Post it only once the
 sequence has run to its end. A push after it sets the check back to pending,
 unless the push only moved the base.
 
@@ -129,8 +129,8 @@ otherwise stop and report. If work remains when ending the session, use the
 
 Then report the PR link, current head and check state, what each pass found,
 what each revise fixed, and anything left for the owner to judge. The owner
-approves, and auto-merge lands it, or the owner merges it with the message the
-bot posted. Do not wait indefinitely for approval. When the owner reports a
+approves and merges it, by hand or with auto-merge, using the message the bot
+posted. Do not wait indefinitely for approval. When the owner reports a
 merge, use the `implement` skill's **After merge** steps.
 
 ## Session changes

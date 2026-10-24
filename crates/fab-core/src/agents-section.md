@@ -23,10 +23,11 @@ drifted.
   access.
 - The agent that opens a PR reviews it with the `storm` skill and ends with a
   `Review finished at <sha>` comment. That turns `storm/review` green for that
-  head, marks the draft ready and turns on squash auto-merge. A PR that can
-  merge already gets the squash message in a comment, for a manual merge.
-  `/storm:ready <sha>` from the owner, a member or a collaborator accepts that
-  head as it is, and `/storm:stop` halts auto-merge.
+  head, marks the draft ready and posts the squash message in a comment. The
+  owner merges, by hand or with auto-merge they turn on; agents and the gate
+  never turn it on. `/storm:ready <sha>` from the owner, a member or a
+  collaborator accepts that head as it is, and `/storm:stop` turns auto-merge
+  off.
 
 ## Writing
 

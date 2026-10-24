@@ -5,10 +5,9 @@
 # The title is the branch's first commit subject and the body is that commit's
 # body without its trailers, so it needs no model. A title or body set later by
 # hand or by an agent is kept. The PR stays a draft until its review finishes;
-# the Review gate then marks it ready and turns on auto-merge, so it lands once
-# the owner approves it and the checks pass. On a PR that is already ready, a
-# push turns auto-merge off and on again to pick up the current title and body.
-# The squash commit takes the PR title, and its body from the PR body through
+# the Review gate then marks it ready and posts the squash message, and the
+# owner merges it, by hand or with auto-merge. Nothing here turns auto-merge
+# on. The squash commit takes the PR title, and its body from the PR body through
 # .github/storm/squash-body.sh, whose only trailer is a Co-authored-by line for
 # the owner.
 name: Branch PR
@@ -73,7 +72,7 @@ jobs:
               text=$(git show -s --format=%b "$first" | .github/storm/squash-body.sh --text)
               [[ -z $text ]] || printf '%s\n\n' "$text"
               echo '<!-- fabrial:footer: the text above becomes the squash commit body. -->'
-              echo "From \`$BRANCH\`. Draft until the review finishes; approve to merge."
+              echo "From \`$BRANCH\`. Draft until the review finishes; the owner merges it."
             } > body.md
             # GitHub skips CODEOWNERS on a draft and requests the owner's
             # review when the Review gate marks it ready. Asking with
@@ -93,13 +92,11 @@ jobs:
           fi
 
           # A draft waits for its review: the Review gate marks it ready and
-          # turns on auto-merge when `Review finished` names its head.
+          # posts the squash message when `Review finished` names its head.
           if [[ $(gh pr view "$number" --json isDraft --jq .isDraft) == true ]]; then
-            echo "#$number is a draft; auto-merge waits for the review."
+            echo "#$number is a draft; it waits for the review."
             exit 0
           fi
 
-          # A push needs a review before its merge settings can be refreshed.
-          # Review gate owns scheduling and squash messages, including edits
-          # after review and native stacks that cannot use auto-merge.
-          echo "#$number is ready; merge scheduling belongs to the Review gate."
+          # Merging is the owner's: by hand, or with auto-merge they turn on.
+          echo "#$number is ready; the owner merges it."
