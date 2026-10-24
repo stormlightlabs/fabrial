@@ -108,7 +108,7 @@ fn main() -> ExitCode {
         #[cfg(unix)]
         Command::Dispatch(options) => return ExitCode::from(dispatch::run(options)),
         #[cfg(unix)]
-        Command::Worker { operation } => return ExitCode::from(dispatch::operations::run(operation)),
+        Command::Worker { operation } => return ExitCode::from(operation.run()),
         #[cfg(unix)]
         Command::DispatchRecord { private } => return ExitCode::from(dispatch::record(&private)),
     };

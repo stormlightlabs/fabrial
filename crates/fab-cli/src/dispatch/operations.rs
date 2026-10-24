@@ -24,6 +24,19 @@ pub enum Operation {
     Wait(Wait),
 }
 
+impl Operation {
+    /// Run this operation and emit credential-free JSON.
+    pub fn run(self) -> u8 {
+        match operate(self) {
+            Ok(code) => code,
+            Err(error) => {
+                emit(&json!({"type": "error", "message": error}));
+                1
+            }
+        }
+    }
+}
+
 /// Worker identity and operator-selected configuration.
 #[derive(Args)]
 pub struct Reference {
@@ -39,17 +52,6 @@ pub struct Wait {
     reference: Reference,
     #[arg(long, default_value_t = 3000, value_parser = clap::value_parser!(u64).range(1..=3600))]
     timeout: u64,
-}
-
-/// Run an operation and emit credential-free JSON.
-pub fn run(operation: Operation) -> u8 {
-    match operate(operation) {
-        Ok(code) => code,
-        Err(error) => {
-            emit(&json!({"type": "error", "message": error}));
-            1
-        }
-    }
 }
 
 /// Read only the registry setting: inspection does not require live OAuth or a sandbox build.
