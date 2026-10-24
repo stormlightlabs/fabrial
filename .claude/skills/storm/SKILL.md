@@ -118,10 +118,28 @@ no auto-merge; the bot posts the squash message instead. Post it only once the
 sequence has run to its end. A push after it sets the check back to pending,
 unless the push only moved the base.
 
-Then report: the pull request, what each pass found and what each revise
-fixed, and anything left for the owner to judge, including any finding the
-adversarial pass's revise did not resolve. The owner approves, and auto-merge
-lands it, or the owner merges it with the message the bot posted.
+Confirm the finish comment appeared, then watch `storm/review` and the
+repository's required checks for this head. With `gh`, use `gh pr checks <n>`
+and `gh pr view <n>`; cloud sessions use `pull_request_read`. Check at most once
+every 30 seconds for up to five minutes. Stop when checks finish or a failure
+needs action; on timeout report the pending checks instead of claiming ready.
+A push invalidates earlier check results. Fix only failures within this task;
+otherwise stop and report. If work remains when ending the session, use the
+`handoff` skill so the next session can finish watching.
+
+Then report the PR link, current head and check state, what each pass found,
+what each revise fixed, and anything left for the owner to judge. The owner
+approves, and auto-merge lands it, or the owner merges it with the message the
+bot posted. Do not wait indefinitely for approval. When the owner reports a
+merge, use the `implement` skill's **After merge** steps.
+
+## Session changes
+
+Before clearing context with unfinished work, use the `handoff` skill. On
+pickup, verify the PR head and recorded progress and continue the unfinished
+step, not a new sequence. Never claim a pass ran without its result. If the
+record is missing or contradictory, stop and ask rather than posting
+`Review finished` or silently repeating the sequence.
 
 ## Comment commands
 
