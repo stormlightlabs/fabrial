@@ -60,6 +60,14 @@ Asynchronous execution does not parallelize dependent review stages. Keep
 implement → review → implement fixes → adversarial review → implement fixes
 → driver. Skip empty fix stages; events cannot add agents or review cycles.
 
+### Follow-up: queued messages during active work
+
+- [ ] Build a Pi extension that queues incoming questions and steering messages
+      while an agreed task is active. Let the driver mark an interruption as
+      urgent; otherwise answer at a safe boundary and continue the task without
+      ending the run. Show queued messages and keep them through reload/resume.
+      Do not turn queued questions into new tasks or extra worker stages.
+
 ## Decisions
 
 - **Rust.** fabrial shares crates with arclightning (`arcl-core`, `arcl-store`)
