@@ -35,8 +35,11 @@ Pi has no subagents. Its `subagent` example extension spawns `pi --mode json
 In `--mode json`, the answer is the last `message_end` event whose
 `message.role` is `assistant`. A failed run can still exit 0, so its
 `stopReason` and `errorMessage` are what say it failed. Headless sessions skip
-project skills and extensions unless the project is trusted, so a worker needs
-`--approve`. `pi --mode rpc` keeps a session alive for follow-up prompts, and
+project skills and extensions unless the project is trusted. Trusting a
+worktree with `--approve` would also run any `.pi/extensions` code or
+`.pi/settings.json` package the pull request's branch adds, so workers run
+with `--no-approve` and load what they need by path (`-e` for an extension,
+`--skill` for a skill). `pi --mode rpc` keeps a session alive for follow-up prompts, and
 `createAgentSession` runs one in-process; neither opens a pane.
 
 ## The fabrial Pi package
@@ -48,24 +51,24 @@ worker's events as they arrive and passes a line of progress to `onUpdate`.
 The `storm` skill tells a Pi orchestrator to use this tool for each fresh
 agent.
 
-The same extension guards `bash`. It splits a command on `;`, `&&`, `||`, `|`
-and newlines, looks inside `sh -c` and `bash -c` strings, skips leading
-`env`, `sudo` and variable assignments, and blocks a segment that runs any of:
+The same extension guards `bash` against the obvious mistakes: `gh pr merge`,
+`gh pr review` with `--approve` or `-a`, and `git push` or `git merge` aimed at
+`main`. It blocks with a reason rather than asking, since a headless session
+cannot answer. It matches command text, so `$(...)`, a script file or another
+spelling gets past it, and it is not what keeps a worker from merging.
 
-- `gh pr merge`, or `gh pr review` with `--approve`;
-- `gh api` against a pull request's `merge` endpoint, or a review with
-  `APPROVE`;
-- `git push` naming `main` as the destination, or with no refspec while
-  `main` is checked out;
-- `git merge` while `main` is checked out.
+What does is the token. A worker's `GH_TOKEN` is never the owner's: it can read
+the repository and run the Bot comment workflow, and it cannot approve, merge
+or push to `main`. With that token an approval from a worker is not the
+owner's, and the ruleset on `main` holds every merge for the owner. Phase 7's
+short-lived, repository-scoped tokens are where that token comes from; until
+then the spike uses a fine-grained token with only those permissions.
 
-It blocks with a reason rather than asking, since a headless session cannot
-answer. Because the extension comes from a user install, the orchestrator and
-every worker `fab dispatch` starts load it. The guard is a second line: the
-ruleset on `main` still holds every merge for the owner's approval.
-
-Skills come from the repository through `.agents/skills`, so the package does
-not ship them.
+The orchestrator finds skills through `.agents/skills`. A worker, with no
+trust, is given the extension with `-e` and each skill its role uses with
+`--skill`, both by path into the orchestrator's checkout of `main`, never into
+the pull request's worktree, so a branch cannot change the code or the
+instructions that review it.
 
 ## `fab dispatch`
 
@@ -87,16 +90,19 @@ There are two ways to run the worker, depending on the backend.
 The pane runs the worker headless:
 
 ```sh
-pi --mode json -p --approve --session-dir <run> --model <model> \
-   --thinking <level> --tools <list> --append-system-prompt <role file> \
-   -- '<task>'
+pi --mode json -p --no-approve -e <extension> --skill <skill>... \
+   --session-dir <run dir> --model <model> --thinking <level> \
+   --tools <list> --append-system-prompt <role file> -- '<task>'
 ```
 
-in the worktree the run names, with stdout going to `<run>/events.jsonl` and
-the exit status to `<run>/status`. `fab dispatch` waits for the status file,
-prints the final assistant message, and exits non-zero when `stopReason` or
-`errorMessage` says the run failed. thunderstorm's `tstorm dispatch` does the
-same in Go and is the reference.
+in the worktree the run names, with stdout going to `<run dir>/events.jsonl`
+and the exit status to `<run dir>/status`. `fab dispatch` waits for the status
+file, prints the final assistant message, and exits non-zero when `stopReason`
+or `errorMessage` says the run failed. It also gives up after a timeout (30
+minutes unless the role sets one), and stops waiting when the pane is gone
+without a status: in tmux it asks whether the pane still exists, and in Zellij
+it relies on the timeout. thunderstorm's `tstorm dispatch` does all of this in
+Go and is the reference.
 
 ### herdr
 
@@ -108,20 +114,26 @@ idle there. With herdr, the worker runs as an interactive Pi instead:
 1. `herdr pane split --current --direction right --cwd <worktree> --no-focus`
    from the orchestrator's pane, or `herdr workspace create` when
    `HERDR_ENV` is unset, reading the pane's ID from the JSON reply.
-2. `herdr agent start <run> --kind pi --pane <id> -- --approve --session-dir
-   <run> --model <model> --thinking <level> --tools <list>
-   --append-system-prompt <role file>`.
-3. `herdr agent prompt <run> "<task>" --wait --timeout <ms>`, which returns
-   when herdr sees Pi finish; a `blocked` state goes to the operator, not to
-   the orchestrator.
-4. The final assistant message is read from the session file under `<run>`,
-   since a TUI's screen is not a record.
+2. `herdr agent start <name> --kind pi --pane <id> -- --no-approve -e
+   <extension> --skill <skill>... --session-dir <run dir> --model <model>
+   --thinking <level> --tools <list> --append-system-prompt <role file>`. The
+   agent name is short and plain (`fab-<role>-<n>`, matching herdr's
+   `[a-z][a-z0-9_-]{0,31}`); the run directory is a separate path.
+3. `herdr agent prompt <name> "<task>" --wait --until idle --until done
+   --timeout <ms>`. Without the `--until` flags it returns at the first
+   `blocked`, which is not an answer. A `blocked` state goes to the operator,
+   and `fab dispatch` waits again once it clears.
+4. The final assistant message is read from the session file under the run
+   directory, since a TUI's screen is not a record.
+5. `herdr pane close <id>` on the pane `fab dispatch` opened, since an
+   interactive Pi never exits on its own.
 
 The person watching sees a live Pi with herdr's working, blocked and done
 marks, and can step in. herdr does not autostart a server, does not report a
 pane's exit status, and removes a pane when its process exits, so
-`fab dispatch` checks for a running server first and keeps its own record in
-`<run>`.
+`fab dispatch` checks for a running server first, treats a `pane.exited` or
+`pane.closed` event for its pane as a failed run, and keeps its own record in
+the run directory.
 
 ## Open questions
 

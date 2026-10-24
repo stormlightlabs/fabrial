@@ -192,9 +192,10 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 
 - [ ] Pi spike, on Pi 1.x, as `docs/pi.md` lays out: `fab dispatch` for the
       four review roles (reviewer, verifier, adversarial reviewer, reviser),
-      and a Pi package whose extension registers an `agent` tool over it and
-      blocks merges and approvals in the orchestrator and every worker. Run
-      the `storm` sequence from a Pi orchestrator on one real pull request.
+      a Pi package whose extension registers an `agent` tool over it, and
+      workers that run untrusted with a token that cannot approve, merge or
+      push to `main`. Run the `storm` sequence from a Pi orchestrator on one
+      real pull request.
 - [ ] Pi dispatch for every role, into tmux, Zellij and herdr, with per-role models
       and effort caps (port thunderstorm's `internal/dispatch` and
       `internal/roles`).
