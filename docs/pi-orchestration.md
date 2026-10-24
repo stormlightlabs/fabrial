@@ -1,8 +1,10 @@
 # Pi orchestration
 
 This is the planned coordination and lifecycle behavior for fabrial's Pi
-setup. It is not implemented by the current `agent` tool. For the shipped
-worker command and host setup, read [Pi dispatch](pi.md). The
+setup. The current Rust recorder provides worker supervision and durable
+records; asynchronous dispatch and the bridge below are not yet implemented
+by the `agent` tool. For the shipped worker command and host setup, read
+[Pi dispatch](pi.md). The
 [status area](pi-statusline.md) presents state; [PLAN.md](../PLAN.md) tracks
 implementation work.
 

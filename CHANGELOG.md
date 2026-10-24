@@ -9,6 +9,9 @@ workflow moves Unreleased under the new version's heading.
 - Keep completed reviews green for native GitHub stacks. GitHub does not support
   their auto-merge, so the bot posts the squash message for manual stack merging.
 
+- Retain private, credential-free worker records and redacted final results
+  after dispatch cleanup, with run/worker IDs and resource ownership.
+
 - Fix App JWT authentication in the local issuer. The host now needs curl
   with `--header @-` support.
 

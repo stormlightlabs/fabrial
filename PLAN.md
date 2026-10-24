@@ -20,10 +20,12 @@ local run operations needed by the supervisor. Status UI and additional worker
 backends follow this milestone. The design lives in
 [Pi orchestration](docs/pi-orchestration.md).
 
-- [ ] Add a local host supervisor and durable worker records. Record run/worker
-      IDs, task head, state, result location, and resource ownership. The host,
-      not an open Pi tool call, owns the worker process and its credentials.
-      Keep secrets out of event records and preserve current sandboxing.
+- [x] Extend the existing Rust tmux recorder with durable worker records.
+      Record run/worker IDs, task head, state, result location, and resource
+      ownership before credentials are issued. Persist redacted results outside
+      temporary issuer state. The host owns the worker process and credentials;
+      records preserve current sandboxing and contain no credential values.
+      Dispatch still waits synchronously; detached operations are the next item.
 - [ ] Add detached dispatch operations: start returns a run/worker ID promptly;
       inspect reads progress or a completed result; cancel targets one worker.
       Waiting is explicit and optional. Keep synchronous dispatch available
