@@ -105,7 +105,8 @@ drifted.
   `storm/<task>` branch; the Branch PR workflow opens the pull request as a
   draft from stormlight-thunderbot.
 - Commits on those branches may carry the agent's attribution trailers. The
-  squash commit replaces them with the PR title, the PR body above its
+  squash commit replaces them with the PR title and number, such as
+  `Add Pi dispatch (#21)`, the PR body above its
   `<!-- fabrial:footer` line, `Merged from <branch>.` and the owner's
   `Co-authored-by` line from `.github/fabrial.toml`. Attribution lines and
   session links in the body are dropped, so nothing on `main` carries AI

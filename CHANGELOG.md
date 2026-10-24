@@ -6,6 +6,9 @@ workflow moves Unreleased under the new version's heading.
 
 ## Unreleased
 
+- The squash message the Review gate posts ends its subject with the pull
+  request number, such as `Add Pi dispatch (#21)`.
+
 - The Review gate no longer turns on auto-merge. A finished review marks the
   pull request ready, sets `storm/review` and posts the squash message; the
   owner merges it by hand or turns on auto-merge. `/storm:stop` still turns

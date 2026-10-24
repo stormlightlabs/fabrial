@@ -120,7 +120,10 @@ mark_ready() {
   info=$(gh pr view "$PR" --repo "$REPO" --json state,isDraft,title,body,headRefName,labels,autoMergeRequest)
   [[ $(jq -r .state <<<"$info") == OPEN ]] || return 0
   jq -e --arg l "$STOP_LABEL" 'any(.labels[]; .name == $l)' <<<"$info" >/dev/null && return 0
+  # The subject carries the PR number, as GitHub's own squash title does, so
+  # `git log` on main leads back to the pull request.
   title=$(jq -r .title <<<"$info")
+  [[ $title == *"(#$PR)" ]] || title+=" (#$PR)"
   branch=$(jq -r .headRefName <<<"$info")
   body=$(jq -r '.body // ""' <<<"$info" | .github/storm/squash-body.sh "$branch" "$OWNER_TRAILER")
   if [[ $(jq -r .isDraft <<<"$info") == true ]]; then

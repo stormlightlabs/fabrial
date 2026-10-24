@@ -213,9 +213,9 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       the Bot comment workflow.
 - [x] Accept GitHub's native-stack auto-merge refusal without failing a completed
       review. Post the squash message for the person merging the stack.
-- [ ] Keep the GitHub PR number in the final squash commit subject, for
-      example `Add Pi dispatch (#21)`. Update the merge-message workflows in
-      a follow-up; PR comments alone do not preserve this in git history.
+- [x] Keep the GitHub PR number in the final squash commit subject, for
+      example `Add Pi dispatch (#21)`. The Review gate adds it to the squash
+      message it posts.
 - [ ] Verify the shared skill layout on Claude Code, Codex and Pi, and record
       what differs. `docs/hosts.md` records Claude Code; Codex and Pi are
       still to check.
