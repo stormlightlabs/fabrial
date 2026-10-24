@@ -26,6 +26,7 @@ const body = index < 0 ? "" : fs.readFileSync(args[index + 1], "utf8");
 fs.appendFileSync(process.env.TEST_GH_LOG, JSON.stringify({args, body}) + "\\n");
 const posted = fs.readFileSync(process.env.TEST_GH_LOG, "utf8").trim().split("\\n").map(l => JSON.parse(l))
   .filter(c => c.args[0] === "pr" && c.args[1] === "comment").map(c => ({ author: { login: "stormlight-thunderbot" }, body: c.body }));
+if (args[0] === "pr" && args[1] === process.env.TEST_FAIL) process.exit(1);
 if (args[0] === "pr" && args[1] === "view") {
   const view = JSON.parse(posted.length && process.env.TEST_PR_LATER ? process.env.TEST_PR_LATER : process.env.TEST_PR);
   view.comments = [...view.comments, ...posted];
@@ -163,4 +164,15 @@ test("squash body keeps a Session line in prose and drops one naming a link", ()
 test("squash body treats code blocks like any other text", () => {
   assert.equal(kept("Keep.\n````\n```\nCo-authored-by: A <a@b>\n````\nAlso kept.\n<!-- fabrial:footer -->\nGone.\n"),
     "Keep.\n````\n```\n````\nAlso kept.\n");
+});
+
+test("a failed ready posts no success", () => {
+  const { status, calls } = gate({ ...finished, TEST_FAIL: "ready" });
+  assert.notEqual(status, 0);
+  assert(!calls.some(c => c.args.includes("conclusion=success")));
+});
+
+test("a failed squash message fails the run", () => {
+  const { status } = gate({ ...finished, TEST_FAIL: "comment" });
+  assert.notEqual(status, 0);
 });

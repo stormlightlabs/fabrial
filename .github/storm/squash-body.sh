@@ -10,8 +10,9 @@
 # Lines that attribute the work to an agent are dropped, quoted or not and in
 # any case: Co-authored-by and Claude-Session trailers, a `Session:` line
 # naming a link, "Generated with" lines, the robot emoji, and Claude Code
-# session and Codex task links. Code blocks get no special treatment. No agent attribution reaches main. A
-# description with nothing left gives the plain `Merged from <branch>.` body.
+# session and Codex task links. No agent attribution reaches main. Code blocks
+# get no special treatment. A description with nothing left gives the plain
+# `Merged from <branch>.` body.
 # Branch PR and the Review gate both run this, so the two set the same message.
 set -euo pipefail
 

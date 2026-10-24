@@ -110,38 +110,45 @@ names_head() {
   [[ $1 =~ ^[0-9a-f]{7,40}$ && $head == "$1"* ]]
 }
 
-# Marks a draft pull request ready once its head has passed review, and posts
-# the squash message Branch PR's flow builds, for the owner. Merging, by hand
-# or with auto-merge, is the owner's choice: the gate never turns auto-merge on
-# or changes a request the owner set. A stopped or closed pull request is left
-# alone. A failed call stops the script before the success is posted.
+# Marks a draft pull request ready once its head has passed review. Merging,
+# by hand or with auto-merge, is the owner's choice: the gate never turns
+# auto-merge on or changes a request the owner set. A stopped or closed pull
+# request is left alone. A failed call stops the script before the success is
+# posted.
 mark_ready() {
-  local info attempt
+  local info
   info=$(gh pr view "$PR" --repo "$REPO" --json state,isDraft,labels)
   [[ $(jq -r .state <<<"$info") == OPEN ]] || return 0
   jq -e --arg l "$STOP_LABEL" 'any(.labels[]; .name == $l)' <<<"$info" >/dev/null && return 0
   if [[ $(jq -r .isDraft <<<"$info") == true ]]; then
     gh_write pr ready "$PR" --repo "$REPO" >/dev/null
   fi
-  # Runs can overlap, such as an edit and a `Review finished`, and each reads
-  # the text when it starts. A run reads again after it posts, so whichever
-  # posts last also posts the pull request's current text.
+}
+
+# Posts the squash message Branch PR's flow builds, for the owner. Runs can
+# overlap, such as an edit and a `Review finished`, and each reads the text
+# when it starts. A run reads again after it posts, so whichever posts last
+# also posts the pull request's current text.
+post_squash_message() {
+  local attempt
   for attempt in 1 2 3; do
-    squash_message || return 0
+    posted=0
+    squash_message
+    (( posted )) || return 0
     [[ ${DRY_RUN:-0} != 1 ]] || return 0
   done
 }
 
-# Posts the squash message for whoever merges the pull request, built from
-# the pull request as it is now. Returns 1 when there is nothing to post: the
-# pull request is closed or stopped, or the bot's newest squash message
-# already says the same.
+# Posts the squash message built from the pull request as it is now, and sets
+# `posted` to 1. Posts nothing when the pull request is closed or stopped, or
+# when the bot's newest squash message already says the same. A failed call
+# stops the script.
 squash_message() {
   local info title branch body text run fence='```' newest
   local intro='When you merge, by hand or with auto-merge, squash with this message:'
   info=$(gh pr view "$PR" --repo "$REPO" --json state,title,body,headRefName,labels,autoMergeRequest,comments)
-  [[ $(jq -r .state <<<"$info") == OPEN ]] || return 1
-  jq -e --arg l "$STOP_LABEL" 'any(.labels[]; .name == $l)' <<<"$info" >/dev/null && return 1
+  [[ $(jq -r .state <<<"$info") == OPEN ]] || return 0
+  jq -e --arg l "$STOP_LABEL" 'any(.labels[]; .name == $l)' <<<"$info" >/dev/null && return 0
   # The subject carries the PR number, as GitHub's own squash title does, so
   # `git log` on main leads back to the pull request.
   title=$(jq -r .title <<<"$info")
@@ -161,9 +168,10 @@ squash_message() {
   newest=$(jq -r --arg slug "$BOT_SLUG" --arg intro "$intro" '
     [.comments[] | select((.author.login // "") | test("^(app/)?\($slug)(\\[bot\\])?$"))
       | select(.body | startswith($intro))] | last | .body // ""' <<<"$info")
-  [[ $newest == "$text" ]] && return 1
+  [[ $newest == "$text" ]] && return 0
   printf '%s' "$text" >"$scratch/comment"
   gh_write pr comment "$PR" --repo "$REPO" --body-file "$scratch/comment" >/dev/null
+  posted=1
 }
 
 # Asks for a command again when the SHA it names is not the head.
@@ -184,7 +192,7 @@ if [[ $EVENT == edit ]]; then
     [[ $permission =~ ^(admin|maintain|write)$ ]] || exit 0
   fi
   if [[ $(gh pr view "$PR" --repo "$REPO" --json isDraft | jq -r .isDraft) == false && -n $(last_success "$head") ]]; then
-    mark_ready
+    post_squash_message
   fi
   exit 0
 fi
@@ -216,6 +224,9 @@ case $line in
       mark_ready
       check "$head" success "Reviewed at $short" \
         "@$author finished the review of $short.$(marker "$head")"
+      # After the success, so an edit from here on finds the head reviewed
+      # and posts its own message.
+      post_squash_message
     else
       wrong_sha 'Review finished' "$named"
     fi
@@ -226,6 +237,7 @@ case $line in
       mark_ready
       check "$head" success "Marked ready by @$author" \
         "@$author accepted $short with \`/storm:ready\`.$(marker "$head")"
+      post_squash_message
     else
       wrong_sha '/storm:ready' "$named"
     fi
