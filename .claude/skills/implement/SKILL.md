@@ -92,6 +92,13 @@ becomes the subject of the squash commit on `main`. Make it under 60
 characters, in the imperative, saying what changed. Later commits on the branch
 are discarded at merge.
 
+Add a body to the first commit when the subject alone leaves out the why: the
+reason for the change, a decision that is not obvious from the diff, or a
+change in behaviour. Skip it when the subject says it all. Keep it under about
+150 words, in plain prose. The Branch PR workflow makes it the pull request's
+description, without your trailers, and the description becomes the squash
+commit's body.
+
 ```sh
 git push -u origin <branch>
 ```
@@ -99,11 +106,13 @@ git push -u origin <branch>
 The Branch PR workflow then opens the pull request as a draft from
 stormlight-thunderbot. Do not open one yourself. It stays a draft until the
 `storm` skill's review finishes; GitHub requests the owner's review when it is
-marked ready. Once it exists, replace the body with your own when the task is
-an issue: what changed and why, in a few lines, ending with `Closes #<n>`.
-GitHub reads the closing keyword from the body, and the squash commit does not
-carry it. For other tasks you may replace the body the same way. The workflow
-keeps a title or body set after it opens.
+marked ready. When the task is an issue, add `Closes #<n>` as the
+description's last line above the footer; GitHub reads the closing keyword
+from the description. Edit the description when it should say more or less
+than the commit body did. Text above the `<!-- fabrial:footer` line becomes
+the squash commit's body, with no attribution lines or session links; leave it
+empty when the title says it all. The workflow keeps a title or body set after
+it opens, and the Review gate carries an edit into the squash message.
 
 Post what you verified as a comment on the pull request, not in the body: the
 commands you ran and what they returned, and anything you did not check. Post

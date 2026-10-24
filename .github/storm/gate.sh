@@ -13,6 +13,9 @@
 #                  Branch PR's message (or, on a pull request that can merge
 #                  now, posts that message); `/storm:stop` labels the pull
 #                  request and turns off auto-merge.
+#   EVENT=edit     the title or body changed: on a ready pull request whose
+#                  head passed review, sets the squash message again, since
+#                  auto-merge keeps the one it was given.
 #
 # A command word ends at whitespace or the end of the line, so
 # `/storm:readyish` and `/storm:stopwatch` do nothing.
@@ -109,12 +112,12 @@ names_head() {
 mark_ready() {
   local info title branch body old err
   info=$(gh pr view "$PR" --repo "$REPO" \
-    --json state,isDraft,title,headRefName,labels,autoMergeRequest,mergeStateStatus)
+    --json state,isDraft,title,body,headRefName,labels,autoMergeRequest,mergeStateStatus)
   [[ $(jq -r .state <<<"$info") == OPEN ]] || return 0
   jq -e --arg l "$STOP_LABEL" 'any(.labels[]; .name == $l)' <<<"$info" >/dev/null && return 0
   title=$(jq -r .title <<<"$info")
   branch=$(jq -r .headRefName <<<"$info")
-  body=$(printf 'Merged from %s.\n\nCo-authored-by: %s' "$branch" "$OWNER_TRAILER")
+  body=$(jq -r '.body // ""' <<<"$info" | .github/storm/squash-body.sh "$branch" "$OWNER_TRAILER")
   if [[ $(jq -r .isDraft <<<"$info") == true ]]; then
     gh_write pr ready "$PR" --repo "$REPO" >/dev/null
   fi
@@ -202,6 +205,13 @@ wrong_sha() {
 
 head=${HEAD_SHA:-$(gh pr view "$PR" --repo "$REPO" --json headRefOid --jq .headRefOid)}
 short=${head:0:7}
+
+if [[ $EVENT == edit ]]; then
+  if [[ $(gh pr view "$PR" --repo "$REPO" --json isDraft | jq -r .isDraft) == false && -n $(last_success "$head") ]]; then
+    mark_ready
+  fi
+  exit 0
+fi
 
 if [[ $EVENT == push ]]; then
   if [[ ${ACTION:-} == reopened && -n $(last_success "$head") ]]; then

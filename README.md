@@ -14,10 +14,10 @@ cargo install --path crates/fab-cli
 fab init --owner <github-login> --trailer "Name <email>" --gates "<gate command>"
 ```
 
-It writes the Branch PR, Review gate and Bot comment workflows, `gate.sh`,
-`CODEOWNERS`, `.github/fabrial.toml`, the skills and agents, and a section of
-`AGENTS.md`. Commit the result on a `claude/` branch and push it; the Branch
-PR workflow opens the pull request. Later runs of `fab init` take the settings
+It writes the Branch PR, Review gate and Bot comment workflows, `gate.sh` and
+`squash-body.sh`, `CODEOWNERS`, `.github/fabrial.toml`, the skills and agents,
+and a section of `AGENTS.md`. Commit the result on a `claude/` branch and push
+it; the Branch PR workflow opens the pull request. Later runs of `fab init` take the settings
 from `.github/fabrial.toml` and replace the files with this build's.
 
 `fab init --check` lists files that differ from this build's and an installed
