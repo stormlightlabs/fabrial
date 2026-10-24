@@ -35,6 +35,15 @@ without it the gate fails `storm/review`. The gate runs from `main`,
 so on the install pull request it does nothing: mark that draft ready
 yourself, and require `storm/review` on `main` only after it merges.
 
+## Local Pi workers
+
+The preview `fab dispatch` command starts fresh Pi 1.4.0 review workers in
+host tmux sessions. The whole worker runs in a pinned Nix sandbox. A trusted
+local issuer supplies repository-restricted GitHub App tokens, and the root
+Pi package exposes the same command as an `agent` tool. Follow
+[Pi host setup](docs/pi.md) before running it; a normal development shell is
+not worker isolation. This feature is under active development.
+
 ## Releases
 
 Run the Release workflow from the Actions tab with the new version, such as

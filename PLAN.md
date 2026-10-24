@@ -47,8 +47,11 @@ a paid plan, so rulesets on `main` are enforced.
   through the CLI or `fab mcp`. A person drives it from the dashboard or with
   `/storm:` PR comments.
 - **Enforcement is server-side:** rulesets, required checks and the review
-  workflow. There is no shell-command parsing and no local token broker. Worker
-  sessions never hold the App's private key; only Actions and the daemon do.
+  workflow. There is no shell-command parsing or general token broker. Worker
+  sessions never hold the App's private key. Actions, the daemon, and the
+  explicitly authorized local spike issuer may hold it. The local issuer
+  retrieves only configured BWS secrets through macOS Keychain and mints
+  repository-restricted App installation tokens; it never accepts an owner PAT.
 - **The bot is `stormlight-thunderbot`,** with its App ID and private key as
   org secrets shared with each repository that uses fabrial.
 - **Pull requests.** The bot opens each PR as a draft, and it stays one until
@@ -58,8 +61,10 @@ a paid plan, so rulesets on `main` are enforced.
   with" and "Not covered" never reach `main`: verification goes in the review
   comment and in arcl's completion evidence. PR bodies stay short.
 - **The agent that opens a PR reviews it,** in its own Claude Code (or Codex)
-  session: one standard review and one adversarial review by fresh agents,
-  each checked by a verifier and followed by a revise. It ends with
+  session: implement, one standard review by a fresh agent, implement its fixes,
+  one adversarial review by a fresh agent, implement its fixes, then hand off
+  to the driver. Skip fix stages without actionable findings. Extra verifier
+  stages or review cycles require the driver's request. It ends with
   `Review finished at <sha>`. A model-free workflow turns the required
   `storm/review` check green when that comment names the head. It runs from
   `main` through `pull_request_target`, so a change cannot alter its own gate.
@@ -112,8 +117,8 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 
 - Which VPS: Hetzner CX33, Hostinger KVM 2 or Linode, decided at deploy time
   from the providers' live pricing pages. Aim for 8 GB and 4 vCPU.
-- How workers are isolated on a machine: a container per run, or a user per
-  worktree.
+- Isolation on the VPS: the local spike wraps whole Pi workers with pinned
+  agent-sandbox.nix, but the deployment setup is still open.
 - Whether the dashboard is reachable only over Tailscale.
 
 ## 0. Repository
@@ -137,6 +142,9 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 - [x] `/storm:review|revise|ready|stop` comment commands.
 - [x] Bot comments: agents post PR comments as stormlight-thunderbot through
       the Bot comment workflow.
+- [ ] Keep the GitHub PR number in the final squash commit subject, for
+      example `Add Pi dispatch (#21)`. Update the merge-message workflows in
+      a follow-up; PR comments alone do not preserve this in git history.
 - [ ] Verify the shared skill layout on Claude Code, Codex and Pi, and record
       what differs. `docs/hosts.md` records Claude Code; Codex and Pi are
       still to check.
@@ -190,6 +198,26 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 
 ## 6. Workers
 
+- [x] Implement the first local dispatch path: four fresh headless Pi 1.4.0
+      review roles, host tmux recorder, root Pi `agent` tool, explicit trusted
+      inputs, per-role models, and a local App issuer. Pin agent-sandbox.nix
+      v5.6.3 and its nixpkgs, removing only the two owner-Keychain Mach grants.
+      Dispatch and the recorder now run in Rust in `fab-cli`, without a Python
+      runtime. Rust subprocess tests cover issuance, cancellation during
+      issuance, deadline expiry, worker failure, revocation, and retained
+      cleanup state. App JWT requests use curl Bearer headers over stdin;
+      installation-token requests stay on GitHub CLI. Node tests cover the Pi tool.
+- [x] Exercise the Pi `agent` tool through Rust dispatch, real App issuance,
+      subscription auth, tmux, and the pinned sandbox on PR #21. A fresh
+      adversarial review completed and the tmux session exited. Standard review
+      and its cleanup revision ran in fresh bootstrap workers.
+- [ ] Host-check forced cancellation, timeout, unexpected pane death, Git push,
+      and Rust gates through the shipped Rust launcher. The dispatched worker
+      could not link `libiconv`; host gates and CI passed. Earlier bootstrap
+      builds and pushes do not verify these operations through Rust dispatch.
+- [ ] Make sandbox settings configurable for deployment needs. Keep the
+      pinned isolation policy fixed for this spike; choose the settings and
+      validation before adding configuration options.
 - [ ] Local Pi spike, on Pi 1.x, as `docs/pi.md` lays out: `fab dispatch` for
       reviewer, verifier, adversarial reviewer and reviser; a Pi package with
       an `agent` tool; GPT-6 Sol for the standard pass and GPT-6.1 Sol for the

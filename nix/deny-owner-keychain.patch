@@ -1,0 +1,11 @@
+--- a/launcher/lib/launch_config/darwin/seatbelt.py
++++ b/launcher/lib/launch_config/darwin/seatbelt.py
+@@ -45,8 +45,6 @@
+     ";; Mach IPC — system services, security framework, FSEvents",
+     '(allow mach-lookup (global-name-prefix "com.apple.system."))',
+     '(allow mach-lookup (global-name-prefix "com.apple.SystemConfiguration."))',
+-    '(allow mach-lookup (global-name "com.apple.securityd.xpc"))',
+-    '(allow mach-lookup (global-name "com.apple.SecurityServer"))',
+     '(allow mach-lookup (global-name "com.apple.trustd.agent"))',
+     '(allow mach-lookup (global-name "com.apple.FSEvents"))',
+     '(allow mach-lookup (global-name "com.apple.diagnosticd"))',

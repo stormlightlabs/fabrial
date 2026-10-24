@@ -3,6 +3,9 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+#[cfg(unix)]
+mod dispatch;
+
 use clap::{Args, Parser, Subcommand};
 use fab_core::install::{self, Report};
 use fab_core::settings::Settings;
@@ -17,6 +20,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Run a fresh isolated Pi review worker (host tmux backend).
+    #[cfg(unix)]
+    Dispatch(dispatch::Options),
+    /// Internal trusted tmux recorder.
+    #[cfg(unix)]
+    #[command(hide = true)]
+    DispatchRecord { private: PathBuf },
     /// Install fabrial's workflows, gate, skills and agents into a repository
     /// that does not have them yet.
     Init {
@@ -89,6 +99,10 @@ fn main() -> ExitCode {
             install::update(dir, change, force).map(|r| written(&r, "updated"))
         }),
         Command::Check { repo } => in_repo(&repo, check),
+        #[cfg(unix)]
+        Command::Dispatch(options) => return ExitCode::from(dispatch::run(options)),
+        #[cfg(unix)]
+        Command::DispatchRecord { private } => return ExitCode::from(dispatch::record(&private)),
     };
     result.unwrap_or_else(|e| {
         eprintln!("fab: {e}");

@@ -28,6 +28,11 @@ const AGENTS_SECTION: &str = include_str!("agents-section.md");
 /// The files copied as they are, with whether each is executable.
 const EMBEDDED: &[(&str, &str, bool)] = &[
     (
+        ".github/fabrial-roles.toml",
+        include_str!("../../../.github/fabrial-roles.toml"),
+        false,
+    ),
+    (
         ".github/workflows/branch-pr.yml",
         include_str!("../../../.github/workflows/branch-pr.yml"),
         false,
