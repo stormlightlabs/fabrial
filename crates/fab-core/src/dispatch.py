@@ -1,6 +1,7 @@
 """Trusted host launcher for fresh Pi workers. Python 3.11 or newer."""
 import argparse
 import base64
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -157,7 +158,11 @@ def issue(config, private, role):
         if [r["full_name"].lower() for r in repos] != [config["repository"].lower()]:
             raise DispatchError("installation token is not repository-restricted")
     except BaseException:
-        api("DELETE", "/installation/token", token)
+        try:
+            api("DELETE", "/installation/token", token)
+        except BaseException:
+            (private / "revocation-failed").touch()
+            raise
         raise
     return token
 
@@ -260,6 +265,8 @@ def worker(private):
     try:
         credential = oauth(config["auth_file"], request["timeout"])
         token = issue(config, private, request["role"])
+        if cancelled():
+            raise DispatchError("worker cancelled")
         state = private / "state"
         state.mkdir(mode=0o700)
         auth = state / "auth.json"
@@ -293,10 +300,45 @@ def worker(private):
                 api("DELETE", "/installation/token", token)
             except BaseException:
                 output({"type": "error", "message": "token revocation failed; token expires within one hour"})
+                (private / "revocation-failed").touch()
                 status = 1
         shutil.rmtree(private / "state", ignore_errors=True)
+        if not (private / "revocation-failed").exists():
+            (private / "cleanup-complete").touch()
         (private / "status").write_text(str(status))
     return status
+
+
+def wait_for_cleanup(private, session, timeout=120):
+    """Keep cancellation and issuer state until recorder exit and revocation."""
+    (private / "cancel").touch()
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            pane = subprocess.run(["tmux", "has-session", "-t", session],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                  timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            break
+        if pane.returncode == 1:
+            if (private / "status").exists() and (private / "cleanup-complete").exists():
+                return
+            break
+        if pane.returncode or time.monotonic() >= deadline:
+            break
+        time.sleep(0.1)
+    raise DispatchError(f"recorder cleanup unconfirmed; private state retained at {private}")
+
+
+@contextmanager
+def private_directory(state_root):
+    """Delete only after cleanup is confirmed, including on host deadline failure."""
+    private = Path(tempfile.mkdtemp(prefix="dispatch-", dir=state_root))
+    try:
+        yield private
+    finally:
+        if not (private / "recorder-started").exists() or (private / "host-cleanup-complete").exists():
+            shutil.rmtree(private)
 
 
 def dispatch(args):
@@ -333,8 +375,7 @@ def dispatch(args):
     state_root = Path(config["state_dir"])
     if state_root.stat().st_mode & 0o077:
         raise DispatchError("state_dir must be private (mode 0700)")
-    with tempfile.TemporaryDirectory(prefix="dispatch-", dir=state_root) as directory:
-        private = Path(directory)
+    with private_directory(state_root) as private:
         inputs = private / "input"
         inputs.mkdir(mode=0o700)
         (inputs / "task.txt").write_text(args.task.read_text())
@@ -355,6 +396,7 @@ def dispatch(args):
         (private / "recorder.py").write_text(source)
         session = "fab-" + uuid.uuid4().hex
         command = [sys.executable, str(private / "recorder.py"), "--record", str(private)]
+        (private / "recorder-started").touch()
         run(["tmux", "new-session", "-d", "-s", session, "-c", str(worktree), shlex.join(command)])
         interrupted = False
         def stop(_sig, _frame):
@@ -389,11 +431,12 @@ def dispatch(args):
                     raise DispatchError("worker pane exited without status")
                 time.sleep(0.1)
         finally:
-            (private / "cancel").touch()
-            subprocess.run(["tmux", "kill-session", "-t", session],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            for sig, handler in previous.items():
-                signal.signal(sig, handler)
+            try:
+                wait_for_cleanup(private, session)
+                (private / "host-cleanup-complete").touch()
+            finally:
+                for sig, handler in previous.items():
+                    signal.signal(sig, handler)
 
 
 def main():

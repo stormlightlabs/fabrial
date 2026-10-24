@@ -161,6 +161,20 @@ class DispatchTests(unittest.TestCase):
             self.assertEqual(dispatch.worker(self.path), 1)
         self.assertEqual(calls, [("DELETE", "/installation/token", "t-secret")])
         self.assertFalse((self.path / "state").exists())
+        self.assertTrue((self.path / "cleanup-complete").exists())
+        # Cancellation arriving during issuance must revoke without starting a worker.
+        def delayed_issue(*args):
+            (self.path / "cancel").touch()
+            return "t-secret"
+        with patch.object(dispatch, "oauth", return_value=credential), patch.object(dispatch, "issue", side_effect=delayed_issue), patch.object(dispatch, "api") as revoke, patch.object(dispatch, "collect") as collect:
+            self.assertEqual(dispatch.worker(self.path), 1)
+            collect.assert_not_called()
+            revoke.assert_called_once_with("DELETE", "/installation/token", "t-secret")
+        (self.path / "cleanup-complete").unlink()
+        with patch.object(dispatch, "oauth", return_value=credential), patch.object(dispatch, "issue", return_value="t-secret"), patch.object(dispatch, "api", side_effect=dispatch.DispatchError("revocation failed")):
+            self.assertEqual(dispatch.worker(self.path), 1)
+        self.assertFalse((self.path / "cleanup-complete").exists())
+        self.assertTrue((self.path / "revocation-failed").exists())
         logs = (self.path / "events.jsonl").read_text()
         for secret in ("a-secret", "r-secret", "t-secret"):
             self.assertNotIn(secret, logs)
@@ -230,10 +244,46 @@ class DispatchTests(unittest.TestCase):
             self.assertIn("trusted", (private / "input/role.md").read_text())
             return b""
         with patch.object(dispatch, "load_config", return_value=config), patch.object(dispatch, "role_config", return_value={"model": "openai/gpt-6-sol", "thinking": "low"}), patch.object(dispatch, "role_input", return_value=(["read", "bash"], ["Skill"], "trusted body")), patch.object(dispatch, "run", side_effect=fake_run), patch.object(dispatch.subprocess, "run", return_value=subprocess.CompletedProcess([], 1)), patch.object(dispatch, "emit"):
-            with self.assertRaisesRegex(dispatch.DispatchError, "pane exited"):
+            with self.assertRaisesRegex(dispatch.DispatchError, "cleanup unconfirmed"):
                 dispatch.dispatch(args)
-        self.assertFalse(list(state.iterdir()))
+        self.assertEqual(len(list(state.iterdir())), 1)
+        self.assertTrue((next(state.iterdir()) / "cancel").exists())
         self.assertEqual(commands[1][0], "tmux")
+
+    def test_cleanup_waits_for_recorder_exit_even_after_status(self):
+        for status_ready in (False, True):
+            with self.subTest(status_ready=status_ready), dispatch.private_directory(self.path) as private:
+                (private / "recorder-started").touch()
+                if status_ready:
+                    (private / "status").write_text("1")
+                    (private / "cleanup-complete").touch()
+                polls = []
+                def pane(*args, **kwargs):
+                    self.assertEqual(args[0][1], "has-session")
+                    self.assertTrue((private / "cancel").exists())
+                    polls.append(1)
+                    if len(polls) == 1:
+                        return subprocess.CompletedProcess([], 0)
+                    (private / "status").write_text("1")
+                    (private / "cleanup-complete").touch()
+                    return subprocess.CompletedProcess([], 1)
+                with patch.object(dispatch.subprocess, "run", side_effect=pane), patch.object(dispatch.time, "sleep"):
+                    dispatch.wait_for_cleanup(private, "session")
+                self.assertEqual(len(polls), 2)
+                (private / "host-cleanup-complete").touch()
+            self.assertFalse(private.exists())
+
+    def test_cleanup_retains_state_on_stall_or_failed_revocation(self):
+        for pane_status in (0, 1):
+            with self.subTest(pane_status=pane_status):
+                with dispatch.private_directory(self.path) as private:
+                    (private / "recorder-started").touch()
+                    (private / "status").write_text("1")
+                    with patch.object(dispatch.subprocess, "run", return_value=subprocess.CompletedProcess([], pane_status)):
+                        with self.assertRaisesRegex(dispatch.DispatchError, "state retained"):
+                            dispatch.wait_for_cleanup(private, "session", timeout=0)
+                self.assertTrue(private.exists())
+                self.assertTrue((private / "cancel").exists())
 
     def test_local_config_requires_every_credential_identifier(self):
         path = self.path / "config.toml"
