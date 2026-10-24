@@ -237,7 +237,7 @@ or copying full results. Inspection still works without live OAuth.
 The observer attempts cleanup recovery when a recorded supervisor disappears.
 For manual recovery, use `fab worker recover <worker-id> --config <config>`.
 Recovery locks the record, prevents a late recorder start, and confirms that
-its launcher, supervisor, and worker group are gone before deleting anything.
+its launcher, supervisor, and worker group are gone before removing private state.
 A recorded boot identity makes old PIDs irrelevant after a host reboot. It
 never signals a historical PID or removes a worktree or shared Nix root.
 
@@ -245,7 +245,9 @@ Revocation accepts HTTP 401 as confirmation that an already-revoked or expired
 installation token is unusable. Transport failures are not confirmation.
 Interrupted deletion uses a durable ownership marker to resume safely. Results
 and event evidence remain; private credentials and control contents are
-removed. If a process or resource owner cannot be confirmed, recovery refuses
+removed. The launcher's supported `XDG_STATE_HOME` puts sandbox homes, temporary
+files, and launch logs under the same worker-owned root, so cleanup removes
+them too without changing sandbox policy. If a process or resource owner cannot be confirmed, recovery refuses
 and retains restricted state for attention. A lost supervisor marks the worker
 failed, never successful, and never reruns its task.
 

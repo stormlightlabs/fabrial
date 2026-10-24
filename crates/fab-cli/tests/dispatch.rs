@@ -150,6 +150,9 @@ test -z "${{BWS_ACCESS_TOKEN+x}}"
 test -z "${{OWNER_SENTINEL+x}}"
 test "$GH_TOKEN" = t-secret
 test "$GH_REPO" = org/repo
+test "$XDG_STATE_HOME" = "${{FAB_STATE%/state}}/sandbox-logs"
+mkdir -p "$XDG_STATE_HOME/agent-sandbox/fixture"
+touch "$XDG_STATE_HOME/agent-sandbox/fixture/temporary"
 test ! -e {}
 [[ "$*" = *--no-approve* ]]
 [[ "$*" = *--no-context-files* ]]
