@@ -88,8 +88,9 @@ Follow arclightning's conventions, since the two share crates:
 ## Plan and ledger
 
 - Include `PLAN.md` updates in the PR they describe.
-- Add a line under Unreleased in `CHANGELOG.md` for a change a repository that
-  installs fabrial would notice, in the PR that makes it.
+- Leave `CHANGELOG.md` alone. The Release workflow writes each release's
+  section from the squash subjects since the last tag, and the owner edits it
+  in the release PR.
 - The [Fabrial Ledger](https://claude.ai/artifact/FeWinSfPXLQYoGyRAHoE39)
   shows `PLAN.md`'s items and a log of pull requests from its database. When a
   PR opens or merges, update its rows in the `items` and `log` collections.

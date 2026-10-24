@@ -234,9 +234,9 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       differ from the running binary's, and an installed version that differs
       from it.
 - [x] Releases: `fab update` refreshes an install and refuses a downgrade,
-      `fab check` reports drift, `CHANGELOG.md` records each release, the
-      Release workflow opens a release pull request, and Release tag tags its
-      merge commit.
+      `fab check` reports drift, the Release workflow opens a release pull
+      request that writes the release's changelog section from the squash
+      subjects since the last tag, and Release tag tags its merge commit.
 - [ ] First release, `v0.2.0` (owner runs the Release workflow), then
       `fab update` in arclightning from it.
 - [ ] Org setup (owner): the bot installed on each repository and the secrets

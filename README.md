@@ -49,10 +49,11 @@ not worker isolation. This feature is under active development.
 
 Run the Release workflow from the Actions tab with the new version, such as
 `0.2.0`. The bot opens a pull request that sets the version, records it in
-`.github/fabrial.toml` and turns `CHANGELOG.md`'s Unreleased section into the
-release's, with `Cargo.lock` to match. It holds no code, so accept it with
-`/storm:ready <sha>` rather than a review. When it merges, the Release tag
-workflow tags `v<version>` on the merge commit and publishes a GitHub release
-with that section of the changelog. Both need the bot to have Contents write
-access. If Release tag fails, fix the cause and re-run that run from the
-Actions tab; a later push does not retry it.
+`.github/fabrial.toml` and writes the release's section of `CHANGELOG.md`, with
+`Cargo.lock` to match. The section lists each squash subject since the last
+tag, so each line names its pull request. Edit the lines on the release branch,
+then accept it with `/storm:ready <sha>`, since it holds no code to review.
+When it merges, the Release tag workflow tags `v<version>` on the merge commit
+and publishes a GitHub release with that section of the changelog. Both need
+the bot to have Contents write access. If Release tag fails, fix the cause and
+run Release tag from the Actions tab with the merge commit.
