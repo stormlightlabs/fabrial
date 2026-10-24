@@ -48,6 +48,8 @@ pub(super) struct WorkerRecord {
     state: WorkerState,
     credential_cleanup: CredentialCleanup,
     result_file: Option<PathBuf>,
+    #[serde(default)]
+    last_progress: Option<serde_json::Value>,
     error: Option<String>,
     resources: Resources,
 }
@@ -85,6 +87,7 @@ impl WorkerRecord {
             state: WorkerState::Prepared,
             credential_cleanup: CredentialCleanup::Pending,
             result_file: None,
+            last_progress: None,
             error: None,
         };
         record.save()?;
@@ -133,6 +136,12 @@ impl WorkerRecord {
     pub(super) fn worker_started(&mut self, pid: u32) -> Result<()> {
         self.resources.worker_pid = Some(pid);
         self.state = WorkerState::Running;
+        self.save()
+    }
+
+    /// Retain the latest credential-free progress for detached inspection.
+    pub(super) fn progress(&mut self, event: &serde_json::Value) -> Result<()> {
+        self.last_progress = Some(event.clone());
         self.save()
     }
 

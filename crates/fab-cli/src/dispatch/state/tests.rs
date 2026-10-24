@@ -56,7 +56,14 @@ fn lookup_cancel_and_snapshot_do_not_need_live_credentials() {
     let value = record.snapshot().unwrap();
     let id = value["worker_id"].as_str().unwrap();
     assert!(operations::lookup(temp.path(), "../../escape").is_err());
+    record
+        .progress(&serde_json::json!({"type":"progress", "event":"tool_execution_start"}))
+        .unwrap();
     let found = operations::lookup(temp.path(), id).unwrap();
+    assert_eq!(
+        found.snapshot().unwrap()["last_progress"]["event"],
+        "tool_execution_start"
+    );
     found.cancel().unwrap();
     assert!(record.directory().join("cancel").exists());
     record.result("retained result").unwrap();

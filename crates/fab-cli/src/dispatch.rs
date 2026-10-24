@@ -710,6 +710,9 @@ fn recorder(private: &Path, request: &Request) -> u8 {
                 if e["type"] == "worker_started" {
                     worker.worker_started(e["pid"].as_u64().ok_or("worker PID missing")? as u32)
                 } else {
+                    if e["type"] == "progress" {
+                        worker.progress(&e)?;
+                    }
                     output(&directory, &e)
                 }
             },
