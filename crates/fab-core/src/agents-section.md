@@ -16,8 +16,8 @@ drifted.
   attribution. Editing the title or body of a reviewed PR posts the new
   squash message. Auto-merge keeps the message it was turned on with.
 - Before pushing, run the command `gates` names in `.github/fabrial.toml`.
-- The owner approves the PR and merges it with the posted squash message.
-  Agents never approve or merge.
+- The owner approves the PR and merges it, with the posted squash message or
+  their own edit of it. Agents never approve or merge.
 - Keep the PR body to what changed and why. Put verification in a PR comment.
   Leave out attribution lines and session links.
 - Agents post PR comments as stormlight-thunderbot through the Bot comment

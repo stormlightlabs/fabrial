@@ -24,8 +24,9 @@ Work larger than the task describes gets recorded, with `arcl capture create`
 or as a GitHub issue, not absorbed.
 
 The first commit's subject becomes the pull request title and the subject of
-the squash commit on `main`, which adds the PR number: under 60 characters,
-imperative, saying what changed. Push the branch; the Branch PR workflow opens the pull request.
+the squash commit on `main`, followed by the PR number. Keep the title under
+60 characters, imperative, saying what changed. Push the branch; the Branch PR
+workflow opens the pull request.
 
 Report the branch, what changed, what you verified and how, what you did not
 verify, and what you captured. Do not claim a check passed without running it.

@@ -117,6 +117,11 @@ for (const [permission, posts] of [["write", true], ["read", false]]) {
   });
 }
 
+test("a title ending with another number still gets its own", () => {
+  const { calls } = gate(finished, { title: "Fix (#12)" });
+  assert(calls.find(c => c.args[1] === "comment").body.includes("Fix (#12) (#1)\n"));
+});
+
 test("a title that already ends with its number keeps one", () => {
   const { calls } = gate(finished, { title: "Test change (#1)" });
   const message = calls.find(c => c.args[1] === "comment").body;
