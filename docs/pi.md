@@ -79,9 +79,22 @@ a note that the session has no GitHub MCP tools and reaches GitHub through
 `gh`, and that skills are found, not called. The `tools` frontmatter maps to
 Pi's names: `Read` to `read`, `Grep` to `grep`, `Glob` to `find` and `ls`,
 `Bash` to `bash`, `Write` to `write`, `Edit` to `edit`. `Skill` and the
-`mcp__github__*` tools have no Pi tool and are printed, not dropped. The model
-and thinking level come from the repository's settings, since the
-frontmatter's `model` is a Claude alias.
+`mcp__github__*` tools have no Pi tool and are printed, not dropped.
+
+The model and thinking level come from a roles file of their own,
+`.github/fabrial-roles.toml`, since the frontmatter's `model` is a Claude
+alias and `.github/fabrial.toml` holds one-line values the workflows read
+with `sed`. It has a table per role, with a model and thinking level for each
+host:
+
+```toml
+[reviewer.pi]
+model = "openai-codex/gpt-5.6-sol"
+thinking = "low"
+```
+
+A role with no entry for the host fails the dispatch with its name, rather
+than falling back to a default model.
 
 There are two ways to run the worker, depending on the backend.
 
@@ -141,8 +154,6 @@ the run directory.
   editing. Separate worktrees isolate the roles from each other; Pi's
   `sandbox` example (bubblewrap through `@anthropic-ai/sandbox-runtime`) could
   isolate them from the machine.
-- Where per-role models live. `.github/fabrial.toml` holds one-line values that
-  the workflows read with `sed`, so a role table may belong in its own file.
 - Whether the reviser should be an RPC worker, or a herdr agent prompted twice,
   so a second round of findings goes to the same session.
 - Whether herdr's interactive worker is close enough to the headless one that
