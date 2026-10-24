@@ -374,7 +374,7 @@ fn processed_controls_release_their_outstanding_queue_slot() {
     )
     .unwrap();
     let output = f.run();
-    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stdout));
+    assert!(output.status.success(), "{}", f.logs());
     assert!(f.logs().contains("control_processed"));
     assert!(f.temp.path().join("retired-before-settlement").exists());
     assert!(!controls.join(format!("{id}.sent")).exists());
