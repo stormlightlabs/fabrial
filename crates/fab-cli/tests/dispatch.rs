@@ -355,7 +355,7 @@ fn processed_controls_release_their_outstanding_queue_slot() {
     let id = "11111111-1111-4111-8111-111111111111";
     fs::write(
         controls.join(format!("{id}.json")),
-        json!({"id":id,"worker_id":"worker-one","run_id":"run-one","task_head":"1".repeat(40),"message":"instruction"})
+        json!({"id":id,"sequence":1,"worker_id":"worker-one","run_id":"run-one","task_head":"1".repeat(40),"message":"instruction"})
             .to_string(),
     )
     .unwrap();

@@ -212,7 +212,9 @@ mismatched heads are rejected. Submission is followed by separate queued,
 delivered, and processed events. Processed means a model response followed
 message delivery, not proof that the instruction succeeded. Queues allow at
 most 64 outstanding requests per worker; processed receipts free their slots.
-Each message is limited to 16 KiB.
+Each message is limited to 16 KiB. Requests receive a durable sequence and are
+delivered in submission order. Concurrent admission and claiming share a
+per-worker lock; a busy submission returns an error to retry.
 
 Workers use `worker_report` for progress, blockers, and questions. The host
 redacts known credentials before persisting reports. Blockers and questions

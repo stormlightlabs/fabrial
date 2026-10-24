@@ -2,7 +2,7 @@
 
 use std::fs::{DirBuilder, File, OpenOptions};
 use std::io::Write;
-use std::os::unix::fs::DirBuilderExt;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -239,6 +239,23 @@ struct Resources {
     tmux_session: String,
     supervisor_pid: Option<u32>,
     worker_pid: Option<u32>,
+}
+
+/// Serialize submission and claiming so capacity and order share one boundary.
+pub(super) fn control_lock(directory: &Path) -> Result<Option<File>> {
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .mode(0o600)
+        .open(directory.join("control-submission.lock"))
+        .map_err(|_| "cannot open control submission lock")?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(None),
+        Err(_) => Err("cannot lock control submissions".into()),
+    }
 }
 
 /// Replace a complete file atomically; readers never observe a partial record.

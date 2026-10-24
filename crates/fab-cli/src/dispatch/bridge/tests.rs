@@ -49,6 +49,7 @@ fn mailbox_is_claimed_once_and_checks_the_task_head() {
     let id = uuid::Uuid::new_v4().to_string();
     let mut request = identity.clone();
     request["id"] = json!(id);
+    request["sequence"] = json!(1);
     request["message"] = json!("driver instruction");
     let path = mailbox.join(format!("{id}.json"));
     fs::write(&path, request.to_string()).unwrap();
@@ -59,6 +60,41 @@ fn mailbox_is_claimed_once_and_checks_the_task_head() {
     request["task_head"] = json!("b".repeat(40));
     fs::write(&path, request.to_string()).unwrap();
     assert!(controls(worker.directory(), &identity).is_err());
+}
+
+#[test]
+fn mailbox_preserves_submission_order_instead_of_uuid_order() {
+    let temp = tempfile::tempdir().unwrap();
+    let worker = WorkerRecord::create(
+        temp.path(),
+        "reviewer",
+        "org/repo",
+        temp.path(),
+        "a".repeat(40),
+        temp.path(),
+    )
+    .unwrap();
+    let identity = worker.snapshot().unwrap();
+    let mailbox = worker.directory().join("controls");
+    fs::create_dir(&mailbox).unwrap();
+    for (sequence, id) in [
+        (1, "22222222-2222-4222-8222-222222222222"),
+        (2, "11111111-1111-4111-8111-111111111111"),
+    ] {
+        let mut request = identity.clone();
+        request["id"] = json!(id);
+        request["sequence"] = json!(sequence);
+        request["message"] = json!("instruction");
+        fs::write(mailbox.join(format!("{id}.json")), request.to_string()).unwrap();
+    }
+    let lock = crate::dispatch::state::control_lock(worker.directory())
+        .unwrap()
+        .unwrap();
+    assert!(controls(worker.directory(), &identity).unwrap().is_empty());
+    drop(lock);
+    let batch = controls(worker.directory(), &identity).unwrap();
+    assert_eq!(batch[0]["id"], "22222222-2222-4222-8222-222222222222");
+    assert_eq!(batch[1]["id"], "11111111-1111-4111-8111-111111111111");
 }
 
 #[test]

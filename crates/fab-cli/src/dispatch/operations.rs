@@ -182,6 +182,9 @@ fn operate(operation: Operation) -> Result<u8> {
             Ok(0)
         }
         Operation::Steer(options) => {
+            let _submission =
+                super::state::control_lock(worker.directory())?.ok_or("control submission busy; retry")?;
+            let worker = WorkerRecord::open(worker.path())?;
             let identity = worker.snapshot()?;
             if worker.terminal() || identity["task_head"] != options.head {
                 return Err("stale head or completed worker".into());
@@ -203,11 +206,19 @@ fn operate(operation: Operation) -> Result<u8> {
             {
                 return Err("control queue full".into());
             }
+            let counter = worker.directory().join("control-sequence");
+            let sequence = if counter.exists() {
+                read(&counter)?.parse::<u64>().map_err(|_| "invalid control sequence")?
+            } else {
+                0
+            };
+            let sequence = sequence.checked_add(1).ok_or("control sequence exhausted")?;
+            atomic_write(&counter, sequence.to_string().as_bytes())?;
             let id = uuid::Uuid::new_v4().to_string();
             let path = directory.join(format!("{id}.json"));
             atomic_write(
                 &path,
-                json!({"id": id, "worker_id": identity["worker_id"], "run_id": identity["run_id"],
+                json!({"id": id, "sequence": sequence, "worker_id": identity["worker_id"], "run_id": identity["run_id"],
                 "task_head": options.head, "message": options.message})
                 .to_string()
                 .as_bytes(),
@@ -216,7 +227,7 @@ fn operate(operation: Operation) -> Result<u8> {
                 let _ = fs::remove_file(path);
                 return Err("worker completed before steering was submitted".into());
             }
-            emit(&json!({"type": "control_submitted", "id": id}));
+            emit(&json!({"type": "control_submitted", "id": id, "sequence": sequence}));
             Ok(0)
         }
         Operation::Wait(options) => {
@@ -236,3 +247,6 @@ fn operate(operation: Operation) -> Result<u8> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

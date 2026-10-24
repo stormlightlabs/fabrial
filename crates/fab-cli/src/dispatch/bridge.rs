@@ -149,6 +149,9 @@ pub(super) fn collect(
 
 /// Claim at most eight host-authored messages per pass. A restart never replays claimed requests.
 pub(super) fn controls(directory: &Path, identity: &Value) -> Result<Vec<Value>> {
+    let Some(_submission) = super::state::control_lock(directory)? else {
+        return Ok(Vec::new());
+    };
     let mailbox = directory.join("controls");
     if !mailbox.exists() {
         return Ok(Vec::new());
@@ -157,14 +160,21 @@ pub(super) fn controls(directory: &Path, identity: &Value) -> Result<Vec<Value>>
         .map_err(|_| "cannot read controls")?
         .map(|e| e.map(|e| e.path()).map_err(|_| "cannot read control entry".to_string()))
         .collect::<Result<Vec<_>>>()?;
-    paths.sort();
-    let mut requests = Vec::new();
-    for path in paths
-        .into_iter()
-        .filter(|p| p.extension().is_some_and(|s| s == "json"))
-        .take(8)
-    {
+    let mut ordered = Vec::new();
+    for path in paths.drain(..).filter(|p| p.extension().is_some_and(|s| s == "json")) {
         let request: Value = read_json(&path)?;
+        let sequence = request["sequence"]
+            .as_u64()
+            .filter(|n| *n > 0)
+            .ok_or("control sequence missing")?;
+        ordered.push((sequence, path, request));
+    }
+    ordered.sort_by_key(|(sequence, _, _)| *sequence);
+    if ordered.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+        return Err("duplicate control sequence".into());
+    }
+    let mut requests = Vec::new();
+    for (_, path, request) in ordered.into_iter().take(8) {
         if request["worker_id"] != identity["worker_id"]
             || request["run_id"] != identity["run_id"]
             || request["task_head"] != identity["task_head"]
