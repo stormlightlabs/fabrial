@@ -11,6 +11,8 @@ workflow moves Unreleased under the new version's heading.
 - The gate leaves auto-merge off on a pull request GitHub would merge now and
   posts the squash message instead, fails `storm/review` when GitHub refuses
   auto-merge, and keeps auto-merge off after a late `/storm:stop` (#10, #11).
+- A pull request's description above its footer line becomes the squash
+  commit's body, without attribution lines or session links (#13).
 - On pickup, the handoff skill checks `arcl task explain` before unparking, and
   passes `--force` to `arcl task start` only when the operator asks (#12).
 - PR bodies leave out attribution lines and session links (#9).

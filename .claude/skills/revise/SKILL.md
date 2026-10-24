@@ -85,8 +85,9 @@ Answering the review at 4f2a91c · <model> · <effort>
 `Fixed in <sha>` is a complete outcome. A finding needs a sentence only where
 you did not act on it, or where the diff does not show what changed.
 
-Where a fix leaves the title or body describing something the branch no longer
-does, edit them.
+Where a fix changes what the pull request does, or leaves the title or body
+describing something the branch no longer does, edit them. The text above the
+`<!-- fabrial:footer` line becomes the squash commit's body.
 
 The push sets `storm/review` back to pending until the `storm` skill's
 sequence posts `Review finished`.

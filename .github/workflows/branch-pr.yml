@@ -2,14 +2,15 @@
 # storm/) as stormlight-thunderbot, so the owner can approve it under the
 # ruleset on main. Ported from desertthunder/knowledgebase.
 #
-# The title is the branch's first commit subject and the body lists the
-# subjects, so it needs no model. A title or body set later by hand or by an
-# agent is kept. The PR stays a draft until its review finishes; the Review
-# gate then marks it ready and turns on auto-merge, so it lands once the owner
-# approves it and the checks pass. On a PR that is already ready, a push turns
-# auto-merge off and on again to pick up the current title. The squash commit
-# takes the PR title, and its only trailer is a Co-authored-by line for the
-# owner.
+# The title is the branch's first commit subject and the body is that commit's
+# body without its trailers, so it needs no model. A title or body set later by
+# hand or by an agent is kept. The PR stays a draft until its review finishes;
+# the Review gate then marks it ready and turns on auto-merge, so it lands once
+# the owner approves it and the checks pass. On a PR that is already ready, a
+# push turns auto-merge off and on again to pick up the current title and body.
+# The squash commit takes the PR title, and its body from the PR body through
+# .github/storm/squash-body.sh, whose only trailer is a Co-authored-by line for
+# the owner.
 name: Branch PR
 
 on:
@@ -66,12 +67,13 @@ jobs:
           number=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
           if [[ -z "$number" ]]; then
             title=$(printf '%s\n' "$subjects" | head -n 1)
+            first=$(git rev-list --reverse origin/main..HEAD | head -n 1)
+            # The text above the footer becomes the squash commit body.
             {
-              echo "From \`$BRANCH\`:"
-              echo
-              printf '%s\n' "$subjects" | sed 's/^/- /'
-              echo
-              echo "Draft until the review finishes. Approve to merge. The squash commit takes this title and credits the owner as co-author."
+              text=$(git show -s --format=%b "$first" | .github/storm/squash-body.sh --text)
+              [[ -z $text ]] || printf '%s\n\n' "$text"
+              echo '<!-- fabrial:footer: the text above becomes the squash commit body. -->'
+              echo "From \`$BRANCH\`. Draft until the review finishes; approve to merge."
             } > body.md
             # GitHub skips CODEOWNERS on a draft and requests the owner's
             # review when the Review gate marks it ready. Asking with
@@ -80,6 +82,7 @@ jobs:
             number=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
           else
             title=$(gh pr view "$number" --json title --jq .title)
+            gh pr view "$number" --json body --jq .body > body.md
             # `/storm:stop` labels the PR and turns auto-merge off. Turn it off
             # again in case something turned it back on since, and stop there.
             if gh pr view "$number" --json labels --jq '.labels[].name' | grep -qx 'storm:stopped'; then
@@ -98,12 +101,13 @@ jobs:
 
           # The ruleset then holds the merge until the owner approves. The
           # explicit message keeps the agents' Co-authored-by trailers off main.
-          # Auto-merge keeps the commit title from when it was turned on, so
-          # turn it off and on again to pick up the current title. The
-          # repository deletes merged branches itself.
+          # Auto-merge keeps the commit message from when it was turned on, so
+          # turn it off and on again to pick up the current title and body.
+          # The repository deletes merged branches itself.
           gh pr merge "$BRANCH" --disable-auto >/dev/null 2>&1 || true
+          .github/storm/squash-body.sh "$BRANCH" "$OWNER_TRAILER" < body.md > squash.md
           if ! out=$(gh pr merge "$BRANCH" --auto --squash \
-            --subject "$title" --body "$(printf 'Merged from %s.\n\nCo-authored-by: %s' "$BRANCH" "$OWNER_TRAILER")" 2>&1); then
+            --subject "$title" --body-file squash.md 2>&1); then
             echo "::error title=auto-merge::$out"
             exit 1
           fi

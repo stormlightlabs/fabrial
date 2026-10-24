@@ -8,9 +8,12 @@ drifted.
   `storm/<task>` branch; the Branch PR workflow opens the pull request as a
   draft from stormlight-thunderbot.
 - Commits on those branches may carry the agent's attribution trailers. The
-  squash commit replaces them with the PR title, `Merged from <branch>.` and
-  the owner's `Co-authored-by` line from `.github/fabrial.toml`, so nothing on
-  `main` carries AI attribution.
+  squash commit replaces them with the PR title, the PR body above its
+  `<!-- fabrial:footer` line, `Merged from <branch>.` and the owner's
+  `Co-authored-by` line from `.github/fabrial.toml`. Attribution lines and
+  session links in the body are dropped, so nothing on `main` carries AI
+  attribution. Editing the title or body changes the squash message without
+  asking for a new approval.
 - Before pushing, run the command `gates` names in `.github/fabrial.toml`.
 - The owner's approval merges the PR. Agents never approve or merge.
 - Keep the PR body to what changed and why. Put verification in a PR comment.
