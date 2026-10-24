@@ -66,6 +66,13 @@ arcl task unpark <id>
 arcl task start <id>
 ```
 
+`arcl task start` refuses a task that is not ready, such as one that gained a
+blocker while it was parked. Run `arcl task explain <id>` to see why. Resolve
+the blocker when the handoff's next steps cover it; otherwise stop and report
+the refusal to the operator, with the blocker named. Pass `--force` only when
+the handoff note says the task was started with `--force` before, and say so
+in your report.
+
 `arcl context` includes the latest handoff. For an issue or a pull request, read
 its newest comment opening with `Handoff:`. A handoff describes the repository
 when it was written, so check each claim the next step depends on: that a branch

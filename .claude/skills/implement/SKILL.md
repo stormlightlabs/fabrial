@@ -40,6 +40,10 @@ Stop and ask when any of these is true:
 For an arcl task, `arcl task start <id>` moves it to in progress, so `arcl
 ready` stops offering it. An issue or a description needs no step here.
 
+`arcl task start` refuses a task that is not ready. Stop and report it as
+above; do not pass `--force` unless the person who dispatched the task asks
+for it, or its latest handoff says it was forced before.
+
 ## Take a working tree
 
 A dispatched implementer already has one: the run created it and named the
