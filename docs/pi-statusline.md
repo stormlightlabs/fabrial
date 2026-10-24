@@ -2,7 +2,10 @@
 
 The fabrial Pi package will show the current task, workers and pull request
 near Pi's editor. This is a design for the spike, not an implemented UI. The
-reference is the two-row footer mockup discussed on October 24, 2026.
+reference is the two-row footer mockup discussed on October 24, 2026. This
+page covers presentation only. [Pi orchestration](pi-orchestration.md) owns
+status collection, worker communication, and cleanup;
+[PLAN.md](../PLAN.md#6-workers-and-pi-setup) tracks implementation.
 
 ## What to show
 
@@ -26,8 +29,8 @@ browser; plain text remains usable when the terminal cannot open links.
 
 The mockup's `plan > act > verify`, iteration number and worker names illustrate
 activity; they do not define another review loop. Use fabrial's actual steps:
-implement, standard review, verify findings, revise, adversarial review and
-ready for owner. Do not invent a step, budget or cost when the source does not
+implement, standard review, implement fixes, adversarial review, implement
+fixes, and hand off to the driver. Skip fix stages without actionable findings. Do not invent a step, budget or cost when the source does not
 provide one. Unknown cost is not zero, and a displayed budget is not an
 enforced spending limit.
 
@@ -42,11 +45,12 @@ Start with Pi's `ctx.ui.setStatus()` and `setWidget()`. Replace the footer only
 if the two-row layout needs it, retaining Pi's context, usage and model data.
 The extension must not start a second terminal renderer.
 
-Refresh after a push and when the branch changes. While an associated PR is
-open, poll GitHub no more often than every 30 seconds. Cache results, back off
-on errors and rate limits, and dispose timers on shutdown or reload. Mark
-stale data with its last successful refresh; do not show an earlier head's
-checks as the current head's result. A failed lookup is unknown, not green.
+Subscribe to the shared PR and worker state described in
+[Pi orchestration](pi-orchestration.md), rather than polling GitHub from the
+widget. Update when that state changes. Mark stale data with its last
+successful refresh; do not show an earlier head's checks as the current head's
+result. A failed lookup is unknown, not green. Dispose subscriptions on
+shutdown or reload.
 
 At narrow widths, retain PR/check state and the current step first. Collapse
 secondary fields rather than wrapping over the editor. Use labels as well as
@@ -58,4 +62,6 @@ First show the PR link, state and current-head checks. Then add run and worker
 progress when dispatch exposes reliable events. Use native Pi session data
 for context, model and cost; avoid a second accounting system. Verify narrow
 terminals, missing PRs, failed checks, changed heads, rate limits and reloads.
-General themes and editor preferences remain personal Pi configuration.
+During active development, fabrial can also own themes, editor defaults, and
+other Pi extensions as part of its working setup. Their ownership is separate
+from this status area's display requirements.

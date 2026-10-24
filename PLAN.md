@@ -75,6 +75,15 @@ a paid plan, so rulesets on `main` are enforced.
   which lets Pi orchestrate and use opencode and OpenAI models. Claude Code and
   Codex run in their own clouds and push `claude/` and `codex/` branches; the
   workflows do the rest. Jules gets a spike later.
+- **Pi setup during development.** fabrial can own the working Pi setup,
+  including extensions, UI, defaults, and configuration. This is broader than
+  dispatch integration. Keep worker isolation and credential custody intact.
+  `docs/pi.md` documents shipped dispatch; `docs/pi-orchestration.md` designs
+  coordination and cleanup; `docs/pi-statusline.md` designs presentation.
+- **Cleanup is lifecycle work.** The host cleans up worker-owned resources
+  when a worker exits and task-owned resources after its PR merges. Preserve
+  result evidence, shared resources, and unconfirmed credential recovery state.
+  See `AGENTS.md` and `docs/pi-orchestration.md` for the completion rules.
 - **Skills are written once.** Before porting thunderstorm's renderer, check
   whether Claude Code, Codex and Pi read the same `SKILL.md` layout. Port
   per-host differences only where thunderstorm's `docs/internal/hosts.md` shows
@@ -139,6 +148,9 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       adversarial pass by fresh agents, each followed by a verifier that tries
       to refute its findings and a revise. A model-free gate sets the required
       `storm/review` check.
+- [ ] Align the shipped `storm` skill and role instructions with the five-stage
+      sequence in `AGENTS.md`. Verifiers and extra review cycles require the
+      driver's request; blockers end the stage with a handoff.
 - [x] `/storm:review|revise|ready|stop` comment commands.
 - [x] Bot comments: agents post PR comments as stormlight-thunderbot through
       the Bot comment workflow.
@@ -195,8 +207,13 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 - [ ] `fab run <task>`: the fixed sequence, one worker per step, on a worktree
       per task.
 - [ ] `fab status`: runs, their step and their PR, read from the claims ref.
+- [ ] Track resource ownership and automate worker-exit and post-merge cleanup.
+      Capture results, stop processes/panes, revoke tokens, and remove temporary
+      state. On merge, remove only clean matching worktrees/branches, release
+      task-owned Nix roots, and refresh clean `main`. Retain and report recovery
+      state on failure; support cleanup after restart without another agent.
 
-## 6. Workers
+## 6. Workers and Pi setup
 
 - [x] Implement the first local dispatch path: four fresh headless Pi 1.4.0
       review roles, host tmux recorder, root Pi `agent` tool, explicit trusted
@@ -210,7 +227,11 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 - [x] Exercise the Pi `agent` tool through Rust dispatch, real App issuance,
       subscription auth, tmux, and the pinned sandbox on PR #21. A fresh
       adversarial review completed and the tmux session exited. Standard review
-      and its cleanup revision ran in fresh bootstrap workers.
+      and its cleanup revision ran in fresh bootstrap workers. Host probes
+      denied both owner-Keychain Mach lookups while HTTPS and Pi tools worked.
+      Host gates and CI passed; the owner merged PR #21. Its task worktree,
+      branch, scratch state, sandbox runs, and task-specific Nix outputs were
+      removed, and primary `main` was fast-forwarded.
 - [ ] Host-check forced cancellation, timeout, unexpected pane death, Git push,
       and Rust gates through the shipped Rust launcher. The dispatched worker
       could not link `libiconv`; host gates and CI passed. Earlier bootstrap
@@ -218,20 +239,24 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 - [ ] Make sandbox settings configurable for deployment needs. Keep the
       pinned isolation policy fixed for this spike; choose the settings and
       validation before adding configuration options.
-- [ ] Local Pi spike, on Pi 1.x, as `docs/pi.md` lays out: `fab dispatch` for
-      reviewer, verifier, adversarial reviewer and reviser; a Pi package with
-      an `agent` tool; GPT-6 Sol for the standard pass and GPT-6.1 Sol for the
-      adversarial pass. Run the `storm` sequence on one real pull request from a task
-      worktree, including gates, bot comments and `Review finished`. Workers
-      load trusted role instructions by path and cannot reach the owner's
-      GitHub credentials or push to `main`. Remove the clean worktree only
-      after its branch tip matches the merged pull request's head.
 - [ ] Let Claude Code and Pi call the same dispatch command for fresh workers,
       passing a role, task, worktree and result without sharing session history.
+- [ ] Collect PR status for Pi independently of the UI: current head, checks,
+      reviews, authorized owner commands, and merge/closure. Deliver changes
+      to the orchestrator without another tool call. Invalidate old-head state,
+      handle stale/error states, and bound polling or use webhooks. Follow
+      `docs/pi-orchestration.md`; do not let events start extra review cycles.
+- [ ] Add a host-owned orchestrator/worker communication bridge for progress,
+      blockers, questions, results, cancellation, and authorized steering.
+      Address messages by run/worker, acknowledge actions, and reject stale
+      requests. Choose the transport before implementation; preserve fresh
+      role sessions, sandbox isolation, and credential separation.
 - [ ] Show the current pull request, its link and CI state in the fabrial Pi
-      package's status area, following `docs/pi-statusline.md`. Add run and
-      worker progress when dispatch exposes it. Keep general Pi UI preferences
-      outside fabrial.
+      package's status area, following `docs/pi-statusline.md`. Consume shared
+      PR/worker state instead of creating another status collector.
+- [ ] Maintain fabrial's development Pi setup, including extensions, UI,
+      defaults, and configuration as needed. Keep its ownership explicit;
+      general Pi preferences are not automatically outside fabrial's scope.
 - [ ] Pi dispatch for every role, into tmux, Zellij and herdr, with per-role models
       and effort caps (port thunderstorm's `internal/dispatch` and
       `internal/roles`).
