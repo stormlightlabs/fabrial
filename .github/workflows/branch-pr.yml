@@ -99,22 +99,7 @@ jobs:
             exit 0
           fi
 
-          # The ruleset then holds the merge until the owner approves. The
-          # explicit message keeps the agents' Co-authored-by trailers off main.
-          # Auto-merge keeps the commit message from when it was turned on, so
-          # turn it off and on again to pick up the current title and body.
-          # The repository deletes merged branches itself.
-          gh pr merge "$BRANCH" --disable-auto >/dev/null 2>&1 || true
-          .github/storm/squash-body.sh "$BRANCH" "$OWNER_TRAILER" < body.md > squash.md
-          if ! out=$(gh pr merge "$BRANCH" --auto --squash \
-            --subject "$title" --body-file squash.md 2>&1); then
-            echo "::error title=auto-merge::$out"
-            exit 1
-          fi
-
-          # A `/storm:stop` that landed after the label check above would be
-          # undone by the call just made, so look again and turn it back off.
-          if gh pr view "$BRANCH" --json labels --jq '.labels[].name' | grep -qx 'storm:stopped'; then
-            gh pr merge "$BRANCH" --disable-auto
-            echo "Labelled storm:stopped while enabling auto-merge; turned it off again."
-          fi
+          # A push needs a review before its merge settings can be refreshed.
+          # Review gate owns scheduling and squash messages, including edits
+          # after review and native stacks that cannot use auto-merge.
+          echo "#$number is ready; merge scheduling belongs to the Review gate."

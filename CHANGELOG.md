@@ -6,6 +6,9 @@ workflow moves Unreleased under the new version's heading.
 
 ## Unreleased
 
+- Keep completed reviews green for native GitHub stacks. GitHub does not support
+  their auto-merge, so the bot posts the squash message for manual stack merging.
+
 - Fix App JWT authentication in the local issuer. The host now needs curl
   with `--header @-` support.
 

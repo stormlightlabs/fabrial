@@ -201,6 +201,8 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 - [x] `/storm:review|revise|ready|stop` comment commands.
 - [x] Bot comments: agents post PR comments as stormlight-thunderbot through
       the Bot comment workflow.
+- [x] Accept GitHub's native-stack auto-merge refusal without failing a completed
+      review. Post the squash message for the person merging the stack.
 - [ ] Keep the GitHub PR number in the final squash commit subject, for
       example `Add Pi dispatch (#21)`. Update the merge-message workflows in
       a follow-up; PR comments alone do not preserve this in git history.

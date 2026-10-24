@@ -152,6 +152,11 @@ mark_ready() {
   fi
   printf '%s' "$body" >"$scratch/squash"
   if ! err=$(gh_write pr merge "$PR" --repo "$REPO" --auto --squash --subject "$title" --body-file "$scratch/squash" 2>&1 >/dev/null); then
+    if [[ $err == *'Auto-merge is not supported for stacked pull requests'* ]]; then
+      mergeable_now "$title" "$body" \
+        'GitHub does not support auto-merge for native stacks. Merge the reviewed stack manually, using this squash message:'
+      return 0
+    fi
     # The pull request became mergeable between the read above and this call.
     if [[ $err =~ (clean|unstable|has_hooks)\ status ]]; then
       mergeable_now "$title" "$body"
@@ -187,11 +192,12 @@ honour_stop() {
 # auto-merge, which squash message to use: mergeable_now <subject> <body>.
 mergeable_now() {
   local text run fence='```'
+  local intro=${3:-'This pull request can merge now, so auto-merge is not set. Squash it with this message:'}
   # The fence outgrows any backtick run in the message, so a title cannot
   # close it early.
   run=$(grep -o '`*' <<<"$1$2" | awk '{ if (length > n) n = length } END { print n + 0 }')
   while (( ${#fence} <= run )); do fence+='`'; done
-  text=$(printf 'This pull request can merge now, so auto-merge is not set. Squash it with this message:\n\n%stext\n%s\n\n%s\n%s' "$fence" "$1" "$2" "$fence")
+  text=$(printf '%s\n\n%stext\n%s\n\n%s\n%s' "$intro" "$fence" "$1" "$2" "$fence")
   # A repost on the same pull request posts it once.
   gh pr view "$PR" --repo "$REPO" --json comments |
     jq -e --arg t "$text" 'any(.comments[]; .body == $t)' >/dev/null && return 0
