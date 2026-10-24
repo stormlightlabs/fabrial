@@ -82,11 +82,10 @@ jobs:
           else
             title=$(gh pr view "$number" --json title --jq .title)
             gh pr view "$number" --json body --jq .body > body.md
-            # `/storm:stop` labels the PR and turns auto-merge off. Turn it off
-            # again in case something turned it back on since, and stop there.
+            # `/storm:stop` labels the PR and turns auto-merge off. Leave a
+            # stopped PR alone; only the owner turns auto-merge back on.
             if gh pr view "$number" --json labels --jq '.labels[].name' | grep -qx 'storm:stopped'; then
-              gh pr merge "$number" --disable-auto >/dev/null 2>&1 || true
-              echo "#$number is labelled storm:stopped; auto-merge is off."
+              echo "#$number is labelled storm:stopped."
               exit 0
             fi
           fi

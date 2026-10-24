@@ -75,3 +75,18 @@ test("/storm:stop still turns auto-merge off", () => {
   assert.equal(status, 0);
   assert(calls.some(c => c.args[1] === "merge" && c.args.includes("--disable-auto")));
 });
+
+for (const [name, pr, api, posts] of [
+  ["a reviewed, ready pull request posts the new squash message", { isDraft: false, title: "New title" }, "Reviewed", true],
+  ["a draft posts nothing", { isDraft: true }, "Reviewed", false],
+  ["an unreviewed head posts nothing", { isDraft: false }, "", false],
+]) {
+  test(`an edit from the bot: ${name}`, () => {
+    const { status, stderr, calls } = gate({ EVENT: "edit", SENDER: "stormlight-thunderbot[bot]", TEST_API: api }, pr);
+    assert.equal(status, 0, stderr);
+    const message = calls.find(c => c.args[1] === "comment")?.body;
+    assert.equal(Boolean(message), posts);
+    if (posts) assert(message.includes("New title"));
+    assert(!calls.some(c => c.args[1] === "merge" || c.args[1] === "ready"));
+  });
+}

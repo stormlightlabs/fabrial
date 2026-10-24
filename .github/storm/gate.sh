@@ -57,7 +57,7 @@ gh_write() {
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 
-# Records the check on a commit: check <sha> <in_progress|success|failure> <title> <summary>.
+# Records the check on a commit: check <sha> <in_progress|success> <title> <summary>.
 check() {
   local sha=$1 state=$2 title=$3 summary=$4
   local args=(-f name="$CHECK_NAME" -f head_sha="$sha" -f "output[title]=$title" -f "output[summary]=$summary")

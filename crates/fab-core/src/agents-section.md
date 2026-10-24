@@ -12,10 +12,11 @@ drifted.
   `<!-- fabrial:footer` line, `Merged from <branch>.` and the owner's
   `Co-authored-by` line from `.github/fabrial.toml`. Attribution lines and
   session links in the body are dropped, so nothing on `main` carries AI
-  attribution. Editing the title or body changes the squash message without
-  asking for a new approval.
+  attribution. Editing the title or body of a reviewed PR posts the new
+  squash message.
 - Before pushing, run the command `gates` names in `.github/fabrial.toml`.
-- The owner's approval merges the PR. Agents never approve or merge.
+- The owner approves the PR and merges it with the posted squash message.
+  Agents never approve or merge.
 - Keep the PR body to what changed and why. Put verification in a PR comment.
   Leave out attribution lines and session links.
 - Agents post PR comments as stormlight-thunderbot through the Bot comment
