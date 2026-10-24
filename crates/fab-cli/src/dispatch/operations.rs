@@ -18,6 +18,13 @@ use super::{Result, canonical, emit, read, signals};
 /// Explicit local worker operations. None starts a replacement worker.
 #[derive(Subcommand)]
 pub enum Operation {
+    /// List durable worker metadata, without result bodies or credentials.
+    List {
+        #[arg(long)]
+        config: PathBuf,
+    },
+    /// Recover cleanup after the supervisor has stopped; never restart a stage.
+    Recover(Reference),
     /// Read the last recorded state and any final result.
     Inspect(Reference),
     /// Request cancellation of one unfinished worker.
@@ -159,15 +166,26 @@ pub(super) fn events(worker: &WorkerRecord, after: u64) -> Result<serde_json::Va
 }
 
 fn operate(operation: Operation) -> Result<u8> {
-    let reference = match &operation {
-        Operation::Inspect(r) | Operation::Cancel(r) => r,
-        Operation::Wait(w) => &w.reference,
-        Operation::Events(e) => &e.reference,
-        Operation::Steer(s) => &s.reference,
+    let (config, id) = match &operation {
+        Operation::List { config } => (config, None),
+        Operation::Inspect(r) | Operation::Cancel(r) | Operation::Recover(r) => (&r.config, Some(r.worker_id.as_str())),
+        Operation::Wait(w) => (&w.reference.config, Some(w.reference.worker_id.as_str())),
+        Operation::Events(e) => (&e.reference.config, Some(e.reference.worker_id.as_str())),
+        Operation::Steer(s) => (&s.reference.config, Some(s.reference.worker_id.as_str())),
     };
-    let root = registry(&reference.config)?;
-    let worker = lookup(&root, &reference.worker_id)?;
+    let root = registry(config)?;
+    let Some(id) = id else {
+        emit(&super::recovery::list(&root)?);
+        return Ok(0);
+    };
+    let mut worker = lookup(&root, id)?;
     match operation {
+        Operation::List { .. } => unreachable!("list handled before lookup"),
+        Operation::Recover(_) => {
+            super::recovery::recover(&root, &mut worker)?;
+            emit(&worker.snapshot()?);
+            Ok(0)
+        }
         Operation::Inspect(_) => {
             emit(&worker.snapshot()?);
             Ok(0)
@@ -178,7 +196,9 @@ fn operate(operation: Operation) -> Result<u8> {
             Ok(0)
         }
         Operation::Events(options) => {
-            emit(&events(&worker, options.after)?);
+            let mut batch = events(&worker, options.after)?;
+            batch["supervisor_alive"] = json!(super::pane(worker.session())?);
+            emit(&batch);
             Ok(0)
         }
         Operation::Steer(options) => {

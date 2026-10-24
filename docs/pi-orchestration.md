@@ -3,7 +3,7 @@
 This is the planned coordination and lifecycle behavior for fabrial's Pi
 setup. The current Rust recorder provides worker supervision and durable
 records, detached CLI dispatch, a worker RPC bridge, and non-blocking Pi
-integration. PR collection and restart recovery below remain planned. For the
+integration with restart recovery. PR collection below remains planned. For the
 shipped worker command and host setup, read [Pi dispatch](pi.md). The
 [status area](pi-statusline.md) presents state; [PLAN.md](../PLAN.md) tracks
 implementation work.

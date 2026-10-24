@@ -22,6 +22,7 @@ use serde_json::{Value, json};
 
 mod bridge;
 pub(crate) mod operations;
+mod recovery;
 mod state;
 
 use state::WorkerRecord;
@@ -278,7 +279,18 @@ fn host_command(name: impl AsRef<std::ffi::OsStr>) -> Result<Command> {
 }
 
 /// Capture both pipes concurrently, discard diagnostics, and impose a host-tool deadline.
-fn execute(mut command: Command, data: Option<Vec<u8>>, timeout: Duration) -> Result<Vec<u8>> {
+fn execute(command: Command, data: Option<Vec<u8>>, timeout: Duration) -> Result<Vec<u8>> {
+    let (status, bytes) = execute_outcome(command, data, timeout)?;
+    if !status.success() {
+        return Err("trusted subprocess failed".into());
+    }
+    Ok(bytes)
+}
+
+/// Recovery must distinguish an invalid token (HTTP 401) from transport failure.
+fn execute_outcome(
+    mut command: Command, data: Option<Vec<u8>>, timeout: Duration,
+) -> Result<(std::process::ExitStatus, Vec<u8>)> {
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -304,9 +316,6 @@ fn execute(mut command: Command, data: Option<Vec<u8>>, timeout: Duration) -> Re
             return Err("trusted subprocess timed out".into());
         }
         if let Some(status) = child.0.try_wait().map_err(|_| "trusted subprocess wait failed")? {
-            if !status.success() {
-                return Err("trusted subprocess failed".into());
-            }
             let (result, bytes) = rx
                 .recv_timeout(deadline.saturating_duration_since(Instant::now()))
                 .map_err(|_| "trusted subprocess pipe timed out")?;
@@ -315,7 +324,7 @@ fn execute(mut command: Command, data: Option<Vec<u8>>, timeout: Duration) -> Re
                 return Err("trusted subprocess output too large".into());
             }
             let _ = input.join();
-            return Ok(bytes);
+            return Ok((status, bytes));
         }
         thread::sleep(Duration::from_millis(10));
     }
@@ -482,7 +491,27 @@ fn issue(c: &Config, private: &Path, role: &str) -> Result<String> {
 }
 
 fn revoke(private: &Path, token: &str) -> Result<()> {
-    api("DELETE", "/installation/token", token, None)?;
+    let mut command = host_command("gh")?;
+    command.env("GH_TOKEN", token).args([
+        "api",
+        "--hostname",
+        "github.com",
+        "--include",
+        "--method",
+        "DELETE",
+        "/installation/token",
+    ]);
+    let (status, bytes) = execute_outcome(command, None, Duration::from_secs(30))?;
+    let response = std::str::from_utf8(&bytes).map_err(|_| "invalid revocation response")?;
+    let mut header = response.lines().next().unwrap_or("").split_whitespace();
+    if !header.next().is_some_and(|h| h.starts_with("HTTP/")) {
+        return Err("revocation HTTP status missing".into());
+    }
+    match header.next() {
+        Some("204") if status.success() => {}
+        Some("401") => {} // Already revoked or expired: safe to finish interrupted cleanup.
+        _ => return Err("credential revocation unconfirmed".into()),
+    }
     fs::remove_file(private.join("installation-token")).map_err(|_| "cannot remove revoked token".into())
 }
 
@@ -732,6 +761,7 @@ fn recorder(private: &Path, request: &Request) -> u8 {
         if private.join("state").exists() {
             fs::remove_dir_all(private.join("state")).map_err(|_| "cannot remove worker credentials")?;
         }
+        state::discard_controls(&directory)?;
         Ok(())
     })();
     if cleanup.is_err() {
@@ -740,7 +770,13 @@ fn recorder(private: &Path, request: &Request) -> u8 {
             &directory,
             &json!({"type": "error", "message": "credential cleanup unconfirmed; private state retained"}),
         );
-    } else if fs::remove_dir_all(private).is_err() {
+    } else if (|| {
+        state::atomic_write(&directory.join("cleanup-owned"), private.as_os_str().as_encoded_bytes())?;
+        fs::remove_dir_all(private).map_err(|_| "cannot remove temporary state")?;
+        state::sync_directory(private.parent().ok_or("private state has no parent")?)
+    })()
+    .is_err()
+    {
         result = Err("temporary state cleanup unconfirmed; evidence retained".into());
         status = 1;
         let _ = output(
