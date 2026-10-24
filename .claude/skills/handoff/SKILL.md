@@ -40,6 +40,8 @@ Written <YYYY-MM-DD> from <branch or worktree>.
 ## State
 
 Each branch, worktree and pull request the work touches, and where it stands.
+If the task was started with `--force`, say so and name what it was forced
+past.
 
 ## Done
 
@@ -68,10 +70,10 @@ arcl task start <id>
 
 `arcl task start` refuses a task that is not ready, such as one that gained a
 blocker while it was parked. Run `arcl task explain <id>` to see why. Resolve
-the blocker when the handoff's next steps cover it; otherwise stop and report
-the refusal to the operator, with the blocker named. Pass `--force` only when
-the handoff note says the task was started with `--force` before, and say so
-in your report.
+the blocker when the handoff's next steps cover it; otherwise stop and tell
+the operator, naming the blocker. Pass `--force` only when the operator asks
+for it after seeing that reason. An earlier forced start does not carry over:
+the blocker may be new.
 
 `arcl context` includes the latest handoff. For an issue or a pull request, read
 its newest comment opening with `Handoff:`. A handoff describes the repository
