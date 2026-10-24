@@ -72,9 +72,10 @@ its revise. It runs once per pull request, never in a loop.
    pushes and replies.
 5. **Adversarial pass.** Pin the new head. Dispatch the `adversarial-reviewer`
    agent with it, the standard pass's findings and the reviser's reply.
-6. **Verify and revise** as in steps 2 and 4. Its findings go in the Finish
-   comment, under `Adversarial pass on <short sha> · <model>`, so the run
-   posts one comment fewer.
+6. **Verify and revise** as in steps 2 and 4, but tell the reviser to report
+   back rather than reply on the pull request. The findings and its report
+   go in the Finish comment, under `Adversarial pass on <short sha> ·
+   <model>`, so the run posts one comment fewer.
 
 Nits are left in the comments for the owner; they start no revise.
 

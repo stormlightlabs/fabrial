@@ -32,8 +32,9 @@ jobs:
         run: |
           build=true
           if [[ -n $PR ]]; then
-            # A failed call stops the step, so an error never skips the build.
-            files=$(gh pr diff "$PR" --repo "$GITHUB_REPOSITORY" --name-only)
+            # The files API pages past the diff endpoint's size limits. When
+            # the call fails, the list is empty and the build runs.
+            files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename') || files=
             if [[ -n $files ]] && ! grep -qvE '^(PLAN\.md|README\.md|CHANGELOG\.md|docs/.+)$' <<<"$files"; then
               build=false
               echo "Only documentation changed; nothing to build."

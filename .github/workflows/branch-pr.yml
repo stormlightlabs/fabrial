@@ -25,13 +25,14 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: branch-pr-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   pr:
-    if: github.event_name == 'workflow_dispatch' || github.event.created
+    # No concurrency group: a second quick push must not cancel the run that
+    # the branch's creation started, since its own job is skipped.
+    if: >-
+      (github.event_name == 'workflow_dispatch' || github.event.created) &&
+      (startsWith(github.ref_name, 'claude/') || startsWith(github.ref_name, 'codex/') ||
+       startsWith(github.ref_name, 'storm/'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/create-github-app-token@v2
