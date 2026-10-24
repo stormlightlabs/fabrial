@@ -22,7 +22,7 @@ text=$(tr -d '\r' | awk '
     # The line without quote marks and leading space, lowercased.
     bare = tolower($0); sub(/^[[:space:]>]*/, "", bare)
     if (bare ~ /^(co-authored-by|claude-session):/) next
-    if (bare ~ /^session:[[:space:]]*https?:\/\//) next
+    if (bare ~ /^session:.*https?:\/\//) next
     if (bare ~ /generated (with|by) .*(claude|codex)/) next
     if (bare ~ /claude\.ai\/code\/session_|chatgpt\.com\/codex\//) next
     if ($0 ~ /🤖/) next

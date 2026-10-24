@@ -157,7 +157,7 @@ function kept(description) {
 }
 
 test("squash body keeps a Session line in prose and drops one naming a link", () => {
-  assert.equal(kept("Keep.\nSession: tokens now expire.\nSession: https://claude.ai/code/session_x\n"),
+  assert.equal(kept("Keep.\nSession: tokens now expire.\nSession: https://pi.dev/s/abc\n> Session: <https://pi.dev/s/abc>\nSession: [run](https://x.io/s)\n"),
     "Keep.\nSession: tokens now expire.\n");
 });
 

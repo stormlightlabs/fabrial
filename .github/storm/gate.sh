@@ -127,11 +127,13 @@ mark_ready() {
 
 # Posts the squash message Branch PR's flow builds, for the owner. Runs can
 # overlap, such as an edit and a `Review finished`, and each reads the text
-# when it starts. A run reads again after it posts, so whichever posts last
-# also posts the pull request's current text.
+# when it starts. A run reads again after each post until a read finds
+# nothing new, reading at most six times, so the run that posts last also
+# posts the pull request's current text unless edits keep landing. Two runs
+# that read the same text can both post it.
 post_squash_message() {
   local attempt
-  for attempt in 1 2 3; do
+  for attempt in 1 2 3 4 5 6; do
     posted=0
     squash_message
     (( posted )) || return 0
@@ -191,7 +193,10 @@ if [[ $EVENT == edit ]]; then
     permission=$(gh api "repos/$REPO/collaborators/${SENDER:-none}/permission" --jq .permission 2>/dev/null || true)
     [[ $permission =~ ^(admin|maintain|write)$ ]] || exit 0
   fi
-  if [[ $(gh pr view "$PR" --repo "$REPO" --json isDraft | jq -r .isDraft) == false && -n $(last_success "$head") ]]; then
+  # Read into variables, so a failed call stops the script.
+  draft=$(gh pr view "$PR" --repo "$REPO" --json isDraft | jq -r .isDraft)
+  reviewed=$(last_success "$head")
+  if [[ $draft == false && -n $reviewed ]]; then
     post_squash_message
   fi
   exit 0
