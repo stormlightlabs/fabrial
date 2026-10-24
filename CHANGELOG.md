@@ -9,6 +9,10 @@ workflow moves Unreleased under the new version's heading.
 - Keep completed reviews green for native GitHub stacks. GitHub does not support
   their auto-merge, so the bot posts the squash message for manual stack merging.
 
+- Restore worker subscriptions and replay undelivered notifications after Pi
+  reload or resume. Add `/worker-watch`, `fab worker list`, and conservative
+  cleanup recovery. Recovery never starts a replacement or signals old PIDs.
+
 - Make the Pi `agent` tool return a worker ID after launch. A session-scoped
   observer delivers completion and blockers without model polling. Add
   `agent_control` and the driver-only `/worker-steer` command.

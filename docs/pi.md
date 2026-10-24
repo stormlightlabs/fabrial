@@ -221,6 +221,34 @@ redacts known credentials before persisting reports. Blockers and questions
 stop the worker and retain its report for the driver; they do not authorize
 replacement agents or another review cycle.
 
+## Reconnect and cleanup recovery
+
+Resume the same Pi session to restore worker identities and event cursors.
+Notifications are written to a session outbox before being queued. A queued
+message is not a delivery receipt: restart replays undelivered messages, while
+recorded message keys suppress redelivery. Reload can leave the old in-memory
+queue intact, so duplicate keys are also removed from model context. None of
+these events starts a worker or repeats a review stage.
+
+Use `/worker-watch <worker-id>` to attach a different session explicitly.
+`fab worker list --config <config>` lists metadata without opening credentials
+or copying full results. Inspection still works without live OAuth.
+
+The observer attempts cleanup recovery when a recorded supervisor disappears.
+For manual recovery, use `fab worker recover <worker-id> --config <config>`.
+Recovery locks the record, prevents a late recorder start, and confirms that
+its launcher, supervisor, and worker group are gone before deleting anything.
+A recorded boot identity makes old PIDs irrelevant after a host reboot. It
+never signals a historical PID or removes a worktree or shared Nix root.
+
+Revocation accepts HTTP 401 as confirmation that an already-revoked or expired
+installation token is unusable. Transport failures are not confirmation.
+Interrupted deletion uses a durable ownership marker to resume safely. Results
+and event evidence remain; private credentials and control contents are
+removed. If a process or resource owner cannot be confirmed, recovery refuses
+and retains restricted state for attention. A lost supervisor marks the worker
+failed, never successful, and never reruns its task.
+
 ## Pi package
 
 Install the root package from the trusted checkout with `pi install <path>`

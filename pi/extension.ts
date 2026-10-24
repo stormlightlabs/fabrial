@@ -1,7 +1,8 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { startWorker, workerOperation } from "./dispatch.mjs";
-import { WorkerMonitor, notification } from "./workers.mjs";
+import { WorkerMonitor, isTerminal } from "./workers.mjs";
+import { WorkerJournal, dedupeNotifications } from "./journal.mjs";
 
 /** Fresh workers run independently; the extension observes without owning their lifetime. */
 export default function (pi: ExtensionAPI) {
@@ -11,22 +12,42 @@ export default function (pi: ExtensionAPI) {
     binary: process.env.FAB_BINARY,
   };
   let monitor: WorkerMonitor | undefined;
+  let journal: WorkerJournal | undefined;
 
-  pi.on("session_start", () => {
-    monitor = new WorkerMonitor({
-      fetch: (id: string, cursor: number, signal: AbortSignal) =>
-        workerOperation("events", id, ["--after", String(cursor)], signal, host),
-      notify: (event: { key: string; worker: { worker_id: string } }) => {
-        pi.sendMessage({
-          customType: "fabrial.worker-event", content: notification(event), display: true,
-          details: { eventKey: event.key, workerId: event.worker.worker_id },
-        }, { triggerTurn: true, deliverAs: "followUp" });
+  pi.on("context", (event) => ({ messages: dedupeNotifications(event.messages) }));
+  pi.on("session_start", (_event, ctx) => {
+    monitor?.stop();
+    const sessionId = ctx.sessionManager.getSessionId();
+    journal = new WorkerJournal({
+      entries: () => ctx.sessionManager.getBranch(),
+      append: (type: string, data: unknown) => {
+        if (ctx.sessionManager.getSessionId() !== sessionId) throw new Error("Worker session changed");
+        pi.appendEntry(type, data);
       },
+      send: (message: Parameters<ExtensionAPI["sendMessage"]>[0]) =>
+        pi.sendMessage(message, { triggerTurn: true, deliverAs: "followUp" }),
+    });
+    const current = journal;
+    monitor = new WorkerMonitor({
+      fetch: async (id: string, cursor: number, signal: AbortSignal) => {
+        let batch = await workerOperation("events", id, ["--after", String(cursor)], signal, host);
+        if (batch.supervisor_alive === false && (!isTerminal(batch.worker) || batch.worker.credential_cleanup !== "complete")) {
+          await workerOperation("recover", id, [], signal, host);
+          batch = await workerOperation("events", id, ["--after", String(cursor)], signal, host);
+        }
+        return batch;
+      },
+      notify: (event: unknown) => current.enqueue(event),
+      replay: () => current.flush(),
+      checkpoint: (state: unknown) => current.checkpoint(state),
       progress: (event: unknown) => pi.events.emit("fabrial:worker", event),
     });
+    for (const state of current.states.values()) {
+      if (!state.done) monitor.track(state.worker, { cursor: state.cursor, reported: state.reported });
+    }
     monitor.start();
   });
-  pi.on("session_shutdown", () => { monitor?.stop(); monitor = undefined; });
+  pi.on("session_shutdown", () => { monitor?.stop(); monitor = undefined; journal = undefined; });
 
   pi.registerTool(defineTool({
     name: "agent", label: "Agent",
@@ -40,11 +61,14 @@ export default function (pi: ExtensionAPI) {
       worktree: Type.String({ description: "Absolute path to the worker's linked Git worktree" }),
     }),
     async execute(_id, params, signal) {
-      if (!monitor) throw new Error("Worker monitoring has not started");
+      const observer = monitor;
+      const current = journal;
+      if (!observer || !current) throw new Error("Worker monitoring has not started");
       const worker = await startWorker(params, signal, host, (accepted: { worker_id: string }) => {
         // Persist acceptance before returning; cancellation during startup cannot lose the identity.
-        pi.appendEntry("fabrial.worker", { worker: accepted, cursor: 0, reported: false, done: false });
-        monitor?.track(accepted);
+        if (observer.disposed) throw new Error("Worker session changed during launch");
+        current.checkpoint({ worker: accepted, cursor: 0, reported: false, done: false });
+        observer.track(accepted);
       });
       return {
         content: [{ type: "text", text: `Worker ${worker.worker_id} started. Continue the conversation; completion will arrive automatically.` }],
@@ -62,6 +86,16 @@ export default function (pi: ExtensionAPI) {
       return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
     },
   }));
+
+  pi.registerCommand("worker-watch", {
+    description: "Reconnect this session to an existing worker UUID",
+    handler: async (args) => {
+      if (!monitor || !journal) throw new Error("Worker monitoring has not started");
+      const worker = await workerOperation("inspect", args.trim(), [], undefined, host);
+      journal.checkpoint({ worker, cursor: 0, reported: false, done: false });
+      monitor.track(worker);
+    },
+  });
 
   pi.registerCommand("worker-steer", {
     description: 'Send driver steering: {"workerId":"…","head":"…","message":"…"}',

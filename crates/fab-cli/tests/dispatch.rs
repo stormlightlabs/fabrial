@@ -27,7 +27,8 @@ impl Fixture {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
         let temp = tempfile::tempdir_in(root).unwrap();
         let p = temp.path().canonicalize().unwrap();
-        let private = p.join("private");
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o700)).unwrap();
+        let private = p.join("dispatch-fixture");
         let bin = p.join("bin");
         fs::create_dir(&private).unwrap();
         fs::create_dir(&bin).unwrap();
@@ -48,7 +49,7 @@ impl Fixture {
             "credential_cleanup": "pending", "result_file": null, "error": null,
             "resources": {"private_state": private, "tmux_session": "fab-worker-one", "supervisor_pid": null, "worker_pid": null}
         }).to_string()).unwrap();
-        fs::write(private.join("request.json"), json!({"record": record_dir.join("worker.json"), "config": config, "role": if mode == "reviser" { "reviser" } else { "reviewer" }, "worktree": p, "timeout": if mode == "deadline" {1} else if mode == "worker-timeout" {5} else {15}, "model": "openai/gpt-6-sol", "thinking": "low", "tools": ["bash", "read"], "skills": []}).to_string()).unwrap();
+        fs::write(private.join("request.json"), json!({"record": record_dir.join("worker.json"), "config": config, "role": if mode == "reviser" { "reviser" } else { "reviewer" }, "worktree": p, "timeout": if mode == "deadline" {1} else {15}, "model": "openai/gpt-6-sol", "thinking": "low", "tools": ["bash", "read"], "skills": []}).to_string()).unwrap();
         script(
             &bin.join("security"),
             "test \"$*\" = 'find-generic-password -s local-service -a local-account -w'\nprintf 'machine-secret\\n'",
@@ -119,7 +120,7 @@ esac
 case "$*" in *machine-secret*|*pem-secret*|*t-secret*) exit 90;; esac
 case "${{!#}}" in
  /installation/repositories) test "$GH_TOKEN" = t-secret; printf '{{"repositories":[{{"full_name":"org/repo"}}]}}';;
- /installation/token) test "$GH_TOKEN" = t-secret; {revoke};;
+ /installation/token) test "$GH_TOKEN" = t-secret; {revoke}; printf 'HTTP/2.0 204 No Content\r\n\r\n';;
  *) exit 91;;
 esac
 "#,
@@ -377,6 +378,75 @@ fn blocker_report_stops_worker_and_persists_only_redacted_data() {
     assert!(!f.private.exists());
     assert!(!f.logs().contains("a-secret"));
     assert!(!f.logs().contains("t-secret"));
+}
+
+#[test]
+fn recovery_is_idempotent_and_retains_uncertain_credentials_or_live_owners() {
+    for mode in ["invalid-token", "transport-failure", "live-owner"] {
+        let f = Fixture::new("revoke-fail");
+        assert!(!f.run().status.success());
+        let id = uuid::Uuid::new_v4().to_string();
+        let directory = f.temp.path().canonicalize().unwrap().join("records").join(&id);
+        let mut record = f.record();
+        fs::rename(f.temp.path().join("records/worker-one"), &directory).unwrap();
+        record["worker_id"] = json!(id);
+        record["result_file"] = json!(directory.join("result.txt"));
+        if mode == "live-owner" {
+            record["resources"]["launcher_pid"] = json!(std::process::id());
+        } else {
+            record["boot_id"] = json!("previous-boot");
+            // These live PIDs must be ignored after a reboot, never signalled.
+            record["resources"]["supervisor_pid"] = json!(std::process::id());
+            record["resources"]["worker_pid"] = json!(std::process::id());
+        }
+        fs::write(directory.join("worker.json"), record.to_string()).unwrap();
+        let mut request: Value =
+            serde_json::from_str(&fs::read_to_string(f.private.join("request.json")).unwrap()).unwrap();
+        request["record"] = json!(directory.join("worker.json"));
+        fs::write(f.private.join("request.json"), request.to_string()).unwrap();
+        script(&f.bin.join("tmux"), "exit 1");
+        let calls = f.temp.path().join("recovery-calls");
+        let response = if mode == "invalid-token" {
+            format!(
+                "test \"$GH_TOKEN\" = t-secret; echo called >> '{}'; printf 'HTTP/2.0 401 Unauthorized\\r\\n\\r\\n'; exit 1",
+                calls.display()
+            )
+        } else {
+            "exit 9".into()
+        };
+        script(&f.bin.join("gh"), &response);
+        let config = f.temp.path().join("recover.toml");
+        fs::write(&config, format!("state_dir = {:?}\n", f.temp.path().to_str().unwrap())).unwrap();
+        let run = || {
+            Command::new(env!("CARGO_BIN_EXE_fab"))
+                .args(["worker", "recover", &id, "--config"])
+                .arg(&config)
+                .env(
+                    "PATH",
+                    format!("{}:{}", f.bin.display(), std::env::var("PATH").unwrap()),
+                )
+                .env("HOME", f.temp.path())
+                .env("GH_TOKEN", "owner-secret")
+                .output()
+                .unwrap()
+        };
+        let output = run();
+        assert_eq!(
+            output.status.success(),
+            mode == "invalid-token",
+            "{mode}: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        assert_eq!(f.private.exists(), mode != "invalid-token");
+        if mode == "invalid-token" {
+            assert!(directory.join("result.txt").exists());
+            assert!(run().status.success());
+            assert_eq!(fs::read_to_string(calls).unwrap().lines().count(), 1);
+            let record: Value = serde_json::from_slice(&fs::read(directory.join("worker.json")).unwrap()).unwrap();
+            assert_eq!(record["credential_cleanup"], "complete");
+        }
+        assert!(!String::from_utf8_lossy(&output.stdout).contains("t-secret"));
+    }
 }
 
 #[test]

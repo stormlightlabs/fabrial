@@ -1,10 +1,11 @@
 /** Observe host events without blocking a Pi turn or polling with model calls. */
 export class WorkerMonitor {
-  constructor({ fetch, notify, progress = () => {}, checkpoint = () => {} }) {
+  constructor({ fetch, notify, progress = () => {}, checkpoint = () => {}, replay = () => {} }) {
     this.fetch = fetch;
     this.notify = notify;
     this.progress = progress;
     this.checkpoint = checkpoint;
+    this.replay = replay;
     this.workers = new Map();
     this.controller = new AbortController();
     this.disposed = false;
@@ -32,6 +33,8 @@ export class WorkerMonitor {
 
   async poll() {
     if (this.disposed) return;
+    await this.replay();
+    if (this.disposed) return;
     await Promise.all([...this.workers.entries()].map(async ([id, state]) => {
       if (state.busy || state.due > Date.now()) return;
       state.busy = true;
@@ -56,8 +59,9 @@ export class WorkerMonitor {
             await this.notify({ key: `${id}:terminal`, worker: batch.worker });
             if (this.disposed) return;
           }
-          this.checkpoint({ worker: state.worker, cursor: state.cursor, reported: state.reported, done: true });
-          this.workers.delete(id);
+          const done = batch.worker.credential_cleanup === "complete";
+          this.checkpoint({ worker: state.worker, cursor: state.cursor, reported: state.reported, done });
+          if (done) this.workers.delete(id);
         } else {
           this.checkpoint({ worker: state.worker, cursor: state.cursor, reported: state.reported, done: false });
         }

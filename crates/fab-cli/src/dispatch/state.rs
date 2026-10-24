@@ -45,6 +45,8 @@ pub(super) struct WorkerRecord {
     repository: String,
     worktree: PathBuf,
     created_at: u64,
+    #[serde(default)]
+    boot_id: Option<String>,
     updated_at: u64,
     state: WorkerState,
     credential_cleanup: CredentialCleanup,
@@ -77,6 +79,7 @@ impl WorkerRecord {
             resources: Resources {
                 private_state: private_state.into(),
                 tmux_session: format!("fab-{worker_id}"),
+                launcher_pid: Some(std::process::id()),
                 supervisor_pid: None,
                 worker_pid: None,
             },
@@ -86,6 +89,7 @@ impl WorkerRecord {
             repository: repository.into(),
             worktree: worktree.into(),
             created_at: now(),
+            boot_id: boot_identity(),
             updated_at: now(),
             state: WorkerState::Prepared,
             credential_cleanup: CredentialCleanup::Pending,
@@ -217,8 +221,24 @@ impl WorkerRecord {
         atomic_write(&self.directory().join("cancel"), b"")
     }
 
+    pub(super) fn summary(&self) -> Result<serde_json::Value> {
+        serde_json::to_value(self).map_err(|_| "cannot serialize worker record".into())
+    }
+
+    /// A stopped supervisor never resumes or re-runs a stage during recovery.
+    pub(super) fn recovered(&mut self) -> Result<()> {
+        if !self.terminal() {
+            self.state = WorkerState::Failed;
+            self.error = Some("supervisor exited before recording an outcome; cleanup recovered".into());
+        } else if matches!(self.credential_cleanup, CredentialCleanup::Unconfirmed) {
+            self.error = Some("cleanup recovered; previous worker outcome retained".into());
+        }
+        self.credential_cleanup = CredentialCleanup::Complete;
+        self.save()
+    }
+
     pub(super) fn snapshot(&self) -> Result<serde_json::Value> {
-        let mut value = serde_json::to_value(self).map_err(|_| "cannot serialize worker record")?;
+        let mut value = self.summary()?;
         if let Some(path) = &self.result_file {
             value["result"] = serde_json::json!(super::read(path)?);
         }
@@ -237,6 +257,8 @@ impl WorkerRecord {
 struct Resources {
     private_state: PathBuf,
     tmux_session: String,
+    #[serde(default)]
+    launcher_pid: Option<u32>,
     supervisor_pid: Option<u32>,
     worker_pid: Option<u32>,
 }
@@ -256,6 +278,29 @@ pub(super) fn control_lock(directory: &Path) -> Result<Option<File>> {
         Err(std::fs::TryLockError::WouldBlock) => Ok(None),
         Err(_) => Err("cannot lock control submissions".into()),
     }
+}
+
+/// Identify a boot without trusting recorded PIDs across a host restart.
+pub(super) fn boot_identity() -> Option<String> {
+    let bytes = if cfg!(target_os = "macos") {
+        super::tool("sysctl", &["-n", "kern.boottime"], None).ok()?
+    } else {
+        std::fs::read("/proc/sys/kernel/random/boot_id").ok()?
+    };
+    String::from_utf8(bytes)
+        .ok()
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+}
+
+/// Discard control contents, never retained evidence or another worker's files.
+pub(super) fn discard_controls(directory: &Path) -> Result<()> {
+    let controls = directory.join("controls");
+    if controls.exists() {
+        std::fs::remove_dir_all(controls).map_err(|_| "cannot remove worker controls")?;
+        sync_directory(directory)?;
+    }
+    Ok(())
 }
 
 /// Replace a complete file atomically; readers never observe a partial record.

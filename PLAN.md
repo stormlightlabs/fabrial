@@ -42,7 +42,7 @@ backends follow this milestone. The design lives in
       appropriate, without another user prompt or repeated model-driven
       polling. Pi must remain available to answer the driver while work runs.
       A returned tool call does not cancel its worker; cancellation is explicit.
-- [ ] Reconnect after Pi reload or restart. Recover worker state and results,
+- [x] Reconnect after Pi reload or restart. Recover worker state and results,
       replay missed notifications without duplicate stage transitions, and
       keep workers alive when Pi disconnects. The supervisor captures evidence,
       stops leftover processes/panes, revokes tokens, and removes worker-owned

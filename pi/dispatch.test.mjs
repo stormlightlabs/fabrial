@@ -4,6 +4,7 @@ import { PassThrough } from "node:stream";
 import test from "node:test";
 import { dispatch, startWorker } from "./dispatch.mjs";
 import { WorkerMonitor } from "./workers.mjs";
+import { WorkerJournal, dedupeNotifications } from "./journal.mjs";
 
 const host = { binary: "/trusted/fab", config: "/private/issuer.toml", trustedCheckout: "/trusted/main" };
 const params = { role: "reviewer", taskFile: "/private/task", worktree: "/work/pr" };
@@ -67,6 +68,52 @@ test("host configuration is required; pre-cancelled calls never spawn", async ()
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(dispatch(params, controller.signal, undefined, host, never), /abort/i);
+});
+
+function sessionJournal() {
+  const entries = [], sent = [];
+  return { entries, sent, options: {
+    entries: () => entries,
+    append: (customType, data) => entries.push({ type: "custom", customType, data }),
+    send: (message) => sent.push(message),
+  } };
+}
+
+test("undelivered outbox survives restart and duplicate queued messages are deduped", () => {
+  const session = sessionJournal();
+  const journal = new WorkerJournal(session.options);
+  journal.enqueue({ key: "one:terminal", worker: { worker_id: "one", state: "succeeded", result: "done" } });
+  journal.flush(); assert.equal(session.sent.length, 1);
+  const restored = new WorkerJournal(session.options); restored.flush();
+  assert.equal(session.sent.length, 2); // A new process cannot assume the old queue survived.
+  const messages = session.sent.map((message) => ({ ...message, role: "custom" }));
+  assert.equal(dedupeNotifications(messages).length, 1);
+});
+
+test("committed custom-message receipt prevents delivery after restart", () => {
+  const session = sessionJournal();
+  const journal = new WorkerJournal(session.options);
+  journal.enqueue({ key: "one:terminal", worker: { worker_id: "one", state: "succeeded", result: "done" } });
+  session.entries.push({ ...session.sent[0], type: "custom_message" });
+  new WorkerJournal(session.options).flush();
+  assert.equal(session.sent.length, 1);
+});
+
+test("completed checkpoints still replay an undelivered notification without relaunching", async () => {
+  const session = sessionJournal();
+  const journal = new WorkerJournal(session.options);
+  const worker = { worker_id: "one", state: "succeeded", result: "full result" };
+  journal.checkpoint({ worker, cursor: 20, reported: false, done: true });
+  journal.checkpoint({ worker, cursor: 20, reported: false, done: true });
+  assert.equal(session.entries.length, 1);
+  assert.equal(session.entries[0].data.worker.result, undefined);
+  journal.enqueue({ key: "one:terminal", worker });
+  const restored = new WorkerJournal(session.options);
+  assert.equal(restored.states.get("one").cursor, 20);
+  const monitor = new WorkerMonitor({ fetch: () => { throw new Error("must not fetch completed work"); },
+    notify: () => {}, replay: () => restored.flush() });
+  await monitor.poll(); monitor.stop();
+  assert.equal(session.sent.length, 2);
 });
 
 const worker = { worker_id: "worker-one", run_id: "run-one", task_head: "a".repeat(40), role: "reviewer", state: "running", credential_cleanup: "pending" };
@@ -141,7 +188,7 @@ test("shutdown disposes observers, not workers, and rejects late notifications",
   const monitor = new WorkerMonitor({ fetch: () => new Promise((resolve) => { finish = resolve; }),
     notify: (event) => notifications.push(event) });
   monitor.track(worker);
-  const pending = monitor.poll(); monitor.stop();
+  const pending = monitor.poll(); await Promise.resolve(); monitor.stop();
   finish({ worker: { ...worker, state: "succeeded" }, events: [], cursor: 0 });
   await pending; assert.equal(notifications.length, 0);
 });
