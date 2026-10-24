@@ -959,6 +959,27 @@ fn dispatch(options: Options) -> Result<u8> {
 }
 
 fn follow(worker: &WorkerRecord, timeout: u64, interrupted: &AtomicBool) -> Result<u8> {
+    let error = match observe(worker, timeout, interrupted) {
+        Ok(code) => return Ok(code),
+        Err(error) => error,
+    };
+    // Synchronous callers own cancellation on observation failure. Detached
+    // dispatch and explicit `worker wait` deliberately do not use this path.
+    let requested = worker.cancel().is_ok();
+    let deadline = Instant::now() + GRACE;
+    while Instant::now() < deadline {
+        if WorkerRecord::open(worker.path()).is_ok_and(|current| current.terminal()) {
+            return Err(error);
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    Err(format!(
+        "{error}; cancellation recorded: {requested}; cleanup unconfirmed: {}",
+        worker.path().display()
+    ))
+}
+
+fn observe(worker: &WorkerRecord, timeout: u64, interrupted: &AtomicBool) -> Result<u8> {
     let deadline = Instant::now() + Duration::from_secs(timeout) + GRACE;
     let mut offset = 0;
     let events = worker.directory().join("events.jsonl");

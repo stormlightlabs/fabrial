@@ -16,6 +16,44 @@ fn shell(source: &str) -> Command {
 }
 
 #[test]
+fn synchronous_observer_error_requests_cancellation_and_waits_for_the_outcome() {
+    let temp = tempfile::tempdir().unwrap();
+    let record = WorkerRecord::create(
+        temp.path(),
+        "reviewer",
+        "org/repo",
+        temp.path(),
+        "a".repeat(40),
+        temp.path(),
+    )
+    .unwrap();
+    fs::write(record.directory().join("events.jsonl"), b"invalid-json\n").unwrap();
+    let path = record.path().to_owned();
+    let cancel = record.directory().join("cancel");
+    let observed_cancel = cancel.clone();
+    let supervisor = thread::spawn(move || {
+        for _ in 0..100 {
+            if observed_cancel.exists() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        WorkerRecord::open(&path)
+            .unwrap()
+            .finish(&Err("cancelled".into()), true, true, false)
+            .unwrap();
+    });
+    assert!(
+        follow(&record, 1, &AtomicBool::new(false))
+            .unwrap_err()
+            .contains("invalid recorder event")
+    );
+    supervisor.join().unwrap();
+    assert!(cancel.exists());
+    assert!(WorkerRecord::open(record.path()).unwrap().terminal());
+}
+
+#[test]
 fn roles_tools_and_no_fallback() {
     for role in ROLES {
         let (tools, unmapped, body) = role_input(&root(), role).unwrap();
