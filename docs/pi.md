@@ -2,9 +2,10 @@
 
 How fabrial runs on Pi 1.x, where a Pi session orchestrates the `storm`
 sequence and each role runs in a Pi session of its own. This is the design for
-the phase 6 spike in `PLAN.md`. It was written from the docs, types and code
-shipped in `@earendil-works/pi-coding-agent` 1.4.0 and herdr 0.9.5, and has not
-been run yet.
+the phase 6 spike in `PLAN.md`. The design draws on the docs, types and code
+shipped in `@earendil-works/pi-coding-agent` 1.4.0 and herdr 0.9.5. Fresh,
+headless Pi sessions reviewed fabrial PRs #18 and #19; `fab dispatch`, pane
+backends and worker isolation have not been run.
 
 ## What Pi 1.x provides
 
@@ -51,18 +52,18 @@ worker's events as they arrive and passes a line of progress to `onUpdate`.
 The `storm` skill tells a Pi orchestrator to use this tool for each fresh
 agent.
 
-The same extension guards `bash` against the obvious mistakes: `gh pr merge`,
-`gh pr review` with `--approve` or `-a`, and `git push` or `git merge` aimed at
-`main`. It blocks with a reason rather than asking, since a headless session
-cannot answer. It matches command text, so `$(...)`, a script file or another
-spelling gets past it, and it is not what keeps a worker from merging.
+The extension does not parse shell commands to enforce merge policy. A
+worker with `bash` can invoke a script or use another spelling. The
+repository's ruleset and isolated worker credentials enforce that policy.
 
-What does is the token. A worker's `GH_TOKEN` is never the owner's: it can read
-the repository and run the Bot comment workflow, and it cannot approve, merge
-or push to `main`. With that token an approval from a worker is not the
-owner's, and the ruleset on `main` holds every merge for the owner. Phase 7's
-short-lived, repository-scoped tokens are where that token comes from; until
-then the spike uses a fine-grained token with only those permissions.
+A restricted token alone is not enough on a local machine: a worker running
+as the owner can still read the owner's GitHub keyring, SSH keys or other
+credentials. Dispatch must give workers a separate user or container with no
+access to the owner's home, agent sockets or environment. Only then give the
+worker a `GH_TOKEN` that can read the repository and run the Bot comment
+workflow, but cannot approve, merge or push to `main`. The ruleset on `main`
+still requires the owner. Phase 7 replaces the spike's restricted token with
+short-lived, repository-scoped tokens.
 
 The orchestrator finds skills through `.agents/skills`. A worker, with no
 trust, is given the extension with `-e` and each skill its role uses with
@@ -74,9 +75,10 @@ instructions that review it.
 
 `fab dispatch <role> --task <file>` runs one role in its own pane, so a person
 can watch or stop it and it outlives the orchestrator. It reads the role from
-`.claude/agents/<role>.md`. The body becomes the appended system prompt, with
-a note that the session has no GitHub MCP tools and reaches GitHub through
-`gh`, and that skills are found, not called. The `tools` frontmatter maps to
+`.claude/agents/<role>.md`. It writes the body to a trusted temporary file
+for the appended system prompt, with a note that the session has no GitHub
+MCP tools and reaches GitHub through `gh`, and that skills are found, not
+called. The `tools` frontmatter maps to
 Pi's names: `Read` to `read`, `Grep` to `grep`, `Glob` to `find` and `ls`,
 `Bash` to `bash`, `Write` to `write`, `Edit` to `edit`. `Skill` and the
 `mcp__github__*` tools have no Pi tool and are printed, not dropped.
@@ -89,7 +91,11 @@ host:
 
 ```toml
 [reviewer.pi]
-model = "openai-codex/gpt-5.6-sol"
+model = "openai/gpt-6-sol"
+thinking = "low"
+
+[adversarial-reviewer.pi]
+model = "openai/gpt-6.1-sol"
 thinking = "low"
 ```
 
@@ -105,7 +111,7 @@ The pane runs the worker headless:
 ```sh
 pi --mode json -p --no-approve -e <extension> --skill <skill>... \
    --session-dir <run dir> --model <model> --thinking <level> \
-   --tools <list> --append-system-prompt <role file> -- '<task>'
+   --tools <list> --append-system-prompt <role body file> -- '<task>'
 ```
 
 in the worktree the run names, with stdout going to `<run dir>/events.jsonl`
@@ -129,7 +135,7 @@ idle there. With herdr, the worker runs as an interactive Pi instead:
    `HERDR_ENV` is unset, reading the pane's ID from the JSON reply.
 2. `herdr agent start <name> --kind pi --pane <id> -- --no-approve -e
    <extension> --skill <skill>... --session-dir <run dir> --model <model>
-   --thinking <level> --tools <list> --append-system-prompt <role file>`. The
+   --thinking <level> --tools <list> --append-system-prompt <role body file>`. The
    agent name is short and plain (`fab-<role>-<n>`, matching herdr's
    `[a-z][a-z0-9_-]{0,31}`); the run directory is a separate path.
 3. `herdr agent prompt <name> "<task>" --wait --until idle --until done
@@ -147,6 +153,30 @@ pane's exit status, and removes a pane when its process exits, so
 `fab dispatch` checks for a running server first, treats a `pane.exited` or
 `pane.closed` event for its pane as a failed run, and keeps its own record in
 the run directory.
+
+## Local spike and cleanup
+
+Land the work in separate pull requests. First, prove `fab dispatch` for the
+four review roles and the Pi package's `agent` tool on one real pull request.
+A fresh worker gets only the role instructions and skills from a trusted
+checkout, not the pull request's branch or the orchestrator's history. The
+standard reviewer uses GPT-6 Sol and the adversarial reviewer uses GPT-6.1 Sol. Fail the
+run if the final JSON event reports an error, a worker stops or a comment does
+not appear; never post `Review finished` after a partial run.
+
+Next, let Claude Code call the same dispatch command to start a Pi worker.
+The result is the role's answer and run status, not a shared conversation.
+Keep PR and CI status in the fabrial Pi package's status area as a separate
+change; the dispatch path must work without a TUI.
+
+Each task gets a worktree beside the primary checkout. Keep Cargo targets
+per worktree to avoid concurrent builds fighting over one target directory;
+use a compiler cache to share compiled work. After GitHub reports the PR
+merged, compare its recorded head SHA with the worktree's branch tip and
+confirm the worktree is clean. If either differs, stop: there may be local
+work to keep. Otherwise remove it with `git worktree remove`, then delete
+its local branch. A squash merge may require `git branch -D` after those
+checks. Do not delete an open PR's worktree.
 
 ## Open questions
 
