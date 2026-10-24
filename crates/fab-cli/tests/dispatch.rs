@@ -66,21 +66,51 @@ impl Fixture {
         };
         let perms = if ["widened", "reviser"].contains(&mode) { "write" } else { "read" };
         script(
+            &bin.join("curl"),
+            &format!(
+                r#"
+test "$1" = --disable
+shift
+test "$1 $2 $3 $4 $5" = '--silent --show-error --fail --max-time 25'
+shift 5
+test "$1" = --request
+method="$2"
+shift 2
+test "$1 $2" = '--header @-'
+shift 2
+IFS= read -r authorization
+[[ "$authorization" = 'Authorization: Bearer '* ]]
+jwt="${{authorization#Authorization: Bearer }}"
+[[ "$jwt" = ey*.ey*.c2lnbmF0dXJl ]]
+[[ "$*" != *"$jwt"* ]]
+test "$(cat)" = $'Accept: application/vnd.github+json\nX-GitHub-Api-Version: 2022-11-28\nContent-Type: application/json'
+# Even transport diagnostics must never escape the recorder.
+printf '%s' "$jwt" >&2
+case "$method" in
+ GET) test "$#" = 1; test "$1" = https://api.github.com/repos/org/repo/installation
+ printf '{{"id":456}}';;
+ POST) test "$#" = 3; test "$1" = --data-binary
+ printf '%s' "$2" > {}; {during}
+ test "$3" = https://api.github.com/app/installations/456/access_tokens
+ printf '{{"token":"t-secret","permissions":{{"actions":"write","contents":"{perms}","pull_requests":"read","metadata":"read"}}}}';;
+ *) exit 91;;
+esac
+"#,
+                quote(&p.join("token-request"))
+            ),
+        );
+        script(
             &bin.join("gh"),
             &format!(
                 r#"
 # Secrets may be in the environment, never argv. No owner credential is used.
 case "$*" in *machine-secret*|*pem-secret*|*t-secret*) exit 90;; esac
 case "${{!#}}" in
- /repos/org/repo/installation) test "$GH_TOKEN" != owner-secret; printf '{{"id":456}}';;
- -) cat > {}; {during}
- printf '{{"token":"t-secret","permissions":{{"actions":"write","contents":"{perms}","pull_requests":"read","metadata":"read"}}}}';;
  /installation/repositories) test "$GH_TOKEN" = t-secret; printf '{{"repositories":[{{"full_name":"org/repo"}}]}}';;
  /installation/token) test "$GH_TOKEN" = t-secret; {revoke};;
  *) exit 91;;
 esac
 "#,
-                quote(&p.join("token-request"))
             ),
         );
         let worker = match mode {
@@ -156,6 +186,7 @@ fn recorder_issues_restricted_token_launches_and_revokes() {
     let logs = f.logs();
     assert!(logs.contains("[redacted] [redacted] [redacted] done"));
     for secret in [
+        "c2lnbmF0dXJl",
         "machine-secret",
         "pem-secret",
         "owner-secret",

@@ -9,8 +9,9 @@ whole Pi process in agent-sandbox.nix.
 ## Host setup
 
 Run dispatch on the trusted host, outside a worker sandbox. You need Nix with
-flakes enabled, tmux, GitHub CLI, OpenSSL, BWS CLI, and macOS
-`security` for the local issuer. The sandbox wrapper supports Linux, but this
+flakes enabled, tmux, GitHub CLI, curl with `--header @-` support, OpenSSL,
+BWS CLI, and macOS `security` for the local issuer. App JWT requests use curl
+with Bearer headers on stdin; installation-token requests use GitHub CLI. The sandbox wrapper supports Linux, but this
 spike's issuer uses macOS Keychain. There is no alternate issuer backend.
 
 Keep a trusted checkout separate from every PR worktree. Build and install

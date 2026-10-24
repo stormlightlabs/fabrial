@@ -318,7 +318,34 @@ fn tool(name: &str, args: &[&str], data: Option<Vec<u8>>) -> Result<Vec<u8>> {
     execute(c, data, Duration::from_secs(30))
 }
 
-/// gh receives JWTs and installation tokens only through its environment.
+/// Send App JWT headers over stdin, never through arguments or files.
+fn app_api(method: &str, path: &str, jwt: &str, body: Option<Value>) -> Result<Value> {
+    let mut c = host_command("curl")?;
+    c.args([
+        "--disable",
+        "--silent",
+        "--show-error",
+        "--fail",
+        "--max-time",
+        "25",
+        "--request",
+        method,
+        "--header",
+        "@-",
+    ]);
+    if let Some(body) = body {
+        c.args(["--data-binary", &body.to_string()]);
+    }
+    c.arg(format!("https://api.github.com{path}"));
+    let headers = format!(
+        "Authorization: Bearer {jwt}\nAccept: application/vnd.github+json\nX-GitHub-Api-Version: 2022-11-28\nContent-Type: application/json\n"
+    );
+    let bytes =
+        execute(c, Some(headers.into_bytes()), Duration::from_secs(25)).map_err(|_| "GitHub App request failed")?;
+    serde_json::from_slice(&bytes).map_err(|_| "invalid GitHub App response".into())
+}
+
+/// gh receives installation tokens only through its environment.
 fn api(method: &str, path: &str, token: &str, body: Option<Value>) -> Result<Value> {
     let mut c = host_command("gh")?;
     c.env("GH_TOKEN", token).args([
@@ -396,14 +423,14 @@ fn issue(c: &Config, private: &Path, role: &str) -> Result<String> {
     );
     fs::remove_file(key).map_err(|_| "cannot remove issuer key")?;
     let jwt = format!("{signing}.{}", URL_SAFE_NO_PAD.encode(signature?));
-    let installed = api("GET", &format!("/repos/{}/installation", c.repository), &jwt, None)?;
+    let installed = app_api("GET", &format!("/repos/{}/installation", c.repository), &jwt, None)?;
     if installed["id"].as_u64().map(|v| v.to_string()).as_ref() != Some(installation) {
         return Err("installation does not match repository".into());
     }
     let repo = c.repository.split('/').nth(1).unwrap();
     let permissions =
         json!({"actions": "write", "contents": if role == "reviser" {"write"} else {"read"}, "pull_requests": "read"});
-    let response = api(
+    let response = app_api(
         "POST",
         &format!("/app/installations/{installation}/access_tokens"),
         &jwt,

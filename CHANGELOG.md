@@ -6,6 +6,9 @@ workflow moves Unreleased under the new version's heading.
 
 ## Unreleased
 
+- Fix App JWT authentication in the local issuer. The host now needs curl
+  with `--header @-` support.
+
 - Add preview `fab dispatch` for four fresh Pi review roles and a root Pi
   `agent` tool, with host tmux, pinned whole-worker isolation, explicit trusted
   instructions, and a local repository-restricted App issuer. Dispatch runs in

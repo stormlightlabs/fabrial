@@ -203,7 +203,8 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       Dispatch and the recorder now run in Rust in `fab-cli`, without a Python
       runtime. Rust subprocess tests cover issuance, cancellation during
       issuance, deadline expiry, worker failure, revocation, and retained
-      cleanup state. Node tests cover the Pi tool.
+      cleanup state. App JWT requests use curl Bearer headers over stdin;
+      installation-token requests stay on GitHub CLI. Node tests cover the Pi tool.
 - [ ] Host-check the Rust Nix/tmux launcher, issuer cleanup, subscription auth,
       denied Mach lookups, Git push, and Rust gates inside its worker sandbox.
       The Python launcher's earlier host smoke does not verify the Rust port.
