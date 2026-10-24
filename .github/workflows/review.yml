@@ -82,4 +82,5 @@ jobs:
           BEFORE: ${{ github.event.before }}
           BODY: ${{ github.event.comment.body }}
           AUTHOR: ${{ github.event.comment.user.login }}
+          SENDER: ${{ github.event.sender.login }}
         run: .github/storm/gate.sh

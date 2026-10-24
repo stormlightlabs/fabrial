@@ -105,8 +105,9 @@ jobs:
           # turn it off and on again to pick up the current title and body.
           # The repository deletes merged branches itself.
           gh pr merge "$BRANCH" --disable-auto >/dev/null 2>&1 || true
+          .github/storm/squash-body.sh "$BRANCH" "$OWNER_TRAILER" < body.md > squash.md
           if ! out=$(gh pr merge "$BRANCH" --auto --squash \
-            --subject "$title" --body "$(.github/storm/squash-body.sh "$BRANCH" "$OWNER_TRAILER" < body.md)" 2>&1); then
+            --subject "$title" --body-file squash.md 2>&1); then
             echo "::error title=auto-merge::$out"
             exit 1
           fi

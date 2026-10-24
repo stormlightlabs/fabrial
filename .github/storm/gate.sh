@@ -13,9 +13,10 @@
 #                  Branch PR's message (or, on a pull request that can merge
 #                  now, posts that message); `/storm:stop` labels the pull
 #                  request and turns off auto-merge.
-#   EVENT=edit     the title or body changed: on a ready pull request whose
-#                  head passed review, sets the squash message again, since
-#                  auto-merge keeps the one it was given.
+#   EVENT=edit     SENDER changed the title or body: on a ready pull request
+#                  whose head passed review, sets the squash message again,
+#                  since auto-merge keeps the one it was given. Edits from
+#                  anyone without write access are ignored.
 #
 # A command word ends at whitespace or the end of the line, so
 # `/storm:readyish` and `/storm:stopwatch` do nothing.
@@ -42,10 +43,21 @@ gh_write() {
     printf 'DRY_RUN gh' >&2
     printf ' %q' "$@" >&2
     printf '\n' >&2
+    # Show what a --body-file names, since the file is gone afterwards.
+    local prev=
+    for arg in "$@"; do
+      [[ $prev == --body-file ]] && printf 'DRY_RUN body: %q\n' "$(cat "$arg")" >&2
+      prev=$arg
+    done
     return 0
   fi
   gh "$@"
 }
+
+# Long bodies go to gh as files: an argument over the kernel's limit fails
+# before gh runs.
+scratch=$(mktemp -d)
+trap 'rm -rf "$scratch"' EXIT
 
 # Records the check on a commit: check <sha> <in_progress|success|failure> <title> <summary>.
 check() {
@@ -138,7 +150,8 @@ mark_ready() {
       refused 'turn off the earlier auto-merge' "$err"
     [[ -z $err ]] || printf '%s\n' "$err" >&2
   fi
-  if ! err=$(gh_write pr merge "$PR" --repo "$REPO" --auto --squash --subject "$title" --body "$body" 2>&1 >/dev/null); then
+  printf '%s' "$body" >"$scratch/squash"
+  if ! err=$(gh_write pr merge "$PR" --repo "$REPO" --auto --squash --subject "$title" --body-file "$scratch/squash" 2>&1 >/dev/null); then
     # The pull request became mergeable between the read above and this call.
     if [[ $err =~ (clean|unstable|has_hooks)\ status ]]; then
       mergeable_now "$title" "$body"
@@ -147,7 +160,7 @@ mark_ready() {
     [[ $old == null ]] || stopped || gh_write pr merge "$PR" --repo "$REPO" --auto \
       "--$(jq -r '.mergeMethod | ascii_downcase' <<<"$old")" \
       --subject "$(jq -r '.commitHeadline // ""' <<<"$old")" \
-      --body "$(jq -r '.commitBody // ""' <<<"$old")" >/dev/null || true
+      --body-file <(jq -r '.commitBody // ""' <<<"$old") >/dev/null || true
     honour_stop || true
     refused 'set auto-merge' "$err"
   fi
@@ -182,7 +195,8 @@ mergeable_now() {
   # A repost on the same pull request posts it once.
   gh pr view "$PR" --repo "$REPO" --json comments |
     jq -e --arg t "$text" 'any(.comments[]; .body == $t)' >/dev/null && return 0
-  gh_write pr comment "$PR" --repo "$REPO" --body "$text"
+  printf '%s' "$text" >"$scratch/comment"
+  gh_write pr comment "$PR" --repo "$REPO" --body-file "$scratch/comment"
 }
 
 # Fails storm/review on the head, says which call GitHub refused and why, and
@@ -214,6 +228,12 @@ head=${HEAD_SHA:-$(gh pr view "$PR" --repo "$REPO" --json headRefOid --jq .headR
 short=${head:0:7}
 
 if [[ $EVENT == edit ]]; then
+  # Only the bot, or someone who could push to the branch, changes the message
+  # a reviewed pull request merges with. A fork's author cannot.
+  if [[ ${SENDER:-} != "$BOT_SLUG[bot]" ]]; then
+    permission=$(gh api "repos/$REPO/collaborators/${SENDER:-none}/permission" --jq .permission 2>/dev/null || true)
+    [[ $permission =~ ^(admin|maintain|write)$ ]] || exit 0
+  fi
   if [[ $(gh pr view "$PR" --repo "$REPO" --json isDraft | jq -r .isDraft) == false && -n $(last_success "$head") ]]; then
     mark_ready
   fi

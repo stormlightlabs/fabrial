@@ -5,20 +5,27 @@
 #   squash-body.sh <branch> <owner trailer> < description
 #   squash-body.sh --text < description    the kept text alone
 #
-# The description stops at the footer line Branch PR writes, so the text after
-# it stays out. The generated body from before the footer counts as empty. Co-authored-by and Claude-Session lines, Claude Code's
-# "Generated with" line and session links are dropped, so no agent attribution
-# reaches main. A description with nothing left gives the plain
+# The description stops at the footer line Branch PR writes, outside a code
+# block, so the text after it stays out. The generated body from before the
+# footer counts as empty. Lines that attribute the work to an agent are
+# dropped, quoted or not and in any case: trailers (Co-authored-by,
+# Claude-Session, Session), "Generated with" lines, the robot emoji, and Claude
+# Code session and Codex task links. No agent attribution reaches main. A description with nothing left gives the plain
 # `Merged from <branch>.` body. Branch PR and the Review gate both run this, so
 # the two set the same message.
 set -euo pipefail
 
 text=$(tr -d '\r' | awk '
-  /^<!-- fabrial:footer/ { footer = 1; exit }
-  tolower($0) ~ /^co-authored-by:/ { next }
-  /^Claude-Session:/ { next }
-  /Generated with \[Claude Code\]/ { next }
-  /^https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]+$/ { next }
+  /^[[:space:]]*(```|~~~)/ { fenced = !fenced }
+  !fenced && /^<!-- fabrial:footer/ { footer = 1; exit }
+  {
+    # The line without quote marks and leading space, lowercased.
+    bare = tolower($0); sub(/^[[:space:]>]*/, "", bare)
+    if (bare ~ /^(co-authored-by|claude-session|session):/) next
+    if (bare ~ /generated (with|by) .*(claude|codex)/) next
+    if (bare ~ /claude\.ai\/code\/session_|chatgpt\.com\/codex\//) next
+    if ($0 ~ /🤖/) next
+  }
   { lines[++n] = $0 }
   END {
     first = 1; while (first <= n && lines[first] ~ /^[[:space:]]*$/) first++
