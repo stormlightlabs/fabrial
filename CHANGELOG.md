@@ -10,11 +10,11 @@ stays, and replaces the generated line for the PR it names as `(#N)`.
 
 - An edit that lands while the Review gate posts the squash message no longer
   leaves an older message newest: the gate reads the pull request again after
-  it posts.
+  it posts (#37).
 
 - The squash body keeps `Session:` lines unless they name a link, and no
   longer tracks code blocks, so a block cannot hide the footer or an
-  attribution line.
+  attribution line (#37).
 
 ## 0.3.1 - 2026-10-24
 
