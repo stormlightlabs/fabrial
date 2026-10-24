@@ -6,6 +6,8 @@ workflow moves Unreleased under the new version's heading.
 
 ## Unreleased
 
+## 0.3.1 - 2026-10-24
+
 - The squash message the Review gate posts ends its subject with the pull
   request number, such as `Add Pi dispatch (#21)`.
 
