@@ -116,44 +116,54 @@ names_head() {
 # or changes a request the owner set. A stopped or closed pull request is left
 # alone. A failed call stops the script before the success is posted.
 mark_ready() {
-  local info title branch body
-  info=$(gh pr view "$PR" --repo "$REPO" --json state,isDraft,title,body,headRefName,labels,autoMergeRequest)
+  local info attempt
+  info=$(gh pr view "$PR" --repo "$REPO" --json state,isDraft,labels)
   [[ $(jq -r .state <<<"$info") == OPEN ]] || return 0
   jq -e --arg l "$STOP_LABEL" 'any(.labels[]; .name == $l)' <<<"$info" >/dev/null && return 0
+  if [[ $(jq -r .isDraft <<<"$info") == true ]]; then
+    gh_write pr ready "$PR" --repo "$REPO" >/dev/null
+  fi
+  # Runs can overlap, such as an edit and a `Review finished`, and each reads
+  # the text when it starts. A run reads again after it posts, so whichever
+  # posts last also posts the pull request's current text.
+  for attempt in 1 2 3; do
+    squash_message || return 0
+    [[ ${DRY_RUN:-0} != 1 ]] || return 0
+  done
+}
+
+# Posts the squash message for whoever merges the pull request, built from
+# the pull request as it is now. Returns 1 when there is nothing to post: the
+# pull request is closed or stopped, or the bot's newest squash message
+# already says the same.
+squash_message() {
+  local info title branch body text run fence='```' newest
+  local intro='When you merge, by hand or with auto-merge, squash with this message:'
+  info=$(gh pr view "$PR" --repo "$REPO" --json state,title,body,headRefName,labels,autoMergeRequest,comments)
+  [[ $(jq -r .state <<<"$info") == OPEN ]] || return 1
+  jq -e --arg l "$STOP_LABEL" 'any(.labels[]; .name == $l)' <<<"$info" >/dev/null && return 1
   # The subject carries the PR number, as GitHub's own squash title does, so
   # `git log` on main leads back to the pull request.
   title=$(jq -r .title <<<"$info")
   [[ $title == *"(#$PR)" ]] || title+=" (#$PR)"
   branch=$(jq -r .headRefName <<<"$info")
   body=$(jq -r '.body // ""' <<<"$info" | .github/storm/squash-body.sh "$branch" "$OWNER_TRAILER")
-  if [[ $(jq -r .isDraft <<<"$info") == true ]]; then
-    gh_write pr ready "$PR" --repo "$REPO" >/dev/null
-  fi
-  squash_message "$title" "$body" "$(jq -r '.autoMergeRequest != null' <<<"$info")"
-}
-
-# Posts the squash message for whoever merges the pull request:
-# squash_message <subject> <body> <auto-merge on: true|false>. Nothing posts
-# when the bot's newest squash message already says the same.
-squash_message() {
-  local text run fence='```' newest
-  local intro='When you merge, by hand or with auto-merge, squash with this message:'
   # The fence outgrows any backtick run in the message, so a title cannot
   # close it early.
-  run=$(grep -o '`*' <<<"$1$2" | awk '{ if (length > n) n = length } END { print n + 0 }')
+  run=$(grep -o '`*' <<<"$title$body" | awk '{ if (length > n) n = length } END { print n + 0 }')
   while (( ${#fence} <= run )); do fence+='`'; done
-  text=$(printf '%s\n\n%stext\n%s\n\n%s\n%s' "$intro" "$fence" "$1" "$2" "$fence")
+  text=$(printf '%s\n\n%stext\n%s\n\n%s\n%s' "$intro" "$fence" "$title" "$body" "$fence")
   # GitHub keeps the message auto-merge was turned on with, whatever the
   # pull request says later.
-  if [[ $3 == true ]]; then
+  if [[ $(jq -r '.autoMergeRequest != null' <<<"$info") == true ]]; then
     text+=$'\n\nAuto-merge is on and squashes with the message it was turned on with. To use this one, turn auto-merge off and on again with it.'
   fi
-  newest=$(gh pr view "$PR" --repo "$REPO" --json comments | jq -r --arg slug "$BOT_SLUG" --arg intro "$intro" '
+  newest=$(jq -r --arg slug "$BOT_SLUG" --arg intro "$intro" '
     [.comments[] | select((.author.login // "") | test("^(app/)?\($slug)(\\[bot\\])?$"))
-      | select(.body | startswith($intro))] | last | .body // ""')
-  [[ $newest == "$text" ]] && return 0
+      | select(.body | startswith($intro))] | last | .body // ""' <<<"$info")
+  [[ $newest == "$text" ]] && return 1
   printf '%s' "$text" >"$scratch/comment"
-  gh_write pr comment "$PR" --repo "$REPO" --body-file "$scratch/comment"
+  gh_write pr comment "$PR" --repo "$REPO" --body-file "$scratch/comment" >/dev/null
 }
 
 # Asks for a command again when the SHA it names is not the head.
