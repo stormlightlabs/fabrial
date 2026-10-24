@@ -147,6 +147,7 @@ The `storm` skill reviews the pull request next. Its findings are the next
 ## Do not
 
 - Approve or merge a pull request, or push to `main`.
-- Touch the user's primary checkout on a development machine.
+- Touch the user's primary checkout on a development machine except to
+  fast-forward a clean `main` as described above.
 - Expand scope past the task.
-- Leave a worktree behind once the pull request merges.
+- Leave a merged task's worktree behind when it meets the removal checks above.
