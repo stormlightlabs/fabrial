@@ -12,4 +12,4 @@ fmt:
 # Capture a terminal UI as a PNG: just shot <name> <cols> <rows> <command...>
 [positional-arguments]
 shot name cols rows +command:
-    @scripts/shot.sh "$@"
+    @.github/storm/shot.sh "$@"

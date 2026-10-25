@@ -20,8 +20,9 @@ narrowest relevant test, then the gates (the command `gates` names in
 `.github/fabrial.toml`). Never weaken, skip or delete a test to make a gate
 pass.
 
-For a change to terminal UI, capture each affected state with `just shot`,
-read the PNGs, and report each PNG's absolute path.
+For a change to terminal UI, capture each affected state with
+`.github/storm/shot.sh <name> <cols> <rows> <command...>`, which needs tmux
+and freeze. Read the PNGs, and report each PNG's absolute path.
 
 Work larger than the task describes gets recorded, with `arcl capture create`
 or as a GitHub issue, not absorbed.

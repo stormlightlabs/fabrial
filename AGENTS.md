@@ -66,8 +66,9 @@ crates/fab-cli    the `fab` binary
 .claude/skills/   skills; .agents/skills links here for Codex and Pi
 .claude/agents/   implementer, reviewer, adversarial-reviewer, verifier, reviser
 .github/          CODEOWNERS and the Check, Branch PR and Review gate workflows
-.github/storm/    gate.sh, which the Review gate workflow runs, and
-                  squash-body.sh, which turns a PR body into the squash body
+.github/storm/    gate.sh, which the Review gate workflow runs,
+                  squash-body.sh, which turns a PR body into the squash body,
+                  and shot.sh, which captures a terminal UI as a PNG
 .github/fabrial.toml  the owner, the squash trailer and the gate command
 docs/hosts.md     what each host reads, and where they differ
 docs/pi.md        the design for running fabrial on Pi 1.x

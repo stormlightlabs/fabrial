@@ -58,6 +58,11 @@ const EMBEDDED: &[(&str, &str, bool)] = &[
         true,
     ),
     (
+        ".github/storm/shot.sh",
+        include_str!("../../../.github/storm/shot.sh"),
+        true,
+    ),
+    (
         ".claude/agents/adversarial-reviewer.md",
         include_str!("../../../.claude/agents/adversarial-reviewer.md"),
         false,
@@ -914,14 +919,13 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn gate_script_is_executable() {
+    fn scripts_are_executable() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         init(dir.path(), &settings(), false).unwrap();
-        let mode = fs::metadata(dir.path().join(".github/storm/gate.sh"))
-            .unwrap()
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o111, 0o111);
+        for script in [".github/storm/gate.sh", ".github/storm/shot.sh"] {
+            let mode = fs::metadata(dir.path().join(script)).unwrap().permissions().mode();
+            assert_eq!(mode & 0o111, 0o111, "{script}");
+        }
     }
 }

@@ -78,6 +78,10 @@ when the driver asks for it.
 
 Nits are left in the comments for the owner; they start no revise.
 
+If a blocker prevents finishing a stage, report it and hand off. Do not
+dispatch more agents to work around it, and never post `Review finished` for
+an incomplete review.
+
 The implementer and the reviser work in the task worktree. Each reviewer,
 standard and adversarial, works in its own detached worktree at the pinned
 head, so it has its own build output and reads exactly the commit it reviews:
@@ -89,8 +93,9 @@ git worktree add --detach ../<repo>-worktrees/<name>-review <sha>
 Remove it with `git worktree remove` when the reviewer returns.
 
 **UI changes.** For a change to terminal UI, the implementer and both
-reviewers capture each affected state with `just shot <name> <cols> <rows>
-<command...>`, read the PNGs, and report each PNG's absolute path. Pass those
+reviewers capture each affected state with `.github/storm/shot.sh <name>
+<cols> <rows> <command...>`, which needs tmux and freeze. They read the PNGs
+and report each PNG's absolute path. Pass those
 paths to the owner, who can `open` them.
 
 Dispatch each agent fresh. On Claude Code, use the Agent tool with the
@@ -125,8 +130,9 @@ merge commit, not a rebase, and resolve it. Regenerate a generated file with
 its tool rather than editing it, as `fab update` does for
 `.github/fabrial.toml`. Stop and report when both sides changed the same
 logic. Run the gates and push. A resolved conflict changes the branch's own
-diff, so the gate takes the new head as unreviewed: run both passes again on
-it before posting, or ask the owner to accept it with `/storm:ready <sha>`.
+diff, so the gate takes the new head as unreviewed. Report the resolution and
+ask the driver whether to run both passes again or to have the owner accept
+the head with `/storm:ready <sha>`; do neither unasked.
 The `resync` skill does not resolve conflicts; this step does, for the pull
 request this run reviews.
 
