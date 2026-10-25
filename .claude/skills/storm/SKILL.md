@@ -94,7 +94,9 @@ Remove it with `git worktree remove` when the reviewer returns.
 
 **UI changes.** For a change to terminal UI, the implementer and both
 reviewers capture each affected state with `.github/storm/shot.sh <name>
-<cols> <rows> <command...>`, which needs tmux and freeze. They read the PNGs
+<cols> <rows> <command...>`, which needs tmux and freeze. Before the name,
+`--wait-for <text>` waits for the screen to show that text and `--keys <key>`,
+repeated, types or presses keys before the capture. They read the PNGs
 and report each PNG's absolute path. Pass those
 paths to the owner, who can `open` them.
 

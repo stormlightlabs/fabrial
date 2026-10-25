@@ -9,7 +9,7 @@ check:
 fmt:
     cargo fmt --all
 
-# Capture a terminal UI as a PNG: just shot <name> <cols> <rows> <command...>
+# Capture a terminal UI as a PNG: just shot [options] <name> <cols> <rows> <command...>
 [positional-arguments]
-shot name cols rows +command:
+shot +args:
     @.github/storm/shot.sh "$@"
