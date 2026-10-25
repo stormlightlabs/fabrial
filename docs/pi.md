@@ -3,7 +3,7 @@
 `fab dispatch` runs reviewer, verifier, adversarial-reviewer and reviser as
 fresh headless Pi 1.4.0 workers, each in a host tmux session with the whole Pi
 process wrapped in agent-sandbox.nix. This guide sets up the host and runs a
-worker. [Pi design](pi-design.md) covers the planned status area; arcl's
+worker. [Pi design](pi-design.md) covers what is still planned; arcl's
 roadmap phase 6 tracks delivery ([PLAN.md](../PLAN.md#work)).
 
 > **Note:** This is a preview feature under active development.
@@ -233,6 +233,36 @@ collaborator, and only when made after the Pi session started. Comment and
 review text arrives marked as untrusted data, and no PR event starts a worker.
 Messages quote comment bodies, review bodies and check names as untrusted
 data. Readings and messages never include `gh` errors or credentials.
+
+### Status area
+
+In the terminal UI, two rows below the editor show the session's pull request
+and run. The first shows the PR number and state, its checks and link, the
+repository, the branch with ahead and behind counts, and the diff against the
+fetched base. The second shows the current step, the workers active of total
+with blocked and failed, and the run ID. Pi's own footer stays under them with
+the worktree, context, cost and model.
+
+Checks count only for the head they were read for. After a push, a branch
+change, a failed read or a local head that differs from the PR's, they show as
+stale with that head and the time of the last good read, never as passed. A
+lookup that has not succeeded shows `PR unknown` with the reason, such as a
+rate limit and when the next read is due. `no PR` means GitHub has none for
+the branch.
+
+The step comes from the roles of active workers, such as `review` or
+`revise`; with none it shows `unknown`. A widget above the editor lists each
+worker that is starting, working, blocked or failed, with its latest action.
+It shows the kind of a worker report, not its text.
+
+The PR number and repository are links where the terminal supports them; the
+full PR URL appears as text when the row has room. Narrow terminals keep the
+PR, checks and step, and drop the other fields. Each state has a word as well
+as a color.
+
+The rows update from the package's PR and worker events and from Git after
+each turn, and start no timer. RPC clients get the same text through
+`setStatus`. Print and JSON modes show nothing.
 
 ## Verification
 

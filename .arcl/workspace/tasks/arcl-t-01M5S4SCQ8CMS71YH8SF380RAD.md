@@ -2,7 +2,7 @@
 id = "arcl-t-01M5S4SCQ8CMS71YH8SF380RAD"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Show the PR and CI state in the Pi status area"
-status = "pending"
+status = "in_progress"
 priority = "normal"
 position = 2
 blocked-by = ["arcl-t-01M5S4SCPVN2EJB1X5YC9WXZG8"]

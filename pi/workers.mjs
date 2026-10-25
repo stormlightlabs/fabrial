@@ -42,9 +42,15 @@ export class WorkerMonitor {
         const batch = await this.fetch(id, state.cursor, this.controller.signal);
         if (this.disposed) return;
         state.errors = 0;
+        // Only these fields reach the status area; the record also names private paths.
+        const worker = { role: batch.worker.role, state: batch.worker.state, run_id: batch.worker.run_id };
+        if (worker.state !== state.shown) {
+          state.shown = worker.state;
+          this.progress({ workerId: id, worker });
+        }
         for (const item of batch.events) {
           if (item.sequence <= state.cursor) continue;
-          this.progress({ workerId: id, ...item });
+          this.progress({ workerId: id, worker, ...item });
           const event = item.event;
           if (event.type === "worker_report" && ["blocked", "question"].includes(event.kind)) {
             await this.notify({ key: `${id}:${item.sequence}`, worker: batch.worker, event });
