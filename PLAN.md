@@ -79,8 +79,8 @@ a paid plan, so rulesets on `main` are enforced.
 - **Pi setup during development.** fabrial can own the working Pi setup,
   including extensions, UI, defaults, and configuration. This is broader than
   dispatch integration. Keep worker isolation and credential custody intact.
-  [Pi dispatch](docs/pi.md) documents shipped dispatch, and
-  [Pi design](docs/pi-design.md) designs the status area.
+  [Pi dispatch](docs/pi.md) documents shipped dispatch and the status area,
+  and [Pi design](docs/pi-design.md) holds what is still planned.
 - **Cleanup is lifecycle work.** The host cleans up worker-owned resources
   when a worker exits and task-owned resources after its PR merges. Preserve
   result evidence, shared resources, and unconfirmed credential recovery state.

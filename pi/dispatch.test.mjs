@@ -188,6 +188,25 @@ test("monitor progress never wakes a model and completion is delivered once", as
   monitor.stop(); monitor.stop();
 });
 
+test("monitor progress names each worker's role, state and run, and nothing else from its record", async () => {
+  const progress = [];
+  let calls = 0;
+  const monitor = new WorkerMonitor({
+    fetch: async () => ({ worker: { ...worker, state: calls++ === 0 ? "running" : "succeeded", credential_cleanup: "complete", result_file: "/private/result.txt" },
+      cursor: calls, events: calls === 1 ? [{ sequence: 1, event: { type: "progress", event: "turn_start" } }] : [] }),
+    notify: () => {}, progress: (event) => progress.push(event),
+  });
+  monitor.track(worker);
+  await monitor.poll(); await monitor.poll();
+  const summary = (state) => ({ role: worker.role, state, run_id: worker.run_id });
+  assert.deepEqual(progress, [
+    { workerId: worker.worker_id, worker: summary("running") },
+    { workerId: worker.worker_id, worker: summary("running"), sequence: 1, event: { type: "progress", event: "turn_start" } },
+    { workerId: worker.worker_id, worker: summary("succeeded") },
+  ]);
+  monitor.stop();
+});
+
 test("blocker notification is immediate and is not repeated on clean completion", async () => {
   let calls = 0;
   const notifications = [];

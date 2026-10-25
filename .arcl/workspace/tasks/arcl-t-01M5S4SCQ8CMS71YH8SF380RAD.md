@@ -2,10 +2,11 @@
 id = "arcl-t-01M5S4SCQ8CMS71YH8SF380RAD"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Show the PR and CI state in the Pi status area"
-status = "pending"
+status = "completed"
 priority = "normal"
 position = 2
 blocked-by = ["arcl-t-01M5S4SCPVN2EJB1X5YC9WXZG8"]
+evidence = "Done in #47 at 7ceb9b6: pi/status.mjs shows PR, current-head checks, ahead/behind, diff, step and workers below the editor and a worker widget above it; stale and rate-limited states name their cause and keep failed counts at narrow widths; covered by pi/status.test.mjs and shot.sh captures at 120, 80 and 60 columns."
 +++
 
 Show the current pull request, its link and CI state in the fabrial Pi
