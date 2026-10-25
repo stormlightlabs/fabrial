@@ -223,15 +223,16 @@ These start a turn, once per session even across reloads:
 | -------------------------------------- | ----------------------------------------------------- |
 | Merge                                  | Start task cleanup                                    |
 | Closure                                | Stop work and report to the driver                    |
-| `storm:stopped` label or `/storm:stop` | Start nothing new; active workers are asked to cancel |
-| `/storm:ready`                         | Act on it within the current stage                    |
+| `storm:stopped` label or `/storm:stop` | Start nothing new; which workers were asked to cancel |
+| `/storm:ready <sha>` naming the head   | Act on it within the current stage                    |
 | Failed check                           | Input to the current stage, not a new review cycle    |
 | Requested change                       | Input to the current stage, not a new review cycle    |
 
 Commands and requested changes count only from an owner, member or
 collaborator, and only when made after the Pi session started. Comment and
 review text arrives marked as untrusted data, and no PR event starts a worker.
-Readings and messages carry no `gh` output or credentials.
+Messages quote comment bodies, review bodies and check names as untrusted
+data. Readings and messages never include `gh` errors or credentials.
 
 ## Verification
 

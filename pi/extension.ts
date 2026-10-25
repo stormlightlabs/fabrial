@@ -57,15 +57,15 @@ export default function (pi: ExtensionAPI) {
     collector = new PullRequestCollector({
       cwd: ctx.sessionManager.getCwd(),
       since: ctx.sessionManager.getHeader()?.timestamp,
-      notify: (event: { key: string; kind: string; content: string }) => {
-        const fresh = !current.outbox.has(event.key);
-        current.enqueue(event);
+      notify: async (event: { key: string; kind: string; content: string }) => {
         // The owner's stop is trusted: it came from an OWNER, MEMBER or COLLABORATOR or set the label.
-        if (fresh && event.kind === "stop") {
-          void cancelWorkers(event.key, [...observer.workers.keys()],
-            (id: string) => workerOperation("cancel", id, [], undefined, host))
-            .then((failure) => { if (failure && !observer.disposed) current.enqueue(failure); });
+        // Cancel first and queue one message with the outcome; a reload before then repeats the cancels.
+        if (event.kind === "stop" && !current.outbox.has(event.key)) {
+          event = await cancelWorkers(event, [...observer.workers.keys()],
+            (id: string) => workerOperation("cancel", id, [], undefined, host));
+          if (observer.disposed) return;
         }
+        current.enqueue(event);
       },
       progress: (snapshot: unknown) => pi.events.emit("fabrial:pr", snapshot),
     });
