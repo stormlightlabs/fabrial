@@ -8,6 +8,42 @@ stays, and replaces the generated line for the PR it names as `(#N)`.
 
 ## Unreleased
 
+## 0.4.0 - 2026-10-25
+
+- The `storm` skill runs implement, a standard review and its revise, then an
+  adversarial review and its revise. Reviewers check their own findings; a
+  verifier runs only when the driver asks. Each reviewer works in its own
+  worktree at the head it reviews. After resolving a merge conflict, the
+  driver asks before reviewing again, and a blocker ends the stage with a
+  handoff (#43).
+
+- `fab init` installs `.github/storm/shot.sh`, which captures a terminal UI as
+  a PNG through tmux and freeze. `--wait-for` and `--keys` reach later and
+  key-driven states. Implementers and reviewers use it for UI changes (#43).
+
+- When a repository commits its arcl workspace, the `implement` and `handoff`
+  skills start, hand off and complete the task inside its worktree, so the
+  status change lands with the pull request. Before starting, they check for
+  an open pull request or `storm/<task>` branch for the same task (#45).
+
+- The Pi package watches the branch's pull request. A merge, closure, stop,
+  failed check, change request, or `/storm:ready` for the current head resumes
+  Pi once. A stop cancels running workers and reports any that did not
+  confirm (#46).
+
+- The Pi package shows the pull request, checks for the current head,
+  ahead/behind, diff, run step and workers below the editor, and a worker
+  widget above it. Stale and rate-limited states name their cause and are
+  never shown as passing (#47).
+
+- The Pi package is now three extensions, workers, PR status and the status
+  area, under `packages/pi`. A settings filter can leave one out. The sandbox
+  builds from `conf/sandbox/worker.nix`; its store path is unchanged, so an
+  existing `sandbox` setting still works (#48).
+
+- `docs/pi.md` is an operator's guide; planned Pi work is in
+  `docs/pi-design.md` (#44).
+
 ## 0.3.3 - 2026-10-24
 
 - Run CI only when it has work to do (#41)
