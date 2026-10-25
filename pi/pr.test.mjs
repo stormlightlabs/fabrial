@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { PullRequestCollector, MIN_INTERVAL } from "./pr.mjs";
+import { PullRequestCollector, MIN_INTERVAL, cancelWorkers, movesBranch } from "./pr.mjs";
 import { WorkerJournal, dedupeNotifications } from "./journal.mjs";
 
 const worktree = fileURLToPath(new URL("../", import.meta.url));
@@ -176,4 +176,44 @@ test("dispose stops reads, drops late results and listeners", async (t) => {
   assert.equal(seen.length, 0);
   assert.equal(collector.get().status, "unknown");
   unsubscribe();
+});
+
+test("a read in flight across a push leaves the head stale", async (t) => {
+  const h = host(t);
+  h.set(base);
+  const collector = h.make();
+  await collector.poll();
+  const run = collector.run.bind(collector);
+  let release;
+  collector.run = async (command, args) => {
+    const out = await run(command, args);
+    if (command === "gh") await new Promise((resolve) => { release = resolve; });
+    return out;
+  };
+  h.advance(MIN_INTERVAL);
+  const pending = collector.poll();
+  while (!release) await new Promise((resolve) => setTimeout(resolve, 5));
+  collector.refresh(); // The session pushed while the old head's read was in flight.
+  release();
+  await pending;
+  assert.equal(collector.get().status, "stale");
+  assert.equal(collector.get().pr.head, oldHead);
+  collector.stop();
+});
+
+test("branch moves refresh; a stop names the cancels that failed", async () => {
+  for (const command of ["git push", "git checkout -b x", "cd w && git switch main"]) assert.ok(movesBranch(command), command);
+  for (const command of ["git status", "echo push", undefined]) assert.ok(!movesBranch(command), String(command));
+
+  const asked = [];
+  const cancel = async (id) => {
+    asked.push(id);
+    if (id === "w2") throw Object.assign(new Error("fab failed"), { stderr: "token ghs_secret" });
+  };
+  assert.equal(await cancelWorkers("pr:owner/repo#7:stop:C5", ["w1"], cancel), null);
+  const failure = await cancelWorkers("pr:owner/repo#7:stop:C5", ["w1", "w2"], cancel);
+  assert.deepEqual(asked, ["w1", "w1", "w2"]);
+  assert.equal(failure.key, "pr:owner/repo#7:stop:C5:cancel-failed");
+  assert.match(failure.content, /cancel worker w2\./);
+  assert.doesNotMatch(failure.content, /w1|ghs_secret|fab failed/);
 });

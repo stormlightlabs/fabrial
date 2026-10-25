@@ -9,6 +9,7 @@ const TRUSTED = ["OWNER", "MEMBER", "COLLABORATOR"];
 const STOP_LABEL = "storm:stopped";
 const FAILED = ["FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"];
 const PASSED = ["SUCCESS", "NEUTRAL", "SKIPPED"];
+const BRANCH_MOVES = /\bgit\b[^\n]*\b(push|checkout|switch)\b/;
 
 /**
  * Watches the pull request for the session's branch through the host's `gh`.
@@ -31,6 +32,7 @@ export class PullRequestCollector {
     this.errors = 0;
     this.attempted = -Infinity;
     this.backoff = 0;
+    this.generation = 0;
     this.disposed = false;
   }
 
@@ -60,6 +62,8 @@ export class PullRequestCollector {
   /** After a push or branch change: the head may have moved, so stop reporting it as current. */
   refresh() {
     if (this.disposed) return;
+    // A read already in flight saw the old head; poll() drops it.
+    this.generation++;
     if (this.snapshot.pr) this.publish({ ...this.snapshot, status: "stale" });
   }
 
@@ -70,17 +74,20 @@ export class PullRequestCollector {
     if (now - this.attempted < MIN_INTERVAL) return;
     this.busy = true;
     this.attempted = now;
+    const generation = this.generation;
     try {
       const branch = (await this.run("git", ["rev-parse", "--abbrev-ref", "HEAD"])).trim();
       const raw = branch === "HEAD" ? null : await this.view(branch);
       if (this.disposed) return;
+      // The head moved during the read, so it stays stale until the next read.
+      if (generation !== this.generation) return;
       this.errors = 0;
       this.backoff = 0;
       const snapshot = raw ? observe(raw, this.clock()) : { status: "unknown", branch, observedAt: this.clock() };
       this.publish({ ...snapshot, branch });
       if (raw) await this.report(raw, snapshot);
     } catch (error) {
-      if (this.disposed) return;
+      if (this.disposed || generation !== this.generation) return;
       this.errors++;
       const limited = /rate limit|HTTP 429/i.test(error.stderr ?? "");
       const delay = Math.min(MAX_BACKOFF, Math.max(limited ? RATE_LIMIT_BACKOFF : 0, MIN_INTERVAL * 2 ** this.errors));
@@ -153,6 +160,25 @@ export class PullRequestCollector {
   }
 
   recent(at) { return Date.parse(at) >= this.since; }
+}
+
+/** Whether a shell command may move the session's branch or head. */
+export function movesBranch(command) {
+  return BRANCH_MOVES.test(String(command ?? ""));
+}
+
+/**
+ * Asks each worker to cancel after an authorized stop. Resolves to an event
+ * naming the workers whose cancel failed, or null when every cancel succeeded.
+ * The event carries worker IDs only, never the error or its stderr.
+ */
+export async function cancelWorkers(stopKey, ids, cancel) {
+  const results = await Promise.allSettled(ids.map((id) => cancel(id)));
+  const failed = ids.filter((_, i) => results[i].status === "rejected");
+  if (!failed.length) return null;
+  return { key: `${stopKey}:cancel-failed`, kind: "cancel-failed",
+    content: `The stop request could not cancel ${failed.length === 1 ? "worker" : "workers"} ${failed.join(", ")}. ` +
+      "Inspect each with agent_control, cancel it again, and start nothing new until it is stopped." };
 }
 
 /** One read of a PR, keyed by repository, number and head; checks and reviews belong to that head only. */

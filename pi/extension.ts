@@ -3,9 +3,7 @@ import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { startWorker, workerOperation } from "./dispatch.mjs";
 import { WorkerMonitor, isTerminal } from "./workers.mjs";
 import { WorkerJournal, dedupeNotifications } from "./journal.mjs";
-import { PullRequestCollector } from "./pr.mjs";
-
-const BRANCH_MOVES = /\bgit\b[^\n]*\b(push|checkout|switch)\b/;
+import { PullRequestCollector, cancelWorkers, movesBranch } from "./pr.mjs";
 
 /** Fresh workers run independently; the extension observes without owning their lifetime. */
 export default function (pi: ExtensionAPI) {
@@ -20,9 +18,9 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("context", (event) => ({ messages: dedupeNotifications(event.messages) }));
   pi.on("tool_result", (event) => {
-    if (event.toolName === "bash" && BRANCH_MOVES.test(String(event.input.command ?? ""))) collector?.refresh();
+    if (event.toolName === "bash" && movesBranch(event.input.command)) collector?.refresh();
   });
-  pi.on("user_bash", (event) => { if (BRANCH_MOVES.test(event.command)) collector?.refresh(); });
+  pi.on("user_bash", (event) => { if (movesBranch(event.command)) collector?.refresh(); });
   pi.on("session_start", (_event, ctx) => {
     monitor?.stop();
     collector?.stop();
@@ -64,9 +62,9 @@ export default function (pi: ExtensionAPI) {
         current.enqueue(event);
         // The owner's stop is trusted: it came from an OWNER, MEMBER or COLLABORATOR or set the label.
         if (fresh && event.kind === "stop") {
-          for (const id of observer.workers.keys()) {
-            void workerOperation("cancel", id, [], undefined, host).catch(() => {});
-          }
+          void cancelWorkers(event.key, [...observer.workers.keys()],
+            (id: string) => workerOperation("cancel", id, [], undefined, host))
+            .then((failure) => { if (failure && !observer.disposed) current.enqueue(failure); });
         }
       },
       progress: (snapshot: unknown) => pi.events.emit("fabrial:pr", snapshot),
