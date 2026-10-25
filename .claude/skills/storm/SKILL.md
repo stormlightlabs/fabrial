@@ -57,27 +57,41 @@ in a cloud session.
 ## Review
 
 The sequence is fixed: one standard pass, its revise, one adversarial pass,
-its revise. It runs once per pull request, never in a loop.
+its revise. It runs once per pull request, never in a loop. Reviewers check
+their own findings before reporting them. Dispatch the `verifier` agent only
+when the driver asks for it.
 
 1. **Standard pass.** Fetch the branch and pin its head SHA. Dispatch the
    `reviewer` agent with the pull request, the SHA and the task ID.
-2. **Verify.** When it found anything, dispatch the `verifier` agent with the
-   findings. Keep the ones it does not refute, at the severity it gives.
-3. **Post.** One comment with the kept findings, in the `review` skill's
-   format, most severe first, under 200 words. Open it with
-   `Standard pass on <short sha> · <model>`, and end with how many findings
-   the verifier refuted, if any.
-4. **Revise.** When anything above `nit` was kept, dispatch the `reviser`
+2. **Post.** One comment with its findings, in the `review` skill's format,
+   most severe first, under 200 words. Open it with
+   `Standard pass on <short sha> · <model>`.
+3. **Revise.** When anything above `nit` was found, dispatch the `reviser`
    agent with the pull request, the worktree and the findings. It fixes,
    pushes and replies.
-5. **Adversarial pass.** Pin the new head. Dispatch the `adversarial-reviewer`
+4. **Adversarial pass.** Pin the new head. Dispatch the `adversarial-reviewer`
    agent with it, the standard pass's findings and the reviser's reply.
-6. **Verify and revise** as in steps 2 and 4, but tell the reviser to report
-   back rather than reply on the pull request. The findings and its report
-   go in the Finish comment, under `Adversarial pass on <short sha> ·
-   <model>`, so the run posts one comment fewer.
+5. **Revise** as in step 3, but tell the reviser to report back rather than
+   reply on the pull request. The findings and its report go in the Finish
+   comment, under `Adversarial pass on <short sha> · <model>`, so the run
+   posts one comment fewer.
 
 Nits are left in the comments for the owner; they start no revise.
+
+The implementer and the reviser work in the task worktree. Each reviewer,
+standard and adversarial, works in its own detached worktree at the pinned
+head, so it has its own build output and reads exactly the commit it reviews:
+
+```sh
+git worktree add --detach ../<repo>-worktrees/<name>-review <sha>
+```
+
+Remove it with `git worktree remove` when the reviewer returns.
+
+**UI changes.** For a change to terminal UI, the implementer and both
+reviewers capture each affected state with `just shot <name> <cols> <rows>
+<command...>`, read the PNGs, and report each PNG's absolute path. Pass those
+paths to the owner, who can `open` them.
 
 Dispatch each agent fresh. On Claude Code, use the Agent tool with the
 agent's name; on Codex, `spawn_agent` with `fork_turns` set to `"none"` and the

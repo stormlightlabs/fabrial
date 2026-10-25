@@ -207,7 +207,7 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       adversarial pass by fresh agents, each followed by a verifier that tries
       to refute its findings and a revise. A model-free gate sets the required
       `storm/review` check.
-- [ ] Align the shipped `storm` skill and role instructions with the five-stage
+- [x] Align the shipped `storm` skill and role instructions with the five-stage
       sequence in `AGENTS.md`. Verifiers and extra review cycles require the
       driver's request; blockers end the stage with a handoff.
 - [x] `/storm:review|revise|ready|stop` comment commands.
@@ -259,7 +259,6 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       plan with phases and tasks.
 - [ ] Read tasks, readiness and context from arcl through its crates; write
       handoffs and evidence back.
-- [ ] Point the ledger at arcl, or retire it for arcl's dashboard.
 
 ## 5. Core
 

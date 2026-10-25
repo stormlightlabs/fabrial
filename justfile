@@ -8,3 +8,8 @@ check:
 
 fmt:
     cargo fmt --all
+
+# Capture a terminal UI as a PNG: just shot <name> <cols> <rows> <command...>
+[positional-arguments]
+shot name cols rows +command:
+    @scripts/shot.sh "$@"
