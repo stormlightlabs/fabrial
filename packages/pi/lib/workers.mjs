@@ -89,20 +89,43 @@ export function isTerminal(worker) {
 }
 
 /**
- * Asks each worker to cancel after an authorized stop, then resolves to a
- * sentence that says which workers were asked and which cancels failed. It
- * never rejects. The sentence names worker IDs only, never the error or its
- * stderr.
+ * How long a stop waits for each `fab worker cancel`. The command only records
+ * the request, so a few seconds is plenty.
  */
-export async function cancelWorkers(ids, cancel) {
-  const results = await Promise.allSettled(ids.map(async (id) => cancel(id)));
-  const failed = ids.filter((_, i) => results[i].status === "rejected");
-  const asked = ids.filter((_, i) => results[i].status === "fulfilled");
+export const CANCEL_MS = 3000;
+
+/**
+ * Asks each worker to cancel after an authorized stop, then resolves to a
+ * sentence that says which workers were asked, which cancels failed and which
+ * did not confirm within `timeout` or before `signal` aborted. `cancel(id,
+ * signal)` gets a signal that aborts at that point. It never rejects. The
+ * sentence names worker IDs only, never the error or its stderr.
+ */
+export async function cancelWorkers(ids, cancel, { timeout = CANCEL_MS, signal } = {}) {
+  const unconfirmed = Symbol("unconfirmed");
+  const bounded = (id) => new Promise((resolve, reject) => {
+    const controller = new AbortController();
+    const give = () => { controller.abort(); reject(unconfirmed); };
+    const timer = setTimeout(give, timeout);
+    signal?.addEventListener("abort", give, { once: true });
+    if (signal?.aborted) give();
+    // Race the cancel itself, so one that ignores its signal still cannot hang the stop.
+    Promise.resolve().then(() => cancel(id, controller.signal)).then(resolve, reject).finally(() => {
+      clearTimeout(timer); signal?.removeEventListener("abort", give);
+    });
+  });
+  const results = await Promise.allSettled(ids.map(bounded));
+  const pick = (test) => ids.filter((_, i) => test(results[i]));
+  const asked = pick((r) => r.status === "fulfilled");
+  const failed = pick((r) => r.status === "rejected" && r.reason !== unconfirmed);
+  const silent = pick((r) => r.status === "rejected" && r.reason === unconfirmed);
   const list = (names) => `${names.length === 1 ? "worker" : "workers"} ${names.join(", ")}`;
   return [
     ids.length ? "" : "No workers were active.",
     asked.length ? `Asked ${list(asked)} to cancel.` : "",
-    failed.length ? `Could not cancel ${list(failed)}; inspect each with agent_control, cancel it again, and start nothing new until it is stopped.` : "",
+    failed.length ? `Could not cancel ${list(failed)}.` : "",
+    silent.length ? `${list(silent).replace(/^w/, "W")} did not confirm cancellation.` : "",
+    failed.length || silent.length ? "Inspect each with agent_control, cancel it again, and start nothing new until it is stopped." : "",
   ].filter(Boolean).join(" ");
 }
 

@@ -150,9 +150,21 @@ test("a stop cancels each worker and says which were asked and which failed", as
   assert.equal(await cancelWorkers([], cancel), "No workers were active.");
   const outcome = await cancelWorkers(["w1", "w2"], cancel);
   assert.deepEqual(asked, ["w1", "w2"]);
-  assert.match(outcome, /^Asked worker w1 to cancel\. Could not cancel worker w2;/);
+  assert.match(outcome, /^Asked worker w1 to cancel\. Could not cancel worker w2\. Inspect each/);
   assert.doesNotMatch(outcome, /ghs_secret|fab failed/);
-  assert.match(await cancelWorkers(["w3"], () => { throw new Error("sync"); }), /^Could not cancel worker w3;/);
+  assert.match(await cancelWorkers(["w3"], () => { throw new Error("sync"); }), /^Could not cancel worker w3\./);
+});
+
+test("a cancel that never settles, or outlives the session, counts as unconfirmed", async () => {
+  const signals = [];
+  const hang = (id, signal) => { signals.push(signal); return new Promise(() => {}); };
+  const outcome = await cancelWorkers(["w1", "w2"], hang, { timeout: 20 });
+  assert.equal(outcome, "Workers w1, w2 did not confirm cancellation. Inspect each with agent_control, cancel it again, and start nothing new until it is stopped.");
+  assert.ok(signals.every((signal) => signal.aborted));
+  const session = new AbortController();
+  const pending = cancelWorkers(["w3"], hang, { timeout: 60000, signal: session.signal });
+  session.abort();
+  assert.match(await pending, /^Worker w3 did not confirm cancellation\./);
 });
 
 const worker = { worker_id: "worker-one", run_id: "run-one", task_head: "a".repeat(40), role: "reviewer", state: "running", credential_cleanup: "pending" };

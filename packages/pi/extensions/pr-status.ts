@@ -4,6 +4,12 @@ import { PullRequestCollector, movesBranch, prNotification } from "../lib/pr.mjs
 
 /** How long a stop waits for the workers extension to reply before it reports no outcome. */
 const STOP_REPLY_MS = 1000;
+/**
+ * How long a stop waits for the outcome after the reply. The workers extension
+ * bounds each cancel at 3 s; this backstop keeps a hung outcome from holding
+ * the PR watch.
+ */
+const STOP_OUTCOME_MS = 10000;
 
 /** A `fabrial:stop` request for the stop with this key. */
 type StopRequest = { key: string };
@@ -17,7 +23,7 @@ type StopReply = { key: string; outcome: Promise<string> };
  * keyed `fabrial:stop-outcome` reply and its outcome before queuing one
  * message, so a reload before then repeats the stop. With no reply within
  * `STOP_REPLY_MS`, as without the workers extension, the message has no
- * outcome.
+ * outcome, and so it has when the outcome takes longer than `STOP_OUTCOME_MS`.
  */
 export default function (pi: ExtensionAPI) {
   let journal: WorkerJournal | undefined;
@@ -64,7 +70,7 @@ export default function (pi: ExtensionAPI) {
   });
 }
 
-/** Emits `fabrial:stop` and resolves to the reply's outcome, or "" when none arrives in time. */
+/** Emits `fabrial:stop` and resolves to the reply's outcome, or "" when the reply or outcome is late. */
 function stopOutcome(pi: ExtensionAPI, key: string): Promise<string> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => { off(); resolve(""); }, STOP_REPLY_MS);
@@ -72,7 +78,9 @@ function stopOutcome(pi: ExtensionAPI, key: string): Promise<string> {
       const reply = data as Partial<StopReply> | undefined;
       if (reply?.key !== key || !(reply.outcome instanceof Promise)) return;
       clearTimeout(timer); off();
-      resolve(reply.outcome.then(String, () => ""));
+      let late: ReturnType<typeof setTimeout> | undefined;
+      const backstop = new Promise<string>((done) => { late = setTimeout(() => done(""), STOP_OUTCOME_MS); });
+      resolve(Promise.race([reply.outcome.then(String, () => ""), backstop]).finally(() => clearTimeout(late)));
     });
     pi.events.emit("fabrial:stop", { key } satisfies StopRequest);
   });

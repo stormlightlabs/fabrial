@@ -193,8 +193,10 @@ They share code in `packages/pi/lib/` and talk only through Pi extension
 events: `fabrial:worker` for worker progress, `fabrial:pr` for each PR
 reading, and `fabrial:stop`, which PR status sends on an authorized stop so
 the workers extension can cancel its workers. The workers extension answers
-with `fabrial:stop-outcome`, and PR status waits one second for it. Each one
-also loads alone. PR status without workers reports a stop with no cancel
+with `fabrial:stop-outcome`. PR status waits one second for that reply, then
+for the cancels, each of which gets three seconds. A worker whose cancel does
+not answer in time is reported as not confirming cancellation. Each one also
+loads alone. PR status without workers reports a stop with no cancel
 outcome, and the status
 area without the others shows `PR unknown` and no workers. To leave one out,
 filter it in the package entry of your Pi settings, such as

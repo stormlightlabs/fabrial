@@ -18,19 +18,23 @@ export default function (pi: ExtensionAPI) {
   };
   let monitor: WorkerMonitor | undefined;
   let journal: WorkerJournal | undefined;
+  // Aborts this runtime's stop cancels when the session shuts down or reloads.
+  let session = new AbortController();
 
   pi.on("context", (event) => ({ messages: dedupeNotifications(event.messages) }));
   // An authorized PR stop from the PR status extension. Reply with the outcome
-  // at once, so PR status waits for the cancels rather than timing out.
+  // at once, so PR status waits for the cancels rather than timing out. Each
+  // cancel is bounded by `CANCEL_MS` and aborts on shutdown.
   pi.events.on("fabrial:stop", (request) => {
     const key = (request as { key?: unknown } | undefined)?.key;
     if (typeof key !== "string") return;
     const outcome = cancelWorkers([...(monitor?.workers.keys() ?? [])],
-      (id: string) => workerOperation("cancel", id, [], undefined, host));
+      (id: string, signal: AbortSignal) => workerOperation("cancel", id, [], signal, host), { signal: session.signal });
     pi.events.emit("fabrial:stop-outcome", { key, outcome });
   });
   pi.on("session_start", (_event, ctx) => {
     monitor?.stop();
+    session.abort(); session = new AbortController();
     const sessionId = ctx.sessionManager.getSessionId();
     journal = new WorkerJournal({
       entries: () => ctx.sessionManager.getBranch(),
@@ -63,6 +67,7 @@ export default function (pi: ExtensionAPI) {
   });
   pi.on("session_shutdown", () => {
     monitor?.stop();
+    session.abort(); session = new AbortController();
     monitor = undefined; journal = undefined;
   });
 

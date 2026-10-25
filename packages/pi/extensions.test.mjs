@@ -31,12 +31,13 @@ const EXTENSIONS = {
 const worktree = fileURLToPath(new URL("../../", import.meta.url));
 const head = "a".repeat(40);
 
-// Fake host tools. `fab worker cancel` waits while the `hold` file exists.
+// Fake host tools. `fab worker cancel` waits while the `hold` file exists and
+// never replies while the `hang` file exists.
 function host(t) {
   const target = join(worktree, "target"); mkdirSync(target, { recursive: true });
   const root = mkdtempSync(join(target, "extensions-test-"));
   t.after(() => rmSync(root, { recursive: true, force: false }));
-  const log = join(root, "fab.log"), hold = join(root, "hold");
+  const log = join(root, "fab.log"), hold = join(root, "hold"), hang = join(root, "hang");
   const program = (name, body) => writeFileSync(join(root, name), `#!/usr/bin/env node\n${body}`, { mode: 0o700 });
   program("fab", `
 import fs from "node:fs";
@@ -44,6 +45,7 @@ const [, action, id] = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(log)}, action + " " + id + "\\n");
 const reply = (record) => process.stdout.write(JSON.stringify(record) + "\\n");
 if (action === "events") reply({ worker: { worker_id: id, role: "reviewer", state: "running", run_id: "run-1" }, events: [], supervisor_alive: true });
+else if (action === "cancel" && fs.existsSync(${JSON.stringify(hang)})) setInterval(() => {}, 1000);
 else if (action === "cancel") {
   const wait = () => fs.existsSync(${JSON.stringify(hold)}) ? setTimeout(wait, 20) : reply({ type: "cancel_requested" });
   wait();
@@ -61,7 +63,7 @@ else console.log(${JSON.stringify(JSON.stringify(pr))});`);
     FAB_DISPATCH_CONFIG: join(root, "config"), FAB_TRUSTED_CHECKOUT: root });
   t.after(() => { for (const [key, value] of Object.entries(env)) if (value === undefined) delete process.env[key]; else process.env[key] = value; });
   return {
-    root, hold: () => writeFileSync(hold, ""), release: () => rmSync(hold),
+    root, hold: () => writeFileSync(hold, ""), release: () => rmSync(hold), hang: () => writeFileSync(hang, ""),
     calls: () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : []),
   };
 }
@@ -165,6 +167,20 @@ test("a reload before the cancels settle cancels again and queues one stop messa
   assert.equal(h.calls().filter((call) => call === "cancel w1").length, 2);
   assert.match(s.stops()[0].content, /Asked worker w1 to cancel\./);
   await second.shutdown();
+  assert.deepEqual(s.errors, []);
+});
+
+test("a cancel that never replies reports the worker as unconfirmed and frees the PR watch", async (t) => {
+  const h = host(t);
+  const s = session(h.root);
+  h.hang();
+  const runtime = s.load(["workers", "pr", "status"]);
+  await runtime.start();
+  // The message is queued only once notify returns, which frees the PR watch for its next read.
+  await until(() => s.stops().length, "the stop message");
+  assert.ok(h.calls().includes("cancel w1"));
+  assert.match(s.stops()[0].content, /Start nothing new\. Worker w1 did not confirm cancellation\. Inspect each/);
+  await runtime.shutdown();
   assert.deepEqual(s.errors, []);
 });
 
