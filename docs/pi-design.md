@@ -1,7 +1,7 @@
 # Pi design
 
-This page holds the planned parts of fabrial's Pi setup: who owns it and how
-PR status could arrive. [Pi dispatch](pi.md) covers what ships today, and
+This page holds the planned parts of fabrial's Pi setup: who owns it, how PR
+status could arrive and what the status area still lacks. [Pi dispatch](pi.md) covers what ships today, and
 arcl's roadmap phase 6 tracks delivery ([PLAN.md](../PLAN.md#work)).
 
 ## Ownership
@@ -22,3 +22,16 @@ The package collects PR status by polling `gh`, as
 [Pi dispatch](pi.md#pull-request-status) describes. Webhooks could replace
 the polling later; they would change the transport, not the state the
 [status area](pi.md#status-area) reads.
+
+## Status area
+
+The [status area](pi.md#status-area) does not yet show:
+
+- the task ID beside the run ID
+- the session's elapsed time
+- a worker's file when it is known, and an idle state between its turns
+- a cost budget, when run settings configure one
+
+Each needs a source that provides it. Do not invent a step, budget or cost,
+and do not show unknown cost as zero. A displayed budget does not enforce a
+spending limit.

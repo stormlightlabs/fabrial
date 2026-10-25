@@ -24,8 +24,8 @@ const render = (s, width = 120) => {
 
 test("a wide terminal shows the repository, branch, PR, checks and diff", () => {
   const [first, second] = render(state(), 140);
-  assert.equal(plain(render(state())[0]), "PR #7 · draft · checks 4/4 passed · owner/repo · storm/task ↑2 ↓0 · +120 -8 in 5 files");
-  assert.equal(plain(first), "PR #7 · draft · checks 4/4 passed · https://github.com/owner/repo/pull/7 · owner/repo · storm/task ↑2 ↓0 · +120 -8 in 5 files");
+  assert.equal(plain(render(state())[0]), "PR #7 · draft · checks 4/4 passed · https://github.com/owner/repo/pull/7 · owner/repo · ↑2 ↓0 · +120 -8 in 5 files");
+  assert.equal(plain(first), "PR #7 · draft · checks 4/4 passed · https://github.com/owner/repo/pull/7 · owner/repo · storm/task · ↑2 ↓0 · +120 -8 in 5 files");
   assert.match(first, /\[PR #7\]\(https:\/\/github.com\/owner\/repo\/pull\/7\)/);
   assert.match(first, /<success>checks 4\/4 passed<\/success>/);
   assert.equal(plain(second), "step unknown · workers none");
@@ -33,7 +33,7 @@ test("a wide terminal shows the repository, branch, PR, checks and diff", () => 
 
 test("a narrow terminal keeps the PR, checks and step and drops the rest", () => {
   const [first, second] = render(state({ pr: pr({ status: "pending", checks: { total: 4, passed: 3, pending: 1, failed: 0, items: [] } }) }), 60);
-  assert.equal(plain(first), "PR #7 · draft · checks 3/4 passed, 1 pending · owner/repo");
+  assert.equal(plain(first), "PR #7 · draft · checks 3/4 passed, 1 pending · ↑2 ↓0");
   assert.match(first, /<warning>checks 3\/4 passed, 1 pending<\/warning>/);
   assert.equal(plain(second), "step unknown · workers none");
   const [tiny] = render(state(), 20);
@@ -42,7 +42,7 @@ test("a narrow terminal keeps the PR, checks and step and drops the rest", () =>
 
 test("a branch with no PR says so, and an unread one is unknown", () => {
   assert.equal(plain(render(state({ pr: { status: "unknown", branch: "storm/task", observedAt } }))[0]),
-    "no PR · owner/repo · storm/task ↑2 ↓0 · +120 -8 in 5 files");
+    "no PR · owner/repo · storm/task · ↑2 ↓0 · +120 -8 in 5 files");
   assert.equal(plain(render(state({ pr: undefined, git: undefined }))[0]), "PR unknown");
 });
 
@@ -51,11 +51,20 @@ test("failed checks are red and labelled", () => {
   assert.match(first, /<error>checks 2\/4 passed, 1 failed, 1 pending<\/error>/);
 });
 
+test("ahead and behind outlast a long branch name, which Pi's footer already shows", () => {
+  const long = { ...git, branch: "storm/arcl-t-01M5S4SCQ8CMS71YH8SF380RAD" };
+  const [first] = render(state({ git: long }));
+  assert.equal(plain(first), "PR #7 · draft · checks 4/4 passed · https://github.com/owner/repo/pull/7 · owner/repo · ↑2 ↓0 · +120 -8 in 5 files");
+  assert.equal(plain(render(state({ git: long }), 60)[0]), "PR #7 · draft · checks 4/4 passed · owner/repo · ↑2 ↓0");
+});
+
 test("a moved head shows the old checks as stale with their head and read time, never green", () => {
-  for (const s of [state({ pr: pr({ status: "stale" }) }), state({ git: { ...git, head: local } })]) {
+  for (const [s, why] of [[state({ pr: pr({ status: "stale" }) }), "head may have moved"], [state({ git: { ...git, head: local } }), "local head differs"]]) {
     const [first] = render(s);
     assert.doesNotMatch(first, /<success>/);
-    assert.match(plain(first), /checks stale \((head may have moved|local head differs); 4\/4 passed at aaaaaaa, read 12:03\)/);
+    assert.equal(plain(first), `PR #7 · draft · checks stale, 4/4 passed, read 12:03 · head aaaaaaa, ${why} · owner/repo · ↑2 ↓0`);
+    assert.equal(plain(render(s, 80)[0]), "PR #7 · draft · checks stale, 4/4 passed, read 12:03 · owner/repo · ↑2 ↓0");
+    assert.equal(plain(render(s, 60)[0]), "PR #7 · draft · checks stale, 4/4 passed, read 12:03 · ↑2 ↓0");
   }
 });
 
@@ -63,9 +72,14 @@ test("a rate limit or failed lookup is unknown or stale, never green", () => {
   const limited = { error: "GitHub rate limit", retryAt: observedAt + 5 * 60000 };
   assert.equal(plain(render(state({ pr: { status: "unknown", ...limited } }))[0]).split(" · ")[0],
     "PR unknown (GitHub rate limit, retry 12:08)");
-  const [first] = render(state({ pr: pr({ status: "stale", ...limited }) }));
+  assert.equal(plain(render(state({ pr: { status: "unknown", ...limited } }), 60)[0]),
+    "PR unknown (GitHub rate limit, retry 12:08) · ↑2 ↓0");
+  const s = state({ pr: pr({ status: "stale", ...limited, pr: { ...pr().pr, number: 47 } }) });
+  const [first] = render(s);
   assert.doesNotMatch(first, /<success>/);
-  assert.match(plain(first), /checks stale \(GitHub rate limit, retry 12:08; 4\/4 passed at aaaaaaa, read 12:03\)/);
+  assert.equal(plain(first), "PR #47 · draft · checks stale, 4/4 passed, read 12:03 · retry 12:08 · head aaaaaaa, GitHub rate limit · ↑2 ↓0");
+  assert.equal(plain(render(s, 80)[0]), "PR #47 · draft · checks stale, 4/4 passed, read 12:03 · retry 12:08 · ↑2 ↓0");
+  assert.equal(plain(render(s, 60)[0]), "PR #47 · draft · checks stale, 4/4 passed, read 12:03");
   assert.match(plain(render(state({ pr: pr({ checks: { total: 0, passed: 0, pending: 0, failed: 0, items: [] }, status: "unknown" }) }))[0]),
     /checks none/);
 });

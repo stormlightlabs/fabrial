@@ -208,14 +208,15 @@ function prFields(state, s) {
       ?? (pr.draft ? ["draft", "muted"] : ["ready", "accent"]);
     fields.push({ text: `PR #${pr.number}`, keep: true, paint: (t) => s.link(s.bold(t), pr.url) });
     fields.push({ text: pr.stopped ? `${label}, stopped` : label, keep: true, paint: (t) => s.fg(pr.stopped ? "warning" : color, t) });
-    fields.push(checks({ ...snapshot, pr }, local, s));
-    fields.push({ text: pr.url, priority: 1, paint: (t) => s.link(s.fg("dim", t), pr.url) });
+    fields.push(...checks({ ...snapshot, pr }, local, s));
+    fields.push({ text: pr.url, priority: 2, paint: (t) => s.link(s.fg("dim", t), pr.url) });
   }
   const repo = local?.repository ?? pr?.repository;
   if (repo) fields.push({ text: repo, priority: 4, paint: (t) => s.link(t, `https://github.com/${repo}`) });
-  if (local?.branch) {
-    const counts = local.ahead === undefined ? "" : ` ↑${local.ahead} ↓${local.behind}`;
-    fields.push({ text: `${local.branch}${counts}`, priority: 2, paint: (t) => s.fg("accent", t) });
+  // Pi's footer already shows the branch name, so it goes first; the counts outlast it.
+  if (local?.branch) fields.push({ text: local.branch, priority: 1, paint: (t) => s.fg("accent", t) });
+  if (local?.ahead !== undefined) {
+    fields.push({ text: `↑${local.ahead} ↓${local.behind}`, priority: 5, paint: (t) => s.fg("accent", t) });
   }
   if (local?.diff) {
     const { added, deleted, files } = local.diff;
@@ -225,20 +226,28 @@ function prFields(state, s) {
   return fields;
 }
 
-/** Checks belong to the head they were read for; anything else is stale or unknown, never green. */
+/**
+ * Checks belong to the head they were read for; anything else is stale or
+ * unknown, never green. A stale result leads with its counts and last read,
+ * which always stay; the retry time, then the head and reason, drop first.
+ */
 function checks(snapshot, local, s) {
   const { pr, checks: c } = snapshot;
   const counts = c ? `${c.passed}/${c.total} passed` : "";
   const moved = local?.head && local.head !== pr.head;
   if (snapshot.status === "stale" || snapshot.error || moved) {
-    const why = snapshot.error ? problem(snapshot) : moved ? "local head differs" : "head may have moved";
-    return { text: `checks stale (${why}; ${counts} at ${pr.head.slice(0, 7)}, read ${clock(snapshot.observedAt)})`,
-      keep: true, paint: (t) => s.fg("warning", t) };
+    const why = snapshot.error ?? (moved ? "local head differs" : "head may have moved");
+    const warn = (t) => s.fg("warning", t);
+    return [
+      { text: ["checks stale", counts, `read ${clock(snapshot.observedAt)}`].filter(Boolean).join(", "), keep: true, paint: warn },
+      ...(snapshot.retryAt ? [{ text: `retry ${clock(snapshot.retryAt)}`, priority: 7, paint: warn }] : []),
+      { text: `head ${pr.head.slice(0, 7)}, ${why}`, priority: 6, paint: (t) => s.fg("muted", t) },
+    ];
   }
-  if (!c?.total) return { text: "checks none", keep: true, paint: (t) => s.fg("muted", t) };
+  if (!c?.total) return [{ text: "checks none", keep: true, paint: (t) => s.fg("muted", t) }];
   const extra = [c.failed ? `${c.failed} failed` : "", c.pending ? `${c.pending} pending` : ""].filter(Boolean);
   const color = c.failed ? "error" : c.pending ? "warning" : "success";
-  return { text: `checks ${[counts, ...extra].join(", ")}`, keep: true, paint: (t) => s.fg(color, t) };
+  return [{ text: `checks ${[counts, ...extra].join(", ")}`, keep: true, paint: (t) => s.fg(color, t) }];
 }
 
 function runFields(state, s) {

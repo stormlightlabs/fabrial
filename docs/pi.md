@@ -257,8 +257,9 @@ It shows the kind of a worker report, not its text.
 
 The PR number and repository are links where the terminal supports them; the
 full PR URL appears as text when the row has room. Narrow terminals keep the
-PR, checks and step, and drop the other fields. Each state has a word as well
-as a color.
+PR, checks and step, and drop the other fields; stale checks keep their counts
+and read time. The branch name goes first, since Pi's footer shows it, and its
+ahead and behind counts stay longer. Each state has a word as well as a color.
 
 The rows update from the package's PR and worker events and from Git after
 each turn, and start no timer. RPC clients get the same text through
