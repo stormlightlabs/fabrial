@@ -25,9 +25,9 @@ a paid plan, so rulesets on `main` are enforced.
 - **The two projects build each other, in this order.** fabrial first becomes
   usable across the stormlightlabs org, then implements arclightning's work,
   including the repository-native workspace. Only then does arcl take over
-  fabrial's own tasks. Until phase 4, `PLAN.md` tracks fabrial's work, and the
-  skills take a task from arcl, a GitHub issue, or a description from the
-  owner.
+  fabrial's own tasks. That happened in phase 4: fabrial's open work now
+  lives in arcl, and the skills take a task from arcl, a GitHub issue, or a
+  description from the owner.
 - **`fab init` installs fabrial by copying.** It writes the Branch PR, Review
   gate and Bot comment workflows, `gate.sh`, `CODEOWNERS`, the skills, the
   agents and an `AGENTS.md` section into a repository, from files built into
@@ -121,8 +121,8 @@ arcl-store = { path = "../arclightning/crates/arcl-store" }
 ```
 
 The workspace already matches arclightning's edition (2024), resolver (3) and
-`rustfmt.toml`. arclightning is still extracting its shared application layer
-(its roadmap's milestone 2), so expect the pin to move with API changes.
+`rustfmt.toml`. arclightning's crates are still pre-1.0, so expect the pin to
+move with API changes.
 
 ## Open questions
 
@@ -132,175 +132,37 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
   agent-sandbox.nix, but the deployment setup is still open.
 - Whether the dashboard is reachable only over Tailscale.
 
-## 0. Repository
+## Work
 
-- [x] Ruleset on `main` (owner), `CODEOWNERS`, and stormlight-thunderbot
-      installed with its org secrets.
-- [x] A short `AGENTS.md`: gates, layout, branch and PR rules.
-- [x] Port the writing skill and the tells catalogue.
-- [x] Cargo workspace, `just check`, and a CI check job.
-- [x] Branch PR workflow, ported from okb's `branch-pr.yml`.
+Open work lives in arcl, in `.arcl/workspace`, as the Roadmap plan's phases 1
+to 9. Install the pinned `arcl`, initialize the clone, and read the plan:
 
-## 1. Review loop
+```sh
+cargo install --locked --git https://github.com/stormlightlabs/arclightning --tag v0.1.0 arcl-cli
+arcl init
+arcl tree           # the whole plan
+arcl ready          # tasks that can start
+arcl context <id>   # one task, with its plan and blockers
+```
 
-- [x] Port `implement`, `review`, `adv-rev`, `revise`, `resync` and `handoff`,
-      and the `implementer`, `reviewer`, `adversarial-reviewer` and `reviser`
-      agents.
-- [x] Review sequence in the `storm` skill: implement, a standard pass by a
-      fresh agent and its revise, then an adversarial pass by a fresh agent and
-      its revise. A model-free gate sets the required `storm/review` check.
-- [x] Align the shipped `storm` skill and role instructions with the five-stage
-      sequence in `AGENTS.md`. Verifiers and extra review cycles require the
-      driver's request; blockers end the stage with a handoff.
-- [x] `/storm:review|revise|ready|stop` comment commands.
-- [x] Bot comments: agents post PR comments as stormlight-thunderbot through
-      the Bot comment workflow.
-- [x] Accept GitHub's native-stack auto-merge refusal without failing a completed
-      review. Post the squash message for the person merging the stack.
-- [x] Keep the GitHub PR number in the final squash commit subject, for
-      example `Add Pi dispatch (#21)`. The Review gate adds it to the squash
-      message it posts.
-- [ ] Verify the shared skill layout on Claude Code, Codex and Pi, and record
-      what differs. `docs/hosts.md` records Claude Code; Codex and Pi are
-      still to check.
+When moving the arcl pin, rerun `arcl skill install` and commit the result.
 
-## 2. Org rollout
+### Shipped
 
-- [x] The skills and agents take a task from arcl, a GitHub issue, or a
-      description, and run the command `gates` names in `.github/fabrial.toml`.
-- [x] Per-repository settings (the owner, the squash trailer and the gate
-      command) come from `.github/fabrial.toml` instead of being written into
-      the workflows.
-- [x] `fab init`: write the workflows, `gate.sh`, `CODEOWNERS`, the settings
-      file, skills, agents and an `AGENTS.md` section into a repository, and
-      record the fabrial version it installed. `--check` reports files that
-      differ from the running binary's, and an installed version that differs
-      from it.
-- [x] Releases: `fab update` refreshes an install and refuses a downgrade,
-      `fab check` reports drift, the Release workflow opens a release pull
-      request that writes the release's changelog section from the squash
-      subjects since the last tag, and Release tag tags its merge commit.
-- [ ] First release, `v0.2.0` (owner runs the Release workflow), then
-      `fab update` in arclightning from it.
-- [ ] Org setup (owner): the bot installed on each repository and the secrets
-      shared. A ruleset requiring `storm/review` and the repository's check
-      applies to a repository only after its `fab init` pull request merges,
-      because the gate runs from the repository's `main`.
+What each phase has shipped. Phases 1, 2, 4 and 6 are done in part; their
+remaining tasks are in arcl.
 
-## 3. arclightning
-
-- [x] Install fabrial in `stormlightlabs/arclightning` with `fab init` (arclightning#1).
-- [ ] Implement arclightning's repository-native workspace (its roadmap's
-      milestone 3) through the `storm` skill.
-
-## 4. arcl here
-
-- [ ] A tagged arcl release to pin, and a setup step that installs it in
-      fabrial's cloud sessions (asked of arclightning).
-- [ ] `arcl init` in fabrial, and move `PLAN.md`'s open items into arcl as a
-      plan with phases and tasks.
-- [ ] Read tasks, readiness and context from arcl through its crates; write
-      handoffs and evidence back.
-
-## 5. Core
-
-- [ ] Claims on `refs/fabrial/claims`: claim, renew, release and expire, with
-      tests for two machines racing for one task.
-- [ ] `fab run <task>`: the fixed sequence, one worker per step, on a worktree
-      per task.
-- [ ] `fab status`: runs, their step and their PR, read from the claims ref.
-- [ ] Automate post-merge task cleanup: remove only clean matching
-      worktrees/branches, release task-owned Nix roots, and refresh clean `main`.
-      Retain and report recovery state on failure; support cleanup after restart
-      without another agent. Worker-exit cleanup shipped with the asynchronous
-      Pi workers in phase 6.
-
-## 6. Workers and Pi setup
-
-- [x] Implement the first local dispatch path: four fresh headless Pi 1.4.0
-      review roles, host tmux recorder, root Pi `agent` tool, explicit trusted
-      inputs, per-role models, and a local App issuer. Pin agent-sandbox.nix
-      v5.6.3 and its nixpkgs, removing only the two owner-Keychain Mach grants.
-      Dispatch and the recorder now run in Rust in `fab-cli`, without a Python
-      runtime. Rust subprocess tests cover issuance, cancellation during
-      issuance, deadline expiry, worker failure, revocation, and retained
-      cleanup state. App JWT requests use curl Bearer headers over stdin;
-      installation-token requests stay on GitHub CLI. Node tests cover the Pi tool.
-- [x] Exercise the Pi `agent` tool through Rust dispatch, real App issuance,
-      subscription auth, tmux, and the pinned sandbox on PR #21. A fresh
-      adversarial review completed and the tmux session exited. Standard review
-      and its cleanup revision ran in fresh bootstrap workers. Host probes
-      denied both owner-Keychain Mach lookups while HTTPS and Pi tools worked.
-      Host gates and CI passed; the owner merged PR #21. Its task worktree,
-      branch, scratch state, sandbox runs, and task-specific Nix outputs were
-      removed, and primary `main` was fast-forwarded.
-- [x] Run asynchronous local Pi workers: durable worker records, detached
-      dispatch, events and steering, a non-blocking `agent` tool, reconnect,
-      and worker-exit cleanup with recovery after a host restart (tested with
-      changed boot identities, not a physical reboot). See
-      [Pi dispatch](docs/pi.md). The 2026-10-24 acceptance run in
-      [#30](https://github.com/stormlightlabs/fabrial/pull/30) checked, through
-      `fab dispatch` in the real sandbox, explicit cancellation, timeout,
-      unexpected pane death and credential cleanup.
-- [ ] Follow-up: build a Pi extension that queues incoming questions and
-      steering messages while an agreed task is active. Let the driver mark an
-      interruption as urgent; otherwise answer at a safe boundary and continue
-      the task without ending the run. Show queued messages and keep them
-      through reload/resume. Do not turn queued questions into new tasks or
-      extra worker stages.
-- [ ] Host-check Git push and Rust gates from a worker started by
-      `fab dispatch`. Rust does not link `libiconv` inside the sandbox, so
-      gates run on the host for now. Earlier bootstrap builds and pushes did
-      not go through Rust dispatch.
-- [ ] Make sandbox settings configurable for deployment needs. Keep the
-      pinned isolation policy fixed for this spike; choose the settings and
-      validation before adding configuration options.
-- [ ] Let Claude Code and Pi call the same dispatch command for fresh workers,
-      passing a role, task, worktree and result without sharing session history.
-- [ ] Collect PR status for Pi independently of the UI: current head, checks,
-      reviews, authorized owner commands, and merge/closure. Deliver changes
-      to the orchestrator without another tool call. Invalidate old-head state,
-      handle stale/error states, and bound polling or use webhooks. Follow
-      [Pi design](docs/pi-design.md#pr-status); do not let events start extra
-      review cycles.
-- [ ] Show the current pull request, its link and CI state in the fabrial Pi
-      package's status area, following
-      [Pi design](docs/pi-design.md#status-area). Consume shared
-      PR/worker state instead of creating another status collector.
-- [ ] Maintain fabrial's development Pi setup, including extensions, UI,
-      defaults, and configuration as needed. Keep its ownership explicit;
-      general Pi preferences are not automatically outside fabrial's scope.
-- [ ] Pi dispatch for every role, into tmux, Zellij and herdr, with per-role models
-      and effort caps (port thunderstorm's `internal/dispatch` and
-      `internal/roles`).
-- [ ] Cloud workers: start a Claude Code or Codex cloud task for a task and
-      follow its branch.
-- [ ] Jules spike.
-
-## 7. Machines
-
-- [ ] `fab daemon` under systemd: takes ready tasks, honours a concurrency cap,
-      and wakes on App webhooks or polls.
-- [ ] Per-run isolation and short-lived, repository-scoped tokens.
-- [ ] Logs and transcripts per run.
-- [ ] Choose and set up the first VPS.
-
-## 8. Drivers
-
-- [ ] `fab mcp`: the run operations as MCP tools, so Pi or another agent can
-      orchestrate.
-- [ ] Dashboard: runs, steps, logs, and the same operations the comments
-      trigger.
-- [ ] Try [Mire](https://github.com/stormlightlabs/mire) on one pull request
-      as the owner's local review surface. In a fetched PR worktree, capture
-      the comparison in a review file outside the repository, inspect it in
-      Mire, and export anchored findings and human decisions. Decide whether
-      an adapter should send findings through fabrial's Bot comment workflow.
-      Mire has no GitHub integration; the existing gate and owner approval
-      remain the source of merge decisions.
-
-## 9. Migration
-
-- [ ] Move thunderstorm's open issues into arcl.
-- [ ] Archive `stormlightlabs/thunderstorm`, then delete it once nothing
-      installs from it.
+- Phase 0: the ruleset, `CODEOWNERS`, the bot, `AGENTS.md`, the writing skill,
+  the Cargo workspace with `just check`, and the Branch PR workflow.
+- Phase 1: the ported skills and agents, the five-stage `storm` review with
+  its `storm/review` gate, `/storm:` commands, bot comments, and PR numbers in
+  squash subjects.
+- Phase 2: task sources and `.github/fabrial.toml` settings, `fab init`,
+  `fab update`, `fab check`, the Release workflows, the first release
+  (`v0.2.0`), and `fab update` in arclightning from it.
+- Phase 3: fabrial installed in arclightning (arclightning#1), and
+  arclightning's repository-native workspace, its roadmap's milestone 3.
+- Phase 4: `arcl init` here, and `PLAN.md`'s open items moved into arcl.
+- Phase 6: Rust dispatch of four sandboxed Pi review roles, exercised on
+  PR #21, and asynchronous Pi workers with worker-exit cleanup, accepted in
+  [#30](https://github.com/stormlightlabs/fabrial/pull/30).

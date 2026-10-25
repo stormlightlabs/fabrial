@@ -4,7 +4,7 @@
 fresh headless Pi 1.4.0 workers, each in a host tmux session with the whole Pi
 process wrapped in agent-sandbox.nix. This guide sets up the host and runs a
 worker. [Pi design](pi-design.md) covers the planned PR status and status
-area; [PLAN.md](../PLAN.md#6-workers-and-pi-setup) tracks delivery.
+area; arcl's roadmap phase 6 tracks delivery ([PLAN.md](../PLAN.md#work)).
 
 > **Note:** This is a preview feature under active development.
 

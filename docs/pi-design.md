@@ -2,7 +2,7 @@
 
 This page holds the planned parts of fabrial's Pi setup: PR status collection
 and the status area. [Pi dispatch](pi.md) covers what ships today, and
-[PLAN.md](../PLAN.md#6-workers-and-pi-setup) tracks delivery.
+arcl's roadmap phase 6 tracks delivery ([PLAN.md](../PLAN.md#work)).
 
 ## Ownership
 
