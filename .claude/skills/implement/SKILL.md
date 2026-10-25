@@ -38,11 +38,6 @@ Stop and ask when any of these is true:
   any.
 - The work needs a decision the task does not record.
 
-## Start it
-
-For an arcl task, `arcl task start <id>` moves it to in progress, so `arcl
-ready` stops offering it. An issue or a description needs no step here.
-
 ## Take a working tree
 
 A dispatched implementer already has one: the run created it and named the
@@ -70,6 +65,21 @@ description joined with dashes.
 Work only inside it. Each worktree keeps its own build output; share
 compilation through a cache, such as `sccache` for Rust, never through one
 shared build directory.
+
+## Start it
+
+For an arcl task, start it inside the working tree, because the status lives
+in a tracked file under `.arcl/workspace`. A fresh worktree has no database
+yet, so run `arcl init` first:
+
+```sh
+arcl init
+arcl task start <id>
+```
+
+The task moves to in progress, so `arcl ready` stops offering it. Commit the
+changed task file with the work, so the pull request carries the status. An
+issue or a description needs no step here.
 
 ## Do the work
 

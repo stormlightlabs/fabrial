@@ -121,8 +121,8 @@ arcl-store = { path = "../arclightning/crates/arcl-store" }
 ```
 
 The workspace already matches arclightning's edition (2024), resolver (3) and
-`rustfmt.toml`. arclightning is still extracting its shared application layer
-(its roadmap's milestone 2), so expect the pin to move with API changes.
+`rustfmt.toml`. arclightning's crates are still pre-1.0, so expect the pin to
+move with API changes.
 
 ## Open questions
 
@@ -138,14 +138,12 @@ Open work lives in arcl, in `.arcl/workspace`, as the Roadmap plan's phases 1
 to 9. Install the pinned `arcl`, initialize the clone, and read the plan:
 
 ```sh
-cargo install --locked --git https://github.com/stormlightlabs/arclightning --rev 1700945ed1094d6032156520819d3e4feacc14d1 arcl-cli
+cargo install --locked --git https://github.com/stormlightlabs/arclightning --tag v0.1.0 arcl-cli
 arcl init
 arcl tree           # the whole plan
 arcl ready          # tasks that can start
 arcl context <id>   # one task, with its plan and blockers
 ```
-
-arclightning has no tagged release yet, so the rev pin stands in for one.
 
 ### Completed
 
@@ -155,8 +153,10 @@ arclightning has no tagged release yet, so the rev pin stands in for one.
   its `storm/review` gate, `/storm:` commands, bot comments, and PR numbers in
   squash subjects.
 - Phase 2: task sources and `.github/fabrial.toml` settings, `fab init`,
-  `fab update`, `fab check` and the Release workflows.
-- Phase 3: fabrial installed in arclightning (arclightning#1).
+  `fab update`, `fab check`, the Release workflows, the first release
+  (`v0.2.0`), and `fab update` in arclightning from it.
+- Phase 3: fabrial installed in arclightning (arclightning#1), and
+  arclightning's repository-native workspace, its roadmap's milestone 3.
 - Phase 4: `arcl init` here, and `PLAN.md`'s open items moved into arcl.
 - Phase 6: Rust dispatch of four sandboxed Pi review roles, exercised on
   PR #21, and asynchronous Pi workers with worker-exit cleanup, accepted in

@@ -8,7 +8,7 @@ position = 8
 +++
 
 See PLAN.md's "Pi setup during development" decision and
-[Pi design](docs/pi-design.md#ownership).
+[Pi design](../../../docs/pi-design.md#ownership).
 
 Acceptance criteria:
 

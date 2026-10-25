@@ -9,7 +9,7 @@ blocked-by = ["arcl-t-01M5S4SCPVN2EJB1X5YC9WXZG8"]
 +++
 
 Show the current pull request, its link and CI state in the fabrial Pi
-package's status area. Follow [Pi design](docs/pi-design.md#status-area).
+package's status area. Follow [Pi design](../../../docs/pi-design.md#status-area).
 
 Acceptance criteria:
 

@@ -8,7 +8,7 @@ position = 1
 +++
 
 A shared collector keeps the orchestrator informed about the PR, independently
-of the UI. Follow [Pi design](docs/pi-design.md#pr-status).
+of the UI. Follow [Pi design](../../../docs/pi-design.md#pr-status).
 
 Acceptance criteria:
 

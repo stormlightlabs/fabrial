@@ -29,10 +29,12 @@ arcl task handoff <id> --note-file <file>
 ```
 
 For an arcl task, this stores the note and parks the task, which takes it out
-of `arcl ready` until someone unparks it. For an issue or a pull request, post
-the note as a comment opening with `Handoff:`, through the Bot comment workflow
-on a pull request and with `gh issue comment` or `add_issue_comment` on an
-issue. Write the note in the session's scratch directory, never inside the
+of `arcl ready` until someone unparks it. Both live in tracked files under
+`.arcl/workspace`, so run it in the task's worktree, never the primary
+checkout, and commit and push the changed files to the task's branch. For an
+issue or a pull request, post the note as a comment opening with `Handoff:`,
+through the Bot comment workflow on a pull request and with `gh issue comment`
+or `add_issue_comment` on an issue. Write the note in the session's scratch directory, never inside the
 repository.
 
 ```markdown
@@ -79,6 +81,9 @@ arcl task explain <id>
 arcl task unpark <id>
 arcl task start <id>
 ```
+
+Run these in the task's worktree too, and commit the changed task file with
+the work.
 
 Unpark only when `arcl task explain` gives parking as the only reason the task
 is not ready. Any other reason, such as a blocker added while it was parked,

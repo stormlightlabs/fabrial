@@ -5,7 +5,7 @@ title = "Run fab daemon under systemd"
 status = "pending"
 priority = "normal"
 position = 1
-blocked-by = ["arcl-t-01M5S4SCMSGFK66J2R9E22WY6C", "arcl-t-01M5S4SCNKRK07FF2PEBNVZKVX"]
+blocked-by = ["arcl-t-01M5S4SCMSGFK66J2R9E22WY6C", "arcl-t-01M5S4SCN5MAH0WA63X7575DKX", "arcl-t-01M5S4SCNKRK07FF2PEBNVZKVX"]
 +++
 
 Acceptance criteria:
