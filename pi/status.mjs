@@ -231,19 +231,20 @@ function prFields(state, s) {
 
 /**
  * Checks belong to the head they were read for; anything else is stale or
- * unknown, never green. A stale result always keeps its cause and its passed,
- * failed and pending counts, dropping the word "checks" when the row is
- * narrow. The read time, then the retry time, then the head drop first.
+ * unknown, never green. A stale result keeps its cause, then its failed,
+ * pending and passed counts, dropping the word "checks" when the row is
+ * narrow. The head, then the retry time, then the read time drop first.
  */
 function checks(snapshot, local, s) {
   const { pr, checks: c } = snapshot;
-  const counts = c ? [`${c.passed}/${c.total} passed`, c.failed ? `${c.failed} failed` : "", c.pending ? `${c.pending} pending` : ""]
-    .filter(Boolean).join(", ") : "";
+  const passed = c ? `${c.passed}/${c.total} passed` : "";
+  const open = c ? [c.failed ? `${c.failed} failed` : "", c.pending ? `${c.pending} pending` : ""].filter(Boolean) : [];
   const moved = local?.head && local.head !== pr.head;
   if (snapshot.status === "stale" || snapshot.error || moved) {
     const cause = snapshot.error === "GitHub rate limit" ? "rate limited" : snapshot.error ? "lookup failed"
       : moved ? "local head differs" : "head may have moved";
-    const stale = [`stale, ${cause}`, counts].filter(Boolean).join(", ");
+    // Failed and pending lead, so a cut row loses the passed count first.
+    const stale = [`stale, ${cause}`, ...open, passed].filter(Boolean).join(", ");
     const warn = (t) => s.fg("warning", t);
     return [
       { text: `checks ${stale}`, short: stale, keep: true, paint: warn },
@@ -254,7 +255,7 @@ function checks(snapshot, local, s) {
   }
   if (!c?.total) return [{ text: "checks none", keep: true, paint: (t) => s.fg("muted", t) }];
   const color = c.failed ? "error" : c.pending ? "warning" : "success";
-  return [{ text: `checks ${counts}`, keep: true, paint: (t) => s.fg(color, t) }];
+  return [{ text: `checks ${[passed, ...open].join(", ")}`, keep: true, paint: (t) => s.fg(color, t) }];
 }
 
 function runFields(state, s) {

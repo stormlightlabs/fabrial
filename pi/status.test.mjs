@@ -75,10 +75,14 @@ test("a moved head shows the old checks as stale with their head and read time, 
 
 test("stale checks keep their failed and pending counts at every width", () => {
   const s = state({ pr: pr({ status: "stale", checks: { total: 4, passed: 1, pending: 1, failed: 2, items: [] } }) });
-  assert.equal(plain(render(s)[0]), "PR #7 · draft · checks stale, head may have moved, 1/4 passed, 2 failed, 1 pending · read 12:03 · head aaaaaaa · ↑2 ↓0");
-  assert.equal(plain(render(s, 80)[0]), "PR #7 · draft · stale, head may have moved, 1/4 passed, 2 failed, 1 pending");
-  // Too narrow for every count: the pending count is cut before the failed one.
-  assert.equal(plain(render(s, 60)[0]), "PR #7 · draft · stale, head may have moved, 1/4 passed, 2 f…");
+  assert.equal(plain(render(s)[0]), "PR #7 · draft · checks stale, head may have moved, 2 failed, 1 pending, 1/4 passed · read 12:03 · head aaaaaaa · ↑2 ↓0");
+  assert.equal(plain(render(s, 80)[0]), "PR #7 · draft · stale, head may have moved, 2 failed, 1 pending, 1/4 passed");
+  // Too narrow for every count: the passed count is cut first.
+  assert.equal(plain(render(s, 60)[0]), "PR #7 · draft · stale, head may have moved, 2 failed, 1 pen…");
+  // Pi's widget gets two columns less than a 60-column terminal.
+  const moved = state({ pr: pr({ status: "stale", pr: { ...pr().pr, number: 47 }, checks: { total: 4, passed: 2, pending: 0, failed: 2, items: [] } }),
+    git: { ...git, head: local } });
+  assert.equal(plain(render(moved, 58)[0]), "PR #47 · draft · stale, local head differs, 2 failed, 2/4…");
 });
 
 test("a rate limit or failed lookup is unknown or stale, never green", () => {
@@ -96,8 +100,9 @@ test("a rate limit or failed lookup is unknown or stale, never green", () => {
   assert.equal(plain(render(s, 60)[0]), "PR #47 · draft · checks stale, rate limited, 4/4 passed");
   const failing = state({ pr: pr({ status: "stale", ...limited, pr: { ...pr().pr, number: 47 },
     checks: { total: 4, passed: 2, pending: 0, failed: 2, items: [] } }) });
-  assert.equal(plain(render(failing, 80)[0]), "PR #47 · draft · checks stale, rate limited, 2/4 passed, 2 failed · read 12:03");
-  assert.equal(plain(render(failing, 60)[0]), "PR #47 · draft · stale, rate limited, 2/4 passed, 2 failed");
+  assert.equal(plain(render(failing, 80)[0]), "PR #47 · draft · checks stale, rate limited, 2 failed, 2/4 passed · read 12:03");
+  assert.equal(plain(render(failing, 60)[0]), "PR #47 · draft · stale, rate limited, 2 failed, 2/4 passed");
+  assert.equal(plain(render(failing, 58)[0]), "PR #47 · draft · stale, rate limited, 2 failed, 2/4 passed");
   assert.match(plain(render(state({ pr: pr({ status: "stale", error: "GitHub lookup failed" }) }), 60)[0]), /stale, lookup failed, 4\/4 passed/);
   assert.match(plain(render(state({ pr: pr({ checks: { total: 0, passed: 0, pending: 0, failed: 0, items: [] }, status: "unknown" }) }))[0]),
     /checks none/);
