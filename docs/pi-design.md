@@ -38,24 +38,24 @@ untrusted and grant no authority.
 ## Status area
 
 The fabrial Pi package will show the current task, workers and PR near Pi's
-editor, following the two-row footer mockup from October 24, 2026. The first
-row identifies the checkout and its PR. The second shows the run and the Pi
+editor, in two rows, following a footer mockup that the repository does not
+keep. The first row identifies the checkout and its PR. The second shows the run and the Pi
 session. Links open the repository or PR in a browser, and the plain text
 still works when the terminal cannot open links.
 
-| Area         | Contents                                         | Source                         |
-| ------------ | ------------------------------------------------ | ------------------------------ |
-| Repository   | `stormlightlabs/fabrial` and its link            | Git remote                     |
-| Branch       | Task branch, ahead and behind counts             | Git                            |
-| Pull request | Number, link, and draft, ready or merged state   | PR status, above               |
-| Checks       | Passed of total, with pending and failed apart   | PR status, for the current head |
-| Diff         | Added and deleted lines, changed-file count      | Git, against the fetched base  |
-| Directory    | Current worktree path                            | Session working directory      |
-| Run          | Task or run ID and the current step              | Dispatch records               |
-| Workers      | Active of total, with blocked and failed         | Worker events                  |
-| Context      | Usage percentage and meter                       | Pi session                     |
-| Cost         | Reported cost, and a budget if configured        | Pi usage and run settings      |
-| Session      | Elapsed time and orchestrator model              | Pi session                     |
+| Area         | Contents                                       | Source                        |
+| ------------ | ---------------------------------------------- | ----------------------------- |
+| Repository   | `stormlightlabs/fabrial` and its link          | Git remote                    |
+| Branch       | Task branch, ahead and behind counts           | Git                           |
+| Pull request | Number, link, and draft, ready or merged state | PR status, above              |
+| Checks       | Passed of total, with pending and failed apart | PR status, current head       |
+| Diff         | Added and deleted lines, changed-file count    | Git, against the fetched base |
+| Directory    | Current worktree path                          | Session working directory     |
+| Run          | Task or run ID and the current step            | Dispatch records              |
+| Workers      | Active of total, with blocked and failed       | Worker events                 |
+| Context      | Usage percentage and meter                     | Pi session                    |
+| Cost         | Reported cost, and a budget if configured      | Pi usage and run settings     |
+| Session      | Elapsed time and orchestrator model            | Pi session                    |
 
 The mockup's `plan > act > verify`, iteration number and worker names only
 illustrate activity. Show fabrial's real steps from the delivery sequence in

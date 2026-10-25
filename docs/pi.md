@@ -98,7 +98,9 @@ The sandbox exposes only the worker's worktree, its own state, those inputs
 and the Pi runtime. It blocks host sockets, local ports and the Nix daemon,
 and limits outbound domains. Workers can still read shared Git history, refs
 and objects, so keep credentials out of shared Git config and remotes. Never
-share a writable Cargo `target/` between workers.
+share a writable Cargo `target/` between workers. Rust does not link
+`libiconv` inside the sandbox, so run Rust gates such as `just check` on the
+host.
 
 `--timeout` defaults to 1800 seconds and accepts 1 to 3000. Stdout is JSONL
 progress ending in a `result` or an `error`, and the tmux pane shows the same
@@ -189,7 +191,9 @@ call. Completion or a blocker starts a turn, even when Pi was idle.
 | `/worker-steer`      | Driver command taking JSON with `workerId`, `head`, `message` |
 | `/worker-watch <id>` | Attach this session to a worker started elsewhere             |
 
-Cancelling a Pi turn, closing Pi or reloading it leaves workers running.
+Cancelling a Pi turn, closing Pi or reloading it leaves workers running. The
+exception is cancelling during launch: if dispatch has already accepted the
+worker, the package cancels it.
 Resuming the same session restores its workers and delivers each missed
 notification once. Print mode can exit after launch; the CLI still reaches the
 worker.

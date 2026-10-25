@@ -237,17 +237,20 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 - [x] Run asynchronous local Pi workers: durable worker records, detached
       dispatch, events and steering, a non-blocking `agent` tool, reconnect,
       and worker-exit cleanup with recovery after a host restart. See
-      [Pi dispatch](docs/pi.md).
+      [Pi dispatch](docs/pi.md). The 2026-10-24 acceptance run in
+      [#30](https://github.com/stormlightlabs/fabrial/pull/30) checked, through
+      `fab dispatch` in the real sandbox, explicit cancellation, timeout,
+      unexpected pane death and credential cleanup.
 - [ ] Follow-up: build a Pi extension that queues incoming questions and
       steering messages while an agreed task is active. Let the driver mark an
       interruption as urgent; otherwise answer at a safe boundary and continue
       the task without ending the run. Show queued messages and keep them
       through reload/resume. Do not turn queued questions into new tasks or
       extra worker stages.
-- [ ] Host-check forced cancellation, timeout, unexpected pane death, Git push,
-      and Rust gates through the shipped Rust launcher. The dispatched worker
-      could not link `libiconv`; host gates and CI passed. Earlier bootstrap
-      builds and pushes do not verify these operations through Rust dispatch.
+- [ ] Host-check Git push and Rust gates from a worker started by
+      `fab dispatch`. Rust does not link `libiconv` inside the sandbox, so
+      gates run on the host for now. Earlier bootstrap builds and pushes did
+      not go through Rust dispatch.
 - [ ] Make sandbox settings configurable for deployment needs. Keep the
       pinned isolation policy fixed for this spike; choose the settings and
       validation before adding configuration options.
