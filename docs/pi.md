@@ -1,61 +1,48 @@
 # Pi dispatch
 
-This guide covers the shipped worker command and host setup. The planned
-[orchestration lifecycle](pi-orchestration.md) covers PR events, worker
-communication, cleanup, and ownership of the development Pi setup. The
-[status area](pi-statusline.md) is a separate UI design;
-[PLAN.md](../PLAN.md#6-workers-and-pi-setup) tracks delivery.
+`fab dispatch` runs reviewer, verifier, adversarial-reviewer and reviser as
+fresh headless Pi 1.4.0 workers, each in a host tmux session with the whole Pi
+process wrapped in agent-sandbox.nix. This guide sets up the host and runs a
+worker. [Pi design](pi-design.md) covers the planned PR status and status
+area; [PLAN.md](../PLAN.md#6-workers-and-pi-setup) tracks delivery.
 
-`fab dispatch` runs reviewer, verifier, adversarial-reviewer, and reviser as
-fresh headless Pi 1.4.0 workers. The local spike uses host tmux and wraps the
-whole Pi process in agent-sandbox.nix.
-
-> **Note:** This is a preview feature currently under active development.
+> **Note:** This is a preview feature under active development.
 
 ## Host setup
 
 Run dispatch on the trusted host, outside a worker sandbox. You need Nix with
 flakes enabled, tmux, GitHub CLI, curl with `--header @-` support, OpenSSL,
-BWS CLI, and macOS `security` for the local issuer. App JWT requests use curl
-with Bearer headers on stdin; installation-token requests use GitHub CLI. The
-sandbox wrapper supports Linux, but this spike's issuer uses macOS Keychain.
-There is no alternate issuer backend.
+BWS CLI, and macOS `security`. The sandbox wrapper supports Linux, but the
+token issuer reads macOS Keychain and has no other backend.
 
-Keep a trusted checkout separate from every PR worktree. Build and install
-`fab` from that checkout. Build the wrapper there, never from a PR branch:
+Build `fab` and the sandbox wrapper from a trusted checkout kept apart from
+every PR worktree, never from a PR branch:
 
 ```sh
 cargo install --path crates/fab-cli
 nix-build nix/worker.nix
 ```
 
-Record the resulting store executable, `result/bin/fab-pi-sandboxed`, in the
-local config below. The Nix expression pins agent-sandbox.nix v5.6.3 at
-`bda0de5679017097f3a46f32b9d6b35dfd9b6327` and its nixpkgs revision
-`7a0f122f5090cf4c2ade2a13a0e229d4e19ba71f`. It applies
-[`deny-owner-keychain.patch`](../nix/deny-owner-keychain.patch), removing only
-the Mach allowances for `com.apple.securityd.xpc` and
-`com.apple.SecurityServer`. It retains `trustd.agent` and the system
-certificate permissions. Plain `nix develop` or direnv is not isolation.
+The wrapper pins agent-sandbox.nix v5.6.3 and its nixpkgs, and applies
+[`deny-owner-keychain.patch`](../nix/deny-owner-keychain.patch) to block the
+owner's Keychain. Plain `nix develop` or direnv is not isolation.
 
-Install Pi 1.4.0 on the host in a dedicated runtime directory containing its
-`node_modules` and all dependencies, with no credentials or personal settings.
-Point `pi_runtime` at that directory, not the package below `node_modules`.
-Log in to its `openai` subscription provider on the host. Dispatch copies only
-that OAuth entry from `auth.json`, never an API key or the whole host Pi
-directory. The
-credential must remain valid past the worker deadline plus one minute;
-refresh it on the host before dispatch if necessary. Worker credential
-changes are discarded, not copied back to the host.
+Install Pi 1.4.0 in a dedicated runtime directory holding its `node_modules`
+and all dependencies, with no credentials or personal settings. Log in to its
+`openai` subscription provider on the host. Dispatch copies only that OAuth
+entry from `auth.json` into the worker and discards any changes the worker
+makes to it. The login must stay valid until the worker deadline plus one
+minute, so refresh it before dispatch if needed.
 
-Create a private state directory outside every worktree and Git metadata
-directory with mode `0700`. Keep the local issuer config outside PR worktrees
-as well. All paths below must be absolute. Replace each example value; there
-are no default Keychain identifiers or secret UUIDs:
+### Config file
+
+Create a state directory with mode `0700` outside every worktree and Git
+metadata directory, and keep the config file outside PR worktrees too. Every
+path must be absolute. There are no default Keychain names or secret IDs:
 
 ```toml
-sandbox = "/nix/store/<build>/bin/fab-pi-sandboxed"
-pi_runtime = "/trusted/pi-1.4.0"
+sandbox = "/nix/store/<build>/bin/fab-pi-sandboxed"   # from nix-build
+pi_runtime = "/trusted/pi-1.4.0"   # the runtime directory, not the package
 auth_file = "/private/pi/auth.json"
 state_dir = "/private/fabrial-runs"
 repository = "org/repository"
@@ -66,38 +53,30 @@ installation_id_secret = "<BWS secret UUID>"
 pem_secret = "<BWS secret UUID>"
 ```
 
-The local service `fabrial/bws/issuer` and account `fabrial-issuer-mac` are one
-possible host configuration, not required names. Store the BWS machine-account
-token in that Keychain entry yourself. Dispatch reads only the three configured
-BWS secrets. Use a trusted host PATH for tmux, gh, curl, security, BWS,
-OpenSSL, and Git. Do not put PR directories on it.
+Store the BWS machine-account token in the named Keychain entry yourself.
+Run dispatch with a trusted PATH for tmux, gh, curl, security, BWS, OpenSSL
+and Git, with no PR directories on it.
 
-The App must be installed on the named repository. Give it Actions write,
-Contents write, and Pull requests read. Review workers receive only Actions
-write, Contents read, and Pull requests read; reviser receives Contents write.
-GitHub also grants Metadata read. Dispatch rejects widened permissions or a
-token that lists another repository. No owner PAT is accepted. Keep the App
-out of ruleset bypass lists, and require the owner's approval and checks on
-`main`. Workers cannot approve or merge with these permissions.
+### GitHub App
 
-The host issuer holds the BWS token and App key; neither enters the sandbox.
-The PEM is a private temporary file used for signing and removed before worker
-launch. Installation tokens travel in the worker environment, not argv, logs,
-or the Nix store. The host revokes them on normal completion, worker failure,
-timeout, or cancellation. A host crash, SIGKILL, or network failure during
-revocation can leave a token valid until its one-hour expiry. Revocation
-failure makes the worker fail. The recorder confirms revocation before
-removing private state, independently of whether a caller is waiting.
-Cancellation or a deadline during issuance cannot launch a worker. Synchronous
-dispatch allows a 120-second cleanup grace period. A failed revocation retains
-the token recovery file and worker auth; restrict access to that state until
-revocation and cleanup can finish.
+Install the App on the named repository with Actions write, Contents write and
+Pull requests read. Review workers get tokens with Actions write, Contents
+read and Pull requests read; reviser also gets Contents write. Dispatch
+rejects a token with wider permissions or another repository, and accepts no
+personal access token. Keep the App out of ruleset bypass lists, and require
+the owner's approval and checks on `main`, so workers cannot approve or merge.
+
+The BWS token and App key stay on the host. A worker gets its token in its
+environment, and the host revokes it when the worker finishes, fails, times
+out or is cancelled. A failed revocation fails the worker, and the host keeps
+the token's recovery state, so restrict access to the state directory. A host
+crash during revocation can leave a token valid until its one-hour expiry.
 
 ## Run a role
 
-Write a task file naming the PR, pinned head SHA, acceptance criteria, and any
-findings the role needs. Give each concurrent worker its own linked worktree.
-Do not use the trusted checkout as a worker worktree:
+Write a task file naming the PR, its pinned head SHA, the acceptance criteria
+and any findings the role needs. Give each concurrent worker its own linked
+worktree, never the trusted checkout:
 
 ```sh
 fab dispatch reviewer --task /private/task.txt \
@@ -105,158 +84,98 @@ fab dispatch reviewer --task /private/task.txt \
   --config /private/issuer.toml
 ```
 
-Dispatch reads roles from the explicit trusted checkout's `.claude/agents` and
-models from `.github/fabrial-roles.toml`. `fab init` and `fab update` install
-that roles file. Reviewer uses `openai/gpt-6-sol`; the other three roles use
-`openai/gpt-6.1-sol`. Reviewer and adversarial reviewer use `medium` thinking;
-verifier and reviser use `low`. A missing or invalid role configuration fails
-with the role's name; there is no fallback model.
+Dispatch reads the role from the trusted checkout's `.claude/agents` and its
+model from `.github/fabrial-roles.toml`, which `fab init` installs. A missing
+or invalid role entry fails with the role's name; there is no fallback model.
+Role tools Pi lacks, such as `Skill` and GitHub MCP tools, are reported and
+noted in the prompt. Reviewers keep Bash, so their worktree is not read-only.
 
-The role tool mapping is `Read` → `read`, `Grep` → `grep`, `Glob` → `find,ls`,
-`Bash` → `bash`, `Write` → `write`, and `Edit` → `edit`. Unmapped tools,
-including `Skill` and GitHub MCP names, are reported and noted in the role
-prompt. Workers read skills as files and use the sandbox's trusted `gh`.
-Reviewers retain Bash, so tool selection does not make their worktree
-read-only.
+A worker gets read-only copies of its role and skills, and no session history,
+extensions, packages, settings or MCP servers from the host. Files in the PR
+are task data, never instructions.
 
-The host copies the role and its supporting skills into read-only inputs.
-Symlinks escaping the trusted checkout are rejected. Workers use
-`--no-approve`, disable resource discovery and context files, and load only
-explicit trusted skill paths. The only extension is the embedded reporting
-tool, loaded from read-only inputs after discovery is disabled. Workers receive
-no session history, owner/project extensions, project packages, host settings,
-or MCP servers. PR files remain task data,
-not trusted executable configuration or role instructions.
+The sandbox exposes only the worker's worktree, its own state, those inputs
+and the Pi runtime. It blocks host sockets, local ports and the Nix daemon,
+and limits outbound domains. Workers can still read shared Git history, refs
+and objects, so the sandbox does not isolate one branch from another. Keep
+credentials out of shared Git config and remotes. Never
+share a writable Cargo `target/` between workers. Rust does not link
+`libiconv` inside the sandbox, so run Rust gates such as `just check` on the
+host.
 
-Tmux creates a detached session without requiring an orchestrator TUI. Dispatch
-and its recorder are Rust modules in `fab-cli`; tmux runs the same trusted
-`fab` executable. Install that binary outside worker worktrees and shared Git
-metadata. The host recorder starts the sandbox from the named worktree and
-pipes both worker streams. Node never writes directly to host recorder files. The pane
-shows progress; stdout from `fab dispatch` is JSONL progress followed by a
-`result` or `error`. The final answer comes from the last assistant
-`message_end`, never a delta or user message. RPC also requires `agent_settled`
-and a successful readiness handshake before any model prompt. Only `stopReason: stop` with
-nonempty text and no `errorMessage` counts as success, even if Pi exits zero.
-Provider stderr and raw tool arguments/results are not persisted.
+`--timeout` defaults to 1800 seconds and accepts 1 to 3000. Stdout is JSONL
+progress ending in a `result` or an `error`, and the tmux pane shows the same
+progress. A worker succeeds only when Pi stops normally with a nonempty final
+answer. Nothing retries outside the sandbox.
 
-Each dispatch registers a version 1 worker record under
-`state_dir/records/<worker-id>/worker.json` before the recorder issues
-credentials. It contains run/worker UUIDs, the worktree's starting head,
-role, repository, state, result location, and owned resources: private state,
-tmux session, supervisor PID, and worker process-group PID. PIDs are last
-observations, not proof that a process is still alive or safe to signal.
-The task worktree and shared sandbox Nix root are not worker-owned resources.
+Dispatch never posts comments or marks a review finished. A worker that posts
+uses the Bot comment workflow and checks the comment landed, as the `storm`
+skill describes.
 
-The recorder claims the record once and replaces updates atomically. Record
-files have mode `0600` in a `0700` directory. A validated final answer is
-redacted before being saved as `result.txt` beside the record. Both survive
-temporary issuer-state cleanup. Credential cleanup has its own pending,
-complete, or unconfirmed state; it does not imply task or worktree cleanup.
-Records contain no issuer configuration, credential values, or raw tool output.
-A missing record prevents issuance; a final record-write failure retains
-durable evidence and fails dispatch. A host crash can leave the last recorded
-state stale; automatic recovery is planned, not implemented.
-
-`--timeout` defaults to 1800 seconds and accepts 1–3000 seconds, below the App
-token lifetime. Cancellation reaches the recorder, kills the worker process
-group, revokes the token, and removes worker auth state. Unexpected pane exit
-without a status fails dispatch. There is no unsandboxed retry.
-
-The sandbox masks the owner home, blocks host sockets and local ports, denies
-Nix daemon access, and restricts outbound domains. It exposes only the worker
-worktree, independent writable worker state, read-only inputs, and the Pi
-runtime. Upstream protects shared Git config, hooks, alternates, and worktree
-pointers. Keep credentials out of shared Git config and remotes. Cargo builds
-use that worktree's `target/`; never share a writable target between workers.
-The sandbox permits access to shared Git history, refs, and objects, so it is
-not isolation between repository branches.
-
-When a worker posts a comment, it uses the trusted Bot comment workflow and
-confirms the result's bot author and first line. A queued workflow is not a
-posted comment. The `storm` skill describes this check. Dispatch itself does
-not post comments or mark reviews complete.
+Each worker's record is `state_dir/records/<worker-id>/worker.json`, with the
+redacted final answer in `result.txt` beside it. Both outlast the worker's
+private state, and neither holds raw tool output. The worker's installation
+token and OAuth access and refresh tokens are redacted; any other secret in
+the answer is kept as written.
 
 ## Detached workers
 
-Add `--detach` to the role command to return a `started` record containing the
-run and worker IDs once tmux accepts the launch. This is launch acceptance,
-not provider readiness or completion. The worker owns cleanup after launch.
-
-Use the returned worker ID for host operations:
+Add `--detach` to return a `started` record with the run and worker IDs once
+tmux accepts the launch. The worker then cleans up after itself.
 
 ```sh
+fab worker list --config /private/issuer.toml
 fab worker inspect <worker-id> --config /private/issuer.toml
 fab worker cancel <worker-id> --config /private/issuer.toml
 fab worker wait <worker-id> --config /private/issuer.toml --timeout 300
 ```
 
-Inspection returns the last recorded state and any redacted final result;
-it does not require live OAuth or a current sandbox build. Cancellation is a
-request, not confirmation of process exit or revocation. Wait returns the
-worker's outcome when recorded; timing out or interrupting a wait does not
-cancel the worker. Progress and results remain beside `worker.json` after
-private issuer state is removed. Synchronous dispatch still streams progress
-and waits for recorder exit.
+`inspect` returns the last recorded state and any result, and needs no live
+login or sandbox build. `cancel` sends a request and does not confirm the
+worker stopped. A `wait` that times out or is interrupted leaves the worker
+running.
 
-## Worker events and steering
+## Events and steering
 
-Read `fab worker events <worker-id> --config <config> --after <cursor>` to
-receive at most 64 complete events plus the next byte cursor and current state.
-An unchanged cursor means no new complete record. Keep the cursor when
-reconnecting; do not split JSONL on Unicode line separators.
+`fab worker events <worker-id> --config <config> --after <cursor>` returns up
+to 64 events, the next cursor and the current state. Start at 0 and keep the
+cursor when reconnecting. An unchanged cursor means nothing new.
 
-Use `fab worker steer <worker-id> --config <config> --head <starting-sha>
---message <text>` only for driver-authorized steering. Completed workers and
-mismatched heads are rejected. Submission is followed by separate queued,
-delivered, and processed events. Processed means a model response followed
-message delivery, not proof that the instruction succeeded. Queues allow at
-most 64 outstanding requests per worker; processed receipts free their slots.
-Each message is limited to 16 KiB. Requests receive a durable sequence and are
-delivered in submission order. Concurrent admission and claiming share a
-per-worker lock; a busy submission returns an error to retry.
+Steer a worker only on the driver's instruction:
 
-Workers use `worker_report` for progress, blockers, and questions. The host
-redacts known credentials before persisting reports. Blockers and questions
-stop the worker and retain its report for the driver; they do not authorize
-replacement agents or another review cycle.
+```sh
+fab worker steer <worker-id> --config <config> --head <starting-sha> \
+  --message <text>
+```
 
-## Reconnect and cleanup recovery
+Dispatch rejects a finished worker and a head other than the worker's starting
+head. A message holds at most 16 KiB, and a worker holds at most 64 messages
+not yet processed. A busy worker returns an error; retry it. Events report
+each message as queued, delivered and processed. Processed means the model
+responded, not that the instruction succeeded.
 
-Resume the same Pi session to restore worker identities and event cursors.
-Notifications are written to a session outbox before being queued. A queued
-message is not a delivery receipt: restart replays undelivered messages, while
-recorded message keys suppress redelivery. Reload can leave the old in-memory
-queue intact, so duplicate keys are also removed from model context. None of
-these events starts a worker or repeats a review stage.
+Workers report progress, blockers and questions with `worker_report`. A
+blocker or question stops the worker and keeps its report for the driver; it
+never starts a replacement agent or another review cycle.
 
-Use `/worker-watch <worker-id>` to attach a different session explicitly.
-`fab worker list --config <config>` lists metadata without opening credentials
-or copying full results. Inspection still works without live OAuth.
+## Recovery
 
-The observer attempts cleanup recovery when a recorded supervisor disappears.
-For manual recovery, use `fab worker recover <worker-id> --config <config>`.
-Recovery locks the record, prevents a late recorder start, and confirms that
-its launcher, supervisor, and worker group are gone before removing private state.
-A recorded boot identity makes old PIDs irrelevant after a host reboot. It
-never signals a historical PID or removes a worktree or shared Nix root.
+When a worker's supervisor is gone, including after a host restart, a Pi
+session that watches the worker recovers it on its next read. Otherwise, run
+`fab worker recover <worker-id> --config <config>`. Restart handling is tested
+with changed boot identities, not a physical reboot.
 
-Revocation accepts HTTP 401 as confirmation that an already-revoked or expired
-installation token is unusable. Transport failures are not confirmation.
-Interrupted deletion uses a durable ownership marker to resume safely. Results
-and event evidence remain; private credentials and control contents are
-removed. The launcher's supported `XDG_STATE_HOME` puts sandbox homes, temporary
-files, and launch logs under the same worker-owned root, so cleanup removes
-them too without changing sandbox policy. If a process or resource owner cannot be confirmed, recovery refuses
-and retains restricted state for attention. A lost supervisor marks the worker
-failed, never successful, and never reruns its task.
+Recovery confirms the worker's processes are gone, revokes its token, removes
+its private and temporary state, and marks it failed. It keeps the record,
+result and events, and never reruns the task or removes a worktree. If it
+cannot confirm that a process exited or a token is unusable, it refuses and
+keeps the restricted state for you to inspect.
 
 ## Pi package
 
-Install the root package from the trusted checkout with `pi install <path>`
-or from a reviewed tag with `pi install git:github.com/stormlightlabs/fabrial@v<version>`.
-Pi dependencies are peers, not bundled copies. Set these host variables before
-starting the orchestrator:
+Install the root package with `pi install <trusted-checkout>`, or from a
+reviewed tag with `pi install git:github.com/stormlightlabs/fabrial@v<version>`.
+Set these before starting Pi:
 
 ```sh
 export FAB_BINARY=/trusted/bin/fab
@@ -264,74 +183,35 @@ export FAB_DISPATCH_CONFIG=/private/issuer.toml
 export FAB_TRUSTED_CHECKOUT=/trusted/fabrial
 ```
 
-The package registers `agent` with `role`, `taskFile`, and `worktree`
-parameters. Host configuration and trusted instructions are operator-selected,
-not model-selected tool arguments. The tool calls `fab dispatch --detach`,
-persists the accepted identity, and promptly returns the worker ID. Pi remains
-available while a session-scoped observer reads events once per second.
-Progress goes to `fabrial:worker` extension events without a model call.
-Completion or a blocker queues a custom message and triggers a turn, including
-when Pi was idle. Worker output is marked as untrusted task data.
+The `agent` tool takes `role`, `taskFile` and `worktree`, runs
+`fab dispatch --detach` and returns the worker ID; the model cannot choose the
+config or trusted checkout. Pi stays free while the package reads events once
+a second. Progress goes to `fabrial:worker` extension events without a model
+call. Completion or a blocker starts a turn, even when Pi was idle.
 
-Use `agent_control` to inspect or explicitly cancel a worker. Driver steering
-uses `/worker-steer` with a JSON object containing `workerId`, `head`, and
-`message`; it is not a model-callable steering tool. Cancellation during launch
-requests worker cancellation if an identity was already accepted. Cancelling a
-later Pi turn or closing Pi does not cancel accepted workers. Shutdown and
-reload dispose observers and their in-flight reads, not worker processes.
+| Control              | Use                                                           |
+| -------------------- | ------------------------------------------------------------- |
+| `agent_control`      | Tool to inspect or cancel one worker                          |
+| `/worker-steer`      | Driver command taking JSON with `workerId`, `head`, `message` |
+| `/worker-watch <id>` | Attach this session to a worker started elsewhere             |
 
-Interactive and RPC modes can receive completion while idle. Print mode can
-exit after launch; the worker and result remain available through the CLI.
-
-## Real asynchronous acceptance
-
-With the three host variables set to the candidate or reviewed build, run:
-
-```sh
-node scripts/async-acceptance.mjs --worktree /absolute/linked/task-worktree
-```
-
-This opt-in test uses real subscription calls and repository-scoped tokens.
-It never substitutes an unsandboxed worker. It owns its scratch worktrees and
-Pi session, removes them on success, and retains recovery evidence on failure.
-
-The 2026-10-24 run returned `ASYNC-ACCEPTANCE-PASSED` with four workers:
-
-- Pi answered the driver while its worker was running. Closing and resuming Pi
-  did not cancel the worker. Completion resumed Pi without another prompt and
-  appeared exactly once in the session.
-- Stale-head steering was rejected; authorized steering was accepted.
-- Explicit cancellation recorded `cancelled`; deadline expiry recorded
-  `timed_out`; unexpected pane loss recovered as `failed`.
-- All four workers confirmed credential cleanup. Their private roots, sandbox
-  temporary state, panes, and worker process groups were gone. Final evidence
-  remained available from their records.
-
-The conversation worker was `5a944f0d-c4ff-4bc5-8099-d3d102d28cee`.
-Cancellation, timeout, and pane-loss records were
-`9ee1ce71-6302-4970-9a03-44f1c1a82f02`,
-`81a551ec-dc92-4975-b678-9d5e0fb14d64`, and
-`48559bf9-2a7f-4aa5-a8ab-54f3490a54bf`. Unit tests additionally cover replay
-batch boundaries, duplicate queued context, and interrupted outbox delivery.
-Host-reboot handling is tested with changed boot identities, not a physical
-reboot. The sandbox's Rust-linker `libiconv` limitation remains; Rust gates run
-on the host, not inside this acceptance worker.
+Cancelling a Pi turn, closing Pi or reloading it leaves workers running. The
+exception is cancelling during launch: if dispatch has already accepted the
+worker, the package requests cancellation and ignores a failed request.
+Resuming the same session restores its workers and delivers each missed
+notification once. Print mode can exit after launch; the CLI still reaches the
+worker.
 
 ## Verification
 
-`just check` includes Rust subprocess/issuer tests and Node tool tests. Rust
-tests run the recorder binary with fake host executables and check selected
-auth, token scope, redaction, cancellation during issuance, deadline expiry,
-worker failure, timeout, revocation, and retained cleanup state. They never
-access Keychain or BWS.
+`just check` runs the dispatch tests against fake host tools and the Pi
+package's Node tests. They do not prove real credentials, permissions and
+isolation work together, so run a host smoke before review and record it in
+the PR's verification comment. To run the asynchronous path end to end with
+real subscription calls and tokens, set the three variables above and run
+`node scripts/async-acceptance.mjs --worktree <linked-worktree>`.
 
-Run a real host smoke before review; fake subprocess tests do not establish
-that host credentials, tools, permissions, and isolation work together. Keep
-verification results and remaining proof in
-[PLAN.md](../PLAN.md#6-workers-and-pi-setup) and the PR's verification comments,
-rather than treating this setup guide as a run log.
-
-For unfinished work across orchestrator sessions, use the existing `handoff`
-skill. A Pi resume or compact is not a durable task record. Follow the
-[lifecycle cleanup rules](../AGENTS.md#lifecycle-cleanup) when a worker finishes
-or its PR merges.
+Use the `handoff` skill for unfinished work across sessions; a Pi resume is
+not a task record. Follow the
+[lifecycle cleanup rules](../AGENTS.md#lifecycle-cleanup) when a worker
+finishes or its PR merges.

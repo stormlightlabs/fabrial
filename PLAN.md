@@ -11,63 +11,6 @@ its open issues move over and it is archived.
 The repository is private until the first release. The stormlightlabs org is on
 a paid plan, so rulesets on `main` are enforced.
 
-## Next: asynchronous local Pi workers
-
-Do these items next, in order, as the first part of phase 6. They take priority
-over the remaining roadmap phases. Do not wait for arcl migration, distributed
-claims, the full phase 5 run engine, or phase 7's VPS daemon. Use the minimum
-local run operations needed by the supervisor. Status UI and additional worker
-backends follow this milestone. The design lives in
-[Pi orchestration](docs/pi-orchestration.md).
-
-- [x] Extend the existing Rust tmux recorder with durable worker records.
-      Record run/worker IDs, task head, state, result location, and resource
-      ownership before credentials are issued. Persist redacted results outside
-      temporary issuer state. The host owns the worker process and credentials;
-      records preserve current sandboxing and contain no credential values.
-      Synchronous dispatch remains available.
-- [x] Add detached dispatch operations: start returns a run/worker ID promptly;
-      inspect reads progress or a completed result; cancel targets one worker.
-      Waiting is explicit and optional. Keep synchronous dispatch available
-      for callers that need it, without making Pi hold a tool call open.
-- [x] Add the host-owned worker event and control bridge. Deliver progress,
-      completion, failure, blockers, and questions; support cancellation and
-      driver-authorized steering. Address messages by run/worker and task head,
-      acknowledge actions, and reject stale or completed-worker requests.
-      Use Pi JSONL RPC over anonymous pipes and private host mailboxes. Preserve fresh role sessions;
-      do not share histories or launch replacement agents automatically.
-- [x] Make the Pi agent tool non-blocking. Return the worker ID after launch,
-      then deliver events through the extension independently of that tool
-      call. Queue relevant notifications and resume the orchestrator when
-      appropriate, without another user prompt or repeated model-driven
-      polling. Pi must remain available to answer the driver while work runs.
-      A returned tool call does not cancel its worker; cancellation is explicit.
-- [x] Reconnect after Pi reload or restart. Recover worker state and results,
-      replay missed notifications without duplicate stage transitions, and
-      keep workers alive when Pi disconnects. The supervisor captures evidence,
-      stops leftover processes/panes, revokes tokens, and removes worker-owned
-      temporary state on completion, failure, or cancellation. Retain and
-      report restricted recovery state if cleanup cannot be confirmed. Recover
-      unfinished cleanup after a host restart without dispatching another agent.
-- [x] Prove the asynchronous path on the real local sandbox. Launch a worker,
-      answer the driver while it runs, and receive completion or a blocker
-      without a user prompt. Test Pi restart, missed/duplicate events, stale
-      controls, cancellation, timeout, unexpected pane exit, and cleanup after
-      disconnect. Results must survive reconnect; credentials and processes
-      must not leak. This must work headlessly and without the status widgets.
-
-Asynchronous execution does not parallelize dependent review stages. Keep
-implement → review → implement fixes → adversarial review → implement fixes
-→ driver. Skip empty fix stages; events cannot add agents or review cycles.
-
-### Follow-up: queued messages during active work
-
-- [ ] Build a Pi extension that queues incoming questions and steering messages
-      while an agreed task is active. Let the driver mark an interruption as
-      urgent; otherwise answer at a safe boundary and continue the task without
-      ending the run. Show queued messages and keep them through reload/resume.
-      Do not turn queued questions into new tasks or extra worker stages.
-
 ## Decisions
 
 - **Rust.** fabrial shares crates with arclightning (`arcl-core`, `arcl-store`)
@@ -136,12 +79,12 @@ implement → review → implement fixes → adversarial review → implement fi
 - **Pi setup during development.** fabrial can own the working Pi setup,
   including extensions, UI, defaults, and configuration. This is broader than
   dispatch integration. Keep worker isolation and credential custody intact.
-  `docs/pi.md` documents shipped dispatch; `docs/pi-orchestration.md` designs
-  coordination and cleanup; `docs/pi-statusline.md` designs presentation.
+  [Pi dispatch](docs/pi.md) documents shipped dispatch, and
+  [Pi design](docs/pi-design.md) designs PR status and the status area.
 - **Cleanup is lifecycle work.** The host cleans up worker-owned resources
   when a worker exits and task-owned resources after its PR merges. Preserve
   result evidence, shared resources, and unconfirmed credential recovery state.
-  See `AGENTS.md` and `docs/pi-orchestration.md` for the completion rules.
+  See [AGENTS.md](AGENTS.md#lifecycle-cleanup) for the completion rules.
 - **Skills are written once.** Before porting thunderstorm's renderer, check
   whether Claude Code, Codex and Pi read the same `SKILL.md` layout. Port
   per-host differences only where thunderstorm's `docs/internal/hosts.md` shows
@@ -269,14 +212,10 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
 - [ ] Automate post-merge task cleanup: remove only clean matching
       worktrees/branches, release task-owned Nix roots, and refresh clean `main`.
       Retain and report recovery state on failure; support cleanup after restart
-      without another agent. Worker-exit cleanup belongs to the next milestone
-      above and must not wait for the full run engine.
+      without another agent. Worker-exit cleanup shipped with the asynchronous
+      Pi workers in phase 6.
 
 ## 6. Workers and Pi setup
-
-Start with the ordered [asynchronous local worker milestone](#next-asynchronous-local-pi-workers)
-above. It covers the local supervisor, detached dispatch, worker communication,
-Pi event delivery, reconnect, and worker-exit cleanup before the UI or VPS work.
 
 - [x] Implement the first local dispatch path: four fresh headless Pi 1.4.0
       review roles, host tmux recorder, root Pi `agent` tool, explicit trusted
@@ -295,10 +234,24 @@ Pi event delivery, reconnect, and worker-exit cleanup before the UI or VPS work.
       Host gates and CI passed; the owner merged PR #21. Its task worktree,
       branch, scratch state, sandbox runs, and task-specific Nix outputs were
       removed, and primary `main` was fast-forwarded.
-- [ ] Host-check forced cancellation, timeout, unexpected pane death, Git push,
-      and Rust gates through the shipped Rust launcher. The dispatched worker
-      could not link `libiconv`; host gates and CI passed. Earlier bootstrap
-      builds and pushes do not verify these operations through Rust dispatch.
+- [x] Run asynchronous local Pi workers: durable worker records, detached
+      dispatch, events and steering, a non-blocking `agent` tool, reconnect,
+      and worker-exit cleanup with recovery after a host restart (tested with
+      changed boot identities, not a physical reboot). See
+      [Pi dispatch](docs/pi.md). The 2026-10-24 acceptance run in
+      [#30](https://github.com/stormlightlabs/fabrial/pull/30) checked, through
+      `fab dispatch` in the real sandbox, explicit cancellation, timeout,
+      unexpected pane death and credential cleanup.
+- [ ] Follow-up: build a Pi extension that queues incoming questions and
+      steering messages while an agreed task is active. Let the driver mark an
+      interruption as urgent; otherwise answer at a safe boundary and continue
+      the task without ending the run. Show queued messages and keep them
+      through reload/resume. Do not turn queued questions into new tasks or
+      extra worker stages.
+- [ ] Host-check Git push and Rust gates from a worker started by
+      `fab dispatch`. Rust does not link `libiconv` inside the sandbox, so
+      gates run on the host for now. Earlier bootstrap builds and pushes did
+      not go through Rust dispatch.
 - [ ] Make sandbox settings configurable for deployment needs. Keep the
       pinned isolation policy fixed for this spike; choose the settings and
       validation before adding configuration options.
@@ -308,9 +261,11 @@ Pi event delivery, reconnect, and worker-exit cleanup before the UI or VPS work.
       reviews, authorized owner commands, and merge/closure. Deliver changes
       to the orchestrator without another tool call. Invalidate old-head state,
       handle stale/error states, and bound polling or use webhooks. Follow
-      `docs/pi-orchestration.md`; do not let events start extra review cycles.
+      [Pi design](docs/pi-design.md#pr-status); do not let events start extra
+      review cycles.
 - [ ] Show the current pull request, its link and CI state in the fabrial Pi
-      package's status area, following `docs/pi-statusline.md`. Consume shared
+      package's status area, following
+      [Pi design](docs/pi-design.md#status-area). Consume shared
       PR/worker state instead of creating another status collector.
 - [ ] Maintain fabrial's development Pi setup, including extensions, UI,
       defaults, and configuration as needed. Keep its ownership explicit;

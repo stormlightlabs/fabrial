@@ -71,7 +71,8 @@ crates/fab-cli    the `fab` binary
                   and shot.sh, which captures a terminal UI as a PNG
 .github/fabrial.toml  the owner, the squash trailer and the gate command
 docs/hosts.md     what each host reads, and where they differ
-docs/pi.md        the design for running fabrial on Pi 1.x
+docs/pi.md        how to set up a host and run Pi workers
+docs/pi-design.md the planned PR status and Pi status area
 PLAN.md           decisions and phases
 AGENTS.md         this file (CLAUDE.md links to it)
 ```
