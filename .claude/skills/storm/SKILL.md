@@ -118,6 +118,10 @@ Review finished at <full head sha>
 Below a blank line, the same comment carries the adversarial pass's findings
 and what the revise did about them. Each comment is one Bot comment run.
 
+For an arcl task, first complete it on the branch and push, as the
+`implement` skill's **Complete the task** says, so the checks below and the
+gate read the final head.
+
 Before posting it, check that the pull request still merges. The review
 passes read the diff, not the base, so they do not see a conflict. `gh pr
 view <n> --json mergeable` must say `MERGEABLE`. In `pull_request_read`, a

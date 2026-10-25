@@ -68,18 +68,30 @@ shared build directory.
 
 ## Start it
 
-For an arcl task, start it inside the working tree, because the status lives
-in a tracked file under `.arcl/workspace`. A fresh worktree has no database
-yet, so run `arcl init` first:
+An issue or a description needs no step here.
+
+For an arcl task, first check that nobody else has it:
+`gh pr list --search <id>` and `git ls-remote origin 'storm/<id>'` must both
+come back empty. Until the phase 5 task "Claim tasks on refs/fabrial/claims"
+lands, this is the only guard.
+
+Where `.arcl/config.toml` sets `enabled = true` under `[workspace]`, the
+status lives in a tracked file under `.arcl/workspace`, so start the task
+inside the worktree. A fresh worktree has no database yet:
 
 ```sh
 arcl init
 arcl task start <id>
 ```
 
-The task moves to in progress, so `arcl ready` stops offering it. Commit the
-changed task file with the work, so the pull request carries the status. An
-issue or a description needs no step here.
+Commit the changed task file with the work. The status changes only on this
+branch, so `arcl ready` on `main` and in other worktrees still offers the task
+until the pull request merges. If a merge conflicts on a task file, keep the
+newer status.
+
+Without that setting, `arcl init` in a worktree makes an empty database and
+`arcl task start` fails with "was not found". Run `arcl task start <id>` from
+the primary checkout instead.
 
 ## Do the work
 
@@ -139,6 +151,20 @@ it opens, and the Review gate carries an edit into the squash message.
 Post what you verified as a comment on the pull request, not in the body: the
 commands you ran and what they returned, and anything you did not check. Post
 it through the Bot comment workflow, as the `storm` skill's **Posting** says.
+
+## Complete the task
+
+For an arcl task with the workspace enabled, complete it on the branch once
+the work is done and verified: before the `storm` skill's **Finish**, or
+before your report in a run without `storm`.
+
+```sh
+arcl task complete <id> --evidence "Done in #<n> at <short sha>: <summary>"
+```
+
+Commit the task file, run the gates and push. The status reaches `main` with
+the merge, and an abandoned pull request leaves it untouched. Without the
+workspace, complete the task from the primary checkout after the merge.
 
 ## After merge
 

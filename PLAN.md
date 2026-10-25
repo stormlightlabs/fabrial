@@ -145,7 +145,12 @@ arcl ready          # tasks that can start
 arcl context <id>   # one task, with its plan and blockers
 ```
 
-### Completed
+When moving the arcl pin, rerun `arcl skill install` and commit the result.
+
+### Shipped
+
+What each phase has shipped. Phases 1, 2, 4 and 6 are done in part; their
+remaining tasks are in arcl.
 
 - Phase 0: the ruleset, `CODEOWNERS`, the bot, `AGENTS.md`, the writing skill,
   the Cargo workspace with `just check`, and the Branch PR workflow.
