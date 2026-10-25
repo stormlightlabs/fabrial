@@ -2,8 +2,8 @@
 
 A software factory that takes ready tasks from arclightning through implement,
 review, adversarial review and revise until a pull request is ready for a
-person to merge. The CLI is `fab`. [PLAN.md](PLAN.md) holds the decisions and
-the phases.
+person to merge. The CLI is `fab`. [PLAN.md](PLAN.md) holds the decisions, and
+arcl holds the open work.
 
 ## Delivery sequence
 
@@ -73,7 +73,8 @@ crates/fab-cli    the `fab` binary
 docs/hosts.md     what each host reads, and where they differ
 docs/pi.md        how to set up a host and run Pi workers
 docs/pi-design.md the planned PR status and Pi status area
-PLAN.md           decisions and phases
+PLAN.md           decisions, and how to read the open work
+.arcl/            arcl's config; workspace/ holds the tasks, arcl.db is local
 AGENTS.md         this file (CLAUDE.md links to it)
 ```
 
@@ -89,7 +90,8 @@ Follow arclightning's conventions, since the two share crates:
 
 ## Plan
 
-- Include `PLAN.md` updates in the PR they describe.
+- Open work lives in arcl, in `.arcl/workspace`; `PLAN.md` shows how to read
+  it. Put task status updates and new tasks in the PR they describe.
 - Leave `CHANGELOG.md` alone. The Release workflow writes each release's
   section from the squash subjects since the last tag, and the owner edits it
   in the release PR.

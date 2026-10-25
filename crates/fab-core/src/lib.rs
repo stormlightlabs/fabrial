@@ -1,7 +1,8 @@
 //! The core of fabrial. It installs fabrial into a repository ([`install`])
 //! and reads a repository's settings ([`settings`]). The run operations every
 //! driver shares (claim a task, start a step, record its result, mark the
-//! pull request ready, and release) are added here in phase 5 of `PLAN.md`.
+//! pull request ready, and release) are added here in phase 5 of the arcl
+//! roadmap.
 
 pub mod install;
 pub mod settings;
