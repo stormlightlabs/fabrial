@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-const script = fileURLToPath(new URL("../.github/release/changelog.sh", import.meta.url));
-const worktree = fileURLToPath(new URL("../", import.meta.url));
+const script = fileURLToPath(new URL("changelog.sh", import.meta.url));
+const worktree = fileURLToPath(new URL("../../", import.meta.url));
 
 // Runs changelog.sh in a scratch repository: an initial commit with
 // `changelog` as CHANGELOG.md, tagged v0.1.0 unless `tag` is false, then one

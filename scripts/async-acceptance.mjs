@@ -10,13 +10,14 @@ import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { invoke, workerOperation } from "../pi/dispatch.mjs";
-import { WorkerJournal } from "../pi/journal.mjs";
+import { invoke, workerOperation } from "../packages/pi/lib/dispatch.mjs";
+import { WorkerJournal } from "../packages/pi/lib/journal.mjs";
 
 const { values } = parseArgs({ options: { worktree: { type: "string" }, pi: { type: "string", default: "pi" } } });
 assert(values.worktree, "--worktree must name a linked task worktree, never the primary checkout");
 const worktree = resolve(values.worktree);
-const extension = resolve(dirname(fileURLToPath(import.meta.url)), "../pi/extension.ts");
+// The repository root is the Pi package; its manifest lists every extension.
+const extension = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const host = { binary: process.env.FAB_BINARY, config: process.env.FAB_DISPATCH_CONFIG, trustedCheckout: process.env.FAB_TRUSTED_CHECKOUT };
 assert(host.binary && host.config && host.trustedCheckout, "Set the three FAB host variables first");
 const root = mkdtempSync(join(tmpdir(), "fab-async-proof-"));

@@ -88,6 +88,24 @@ export function isTerminal(worker) {
   return ["succeeded", "failed", "cancelled", "timed_out", "blocked"].includes(worker.state);
 }
 
+/**
+ * Asks each worker to cancel after an authorized stop, then resolves to a
+ * sentence that says which workers were asked and which cancels failed. It
+ * never rejects. The sentence names worker IDs only, never the error or its
+ * stderr.
+ */
+export async function cancelWorkers(ids, cancel) {
+  const results = await Promise.allSettled(ids.map(async (id) => cancel(id)));
+  const failed = ids.filter((_, i) => results[i].status === "rejected");
+  const asked = ids.filter((_, i) => results[i].status === "fulfilled");
+  const list = (names) => `${names.length === 1 ? "worker" : "workers"} ${names.join(", ")}`;
+  return [
+    ids.length ? "" : "No workers were active.",
+    asked.length ? `Asked ${list(asked)} to cancel.` : "",
+    failed.length ? `Could not cancel ${list(failed)}; inspect each with agent_control, cancel it again, and start nothing new until it is stopped.` : "",
+  ].filter(Boolean).join(" ");
+}
+
 /** Worker text is task data and grants no authority to run commands or repeat stages. */
 export function notification({ worker, event, error }) {
   const text = error || event?.text || worker.result ||

@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 import { dispatch, invoke, startWorker } from "./dispatch.mjs";
-import { WorkerMonitor } from "./workers.mjs";
+import { WorkerMonitor, cancelWorkers } from "./workers.mjs";
 import { WorkerJournal, dedupeNotifications } from "./journal.mjs";
 
 const host = { binary: "/trusted/fab", config: "/private/issuer.toml", trustedCheckout: "/trusted/main" };
@@ -125,6 +125,34 @@ test("completed checkpoints still replay an undelivered notification without rel
     notify: () => {}, replay: () => restored.flush() });
   await monitor.poll(); monitor.stop();
   assert.equal(session.sent.length, 2);
+});
+
+test("worker and PR journals share a session but each delivers only its own messages", () => {
+  const session = sessionJournal();
+  const workers = new WorkerJournal(session.options);
+  const prs = new WorkerJournal({ ...session.options, customType: "fabrial.pr-event" });
+  workers.enqueue({ key: "one:terminal", worker: { worker_id: "one", state: "succeeded", result: "done" } });
+  prs.enqueue({ key: "pr:owner/repo#7:merged", content: "PR merged" });
+  assert.deepEqual(session.sent.map((m) => m.customType), ["fabrial.worker-event", "fabrial.pr-event"]);
+  // After a reload each journal replays only its own undelivered item.
+  const restored = new WorkerJournal(session.options);
+  const restoredPrs = new WorkerJournal({ ...session.options, customType: "fabrial.pr-event" });
+  assert.deepEqual([...restored.outbox.keys()], ["one:terminal"]);
+  assert.deepEqual([...restoredPrs.outbox.keys()], ["pr:owner/repo#7:merged"]);
+});
+
+test("a stop cancels each worker and says which were asked and which failed", async () => {
+  const asked = [];
+  const cancel = async (id) => {
+    asked.push(id);
+    if (id === "w2") throw Object.assign(new Error("fab failed"), { stderr: "token ghs_secret" });
+  };
+  assert.equal(await cancelWorkers([], cancel), "No workers were active.");
+  const outcome = await cancelWorkers(["w1", "w2"], cancel);
+  assert.deepEqual(asked, ["w1", "w2"]);
+  assert.match(outcome, /^Asked worker w1 to cancel\. Could not cancel worker w2;/);
+  assert.doesNotMatch(outcome, /ghs_secret|fab failed/);
+  assert.match(await cancelWorkers(["w3"], () => { throw new Error("sync"); }), /^Could not cancel worker w3;/);
 });
 
 const worker = { worker_id: "worker-one", run_id: "run-one", task_head: "a".repeat(40), role: "reviewer", state: "running", credential_cleanup: "pending" };

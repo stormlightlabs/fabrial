@@ -3,10 +3,10 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { PullRequestCollector, MIN_INTERVAL, cancelWorkers, movesBranch } from "./pr.mjs";
+import { PullRequestCollector, MIN_INTERVAL, movesBranch } from "./pr.mjs";
 import { WorkerJournal, dedupeNotifications } from "./journal.mjs";
 
-const worktree = fileURLToPath(new URL("../", import.meta.url));
+const worktree = fileURLToPath(new URL("../../../", import.meta.url));
 const oldHead = "a".repeat(40), newHead = "b".repeat(40);
 const since = "2026-10-25T10:00:00Z";
 const base = { number: 7, url: "https://github.com/owner/repo/pull/7", state: "OPEN", isDraft: true,
@@ -157,7 +157,7 @@ test("a reload re-reads the PR but delivers each event once", async (t) => {
   const session = { entries: () => entries, send: (m) => sent.push(m),
     append: (customType, data) => entries.push({ type: "custom", customType, data }) };
   for (let i = 0; i < 2; i++) {
-    const journal = new WorkerJournal(session);
+    const journal = new WorkerJournal({ ...session, customType: "fabrial.pr-event" });
     const collector = h.make({ notify: (event) => journal.enqueue(event) });
     await collector.poll(); collector.stop();
     if (i === 0) entries.push({ ...sent[0], type: "custom_message" }); // Pi committed the follow-up.
@@ -166,6 +166,21 @@ test("a reload re-reads the PR but delivers each event once", async (t) => {
   assert.equal(sent[0].customType, "fabrial.pr-event");
   assert.equal(sent[0].details.eventKey, "pr:owner/repo#7:closed");
   assert.equal(dedupeNotifications([...sent, ...sent].map((m) => ({ ...m, role: "custom" }))).length, 1);
+});
+
+test("a message queued but not delivered before a reload goes out on the next poll", async (t) => {
+  const h = host(t);
+  h.set(base); // An open PR with passing checks raises no new event.
+  const entries = [], sent = [];
+  const session = { entries: () => entries, send: (m) => sent.push(m), customType: "fabrial.pr-event",
+    append: (customType, data) => entries.push({ type: "custom", customType, data }) };
+  const first = new WorkerJournal(session);
+  first.enqueue({ key: "pr:owner/repo#7:closed", content: "closed" });
+  sent.length = 0; // Pi lost the queued follow-up in the reload.
+  const journal = new WorkerJournal(session);
+  const collector = h.make({ notify: (event) => journal.enqueue(event), replay: () => journal.flush() });
+  await collector.poll(); h.advance(1000); await collector.poll(); collector.stop();
+  assert.deepEqual(sent.map((m) => m.details.eventKey), ["pr:owner/repo#7:closed"]);
 });
 
 test("dispose stops reads, drops late results and listeners", async (t) => {
@@ -229,56 +244,4 @@ test("the lookup takes the newest PR from the base repository, never a fork's", 
 test("branch moves refresh", () => {
   for (const command of ["git push", "git checkout -b x", "cd w && git switch main", "gh pr checkout 7"]) assert.ok(movesBranch(command), command);
   for (const command of ["git status", "echo push", "gh pr view 7", undefined]) assert.ok(!movesBranch(command), String(command));
-});
-
-test("a stop cancels first, then says which workers were asked and which failed", async () => {
-  const asked = [];
-  const cancel = async (id) => {
-    asked.push(id);
-    if (id === "w2") throw Object.assign(new Error("fab failed"), { stderr: "token ghs_secret" });
-  };
-  const snapshot = { pr: { repository: "owner/repo", number: 7, head: oldHead } };
-  const stop = { key: "pr:owner/repo#7:stop:C5", kind: "stop", text: "/storm:stop", snapshot };
-  assert.match((await cancelWorkers(stop, [], cancel)).content, /Start nothing new\. No workers were active\./);
-  const result = await cancelWorkers(stop, ["w1", "w2"], cancel);
-  assert.deepEqual(asked, ["w1", "w2"]);
-  assert.equal(result.key, stop.key);
-  assert.match(result.content, /Asked worker w1 to cancel\. Could not cancel worker w2;/);
-  assert.match(result.content, /Untrusted PR data/);
-  assert.doesNotMatch(result.content, /ghs_secret|fab failed/);
-});
-
-test("a reload before the cancels settle cancels again and queues one stop message", async (t) => {
-  const h = host(t);
-  h.set({ ...base, labels: [{ name: "storm:stopped" }] });
-  const entries = [], sent = [], asked = [];
-  const session = { entries: () => entries, send: (m) => sent.push(m),
-    append: (customType, data) => entries.push({ type: "custom", customType, data }) };
-  // The extension's notify: cancel, then queue the outcome unless the session went away.
-  const run = (cancel) => {
-    const journal = new WorkerJournal(session);
-    const state = { disposed: false };
-    const collector = h.make({ notify: async (event) => {
-      if (event.kind === "stop" && !journal.outbox.has(event.key)) {
-        event = await cancelWorkers(event, ["w1"], cancel);
-        if (state.disposed) return;
-      }
-      journal.enqueue(event);
-    } });
-    return { collector, dispose: () => { state.disposed = true; collector.stop(); } };
-  };
-  let settle;
-  const first = run((id) => { asked.push(id); return new Promise((resolve) => { settle = resolve; }); });
-  const pending = first.collector.poll();
-  while (!settle) await new Promise((resolve) => setTimeout(resolve, 5));
-  first.dispose(); // Reload while the cancel is in flight.
-  settle(); await pending;
-  assert.equal(sent.length, 0);
-
-  const second = run(async (id) => { asked.push(id); });
-  await second.collector.poll();
-  second.dispose();
-  assert.deepEqual(asked, ["w1", "w1"]);
-  assert.equal(sent.length, 1);
-  assert.match(sent[0].content, /Asked worker w1 to cancel\./);
 });

@@ -41,7 +41,7 @@ else if (action === "inspect") record = { worker_id: ${JSON.stringify(id)}, stat
 else process.exit(91);
 process.stdout.write(JSON.stringify(record) + "\\n");`);
     program("tmux", "process.exit(1);");
-    const script = fileURLToPath(new URL("../scripts/async-acceptance.mjs", import.meta.url));
+    const script = fileURLToPath(new URL("async-acceptance.mjs", import.meta.url));
     const output = spawnSync(process.execPath, [script, "--worktree", root, "--pi", pi], {
       env: { ...process.env, FIXTURE_ROOT: root, PATH: `${root}:${process.env.PATH}`,
         FAB_BINARY: binary, FAB_DISPATCH_CONFIG: join(root, "config"), FAB_TRUSTED_CHECKOUT: root },

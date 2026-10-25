@@ -20,12 +20,16 @@ every PR worktree, never from a PR branch:
 
 ```sh
 cargo install --path crates/fab-cli
-nix-build nix/worker.nix
+nix-build conf/sandbox/worker.nix
 ```
 
 The wrapper pins agent-sandbox.nix v5.6.3 and its nixpkgs, and applies
-[`deny-owner-keychain.patch`](../nix/deny-owner-keychain.patch) to block the
-owner's Keychain. Plain `nix develop` or direnv is not isolation.
+[`deny-owner-keychain.patch`](../conf/sandbox/deny-owner-keychain.patch) to
+block the owner's Keychain. Plain `nix develop` or direnv is not isolation.
+
+The wrapper used to live in `nix/`. If you built it from there, update the
+trusted checkout, run the build above again, and set `sandbox` in the config
+file to the store path it prints.
 
 Install Pi 1.4.0 in a dedicated runtime directory holding its `node_modules`
 and all dependencies, with no credentials or personal settings. Log in to its
@@ -175,6 +179,25 @@ keeps the restricted state for you to inspect.
 
 Install the root package with `pi install <trusted-checkout>`, or from a
 reviewed tag with `pi install git:github.com/stormlightlabs/fabrial@v<version>`.
+The manifest stays in the root `package.json` because Pi installs a git source
+from the repository root and has no form for a subdirectory. It lists three
+extensions under `packages/pi/extensions/`:
+
+| Extension        | Adds                                                     |
+| ---------------- | -------------------------------------------------------- |
+| `workers.ts`     | The `agent` and `agent_control` tools and `/worker-*`    |
+| `pr-status.ts`   | The pull request watch and its messages                  |
+| `status-area.ts` | The status rows and the worker widget                    |
+
+They share code in `packages/pi/lib/` and talk only through Pi extension
+events: `fabrial:worker` for worker progress, `fabrial:pr` for each PR
+reading, and `fabrial:stop`, which PR status sends on an authorized stop so
+the workers extension can cancel its workers. Each one also loads alone. PR
+status without workers reports a stop with no cancel outcome, and the status
+area without the others shows `PR unknown` and no workers. To leave one out,
+filter it in the package entry of your Pi settings, such as
+`"extensions": ["!packages/pi/extensions/status-area.ts"]`.
+
 Set these before starting Pi:
 
 ```sh

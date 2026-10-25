@@ -63,6 +63,11 @@ Clippy warnings fail it whether or not your change caused them.
 ```text
 crates/fab-core   install and settings; later, the run operations
 crates/fab-cli    the `fab` binary
+packages/pi/      the Pi package: extensions/ holds workers, PR status and the
+                  status area, lib/ their shared code, and worker.ts the
+                  extension `fab dispatch` gives each worker
+conf/sandbox/     worker.nix, the Nix sandbox wrapper, and its Keychain patch
+package.json      the Pi package manifest, at the root so git installs find it
 .claude/skills/   skills; .agents/skills links here for Codex and Pi
 .claude/agents/   implementer, reviewer, adversarial-reviewer, verifier, reviser
 .github/          CODEOWNERS and the Check, Branch PR and Review gate workflows

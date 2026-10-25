@@ -1,7 +1,7 @@
 process.env.TZ = "UTC";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyWorker, readGit, renderStatus, renderWorkers, repository, statusArea } from "./status.mjs";
+import { StatusSession, applyWorker, readGit, renderStatus, renderWorkers, repository } from "./status.mjs";
 
 const head = "a".repeat(40), local = "b".repeat(40);
 const observedAt = Date.parse("2026-10-25T12:03:00Z");
@@ -160,18 +160,15 @@ test("Git reads keep the remote's token out and leave failed reads unknown", asy
   assert.equal(plain(render(state({ git: await readGit(run) }))[0]).split(" · ").slice(-2).join(" · "), "storm/task · +3 -0 in 1 file");
 });
 
-// A fake Pi: handlers, an event bus and a UI that records widgets and statuses.
+// A fake Pi event bus and a UI that records widgets and statuses.
 function fakePi() {
-  const handlers = {}, listeners = {};
-  const pi = {
-    on: (name, handler) => { handlers[name] = handler; },
-    events: {
-      on: (channel, handler) => {
-        (listeners[channel] ??= new Set()).add(handler);
-        return () => listeners[channel].delete(handler);
-      },
-      emit: (channel, data) => { for (const handler of listeners[channel] ?? []) handler(data); },
+  const listeners = {};
+  const events = {
+    on: (channel, handler) => {
+      (listeners[channel] ??= new Set()).add(handler);
+      return () => listeners[channel].delete(handler);
     },
+    emit: (channel, data) => { for (const handler of listeners[channel] ?? []) handler(data); },
   };
   const context = (mode) => {
     const ui = { widgets: {}, statuses: {}, renders: 0 };
@@ -179,60 +176,47 @@ function fakePi() {
       ui.widgets[key] = factory && factory({ requestRender: () => ui.renders++ }, { fg: (_c, t) => t, bold: (t) => t });
     };
     ui.setStatus = (key, text) => { ui.statuses[key] = text; };
-    return { mode, hasUI: mode !== "print", cwd: "/work", ui };
+    return { mode, hasUI: true, cwd: "/work", ui };
   };
   const count = () => Object.values(listeners).reduce((n, set) => n + set.size, 0);
-  return { pi, handlers, context, count };
+  return { events, context, count };
 }
 
-test("the TUI status follows events, and a reload releases the old session", async () => {
+const noGit = async () => { throw new Error("no git"); };
+
+test("the TUI status follows events, and stop releases the session", async () => {
   const fake = fakePi();
-  const reads = [];
-  statusArea(fake.pi, { run: async (_c, args) => { reads.push(args.join(" ")); throw new Error("no git"); } });
   const first = fake.context("tui");
-  fake.handlers.session_start({}, first);
+  const session = new StatusSession(fake.events, first, { run: noGit });
   assert.equal(fake.count(), 2);
   assert.match(first.ui.widgets["fabrial-status"].render(120)[0], /PR unknown/);
-  fake.pi.events.emit("fabrial:pr", pr({ status: "failed", checks: { total: 1, passed: 0, pending: 0, failed: 1, items: [] } }));
+  fake.events.emit("fabrial:pr", pr({ status: "failed", checks: { total: 1, passed: 0, pending: 0, failed: 1, items: [] } }));
   assert.match(plain(first.ui.widgets["fabrial-status"].render(120)[0]), /checks 0\/1 passed, 1 failed/);
   assert.equal(first.ui.widgets["fabrial-workers"], undefined);
-  fake.pi.events.emit("fabrial:worker", { workerId: "w1", worker: { role: "reviewer", state: "running" } });
+  fake.events.emit("fabrial:worker", { workerId: "w1", worker: { role: "reviewer", state: "running" } });
   assert.match(first.ui.widgets["fabrial-workers"].render(80)[0], /reviewer · working/);
   assert.ok(first.ui.renders > 0);
 
-  // /reload shuts the session down and starts it again with a new context.
-  fake.handlers.session_shutdown({ reason: "reload" }, first);
+  // A reload stops the session and starts a new one with a new context.
+  session.stop();
   assert.equal(fake.count(), 0);
   assert.equal(first.ui.widgets["fabrial-status"], undefined);
   assert.equal(first.ui.widgets["fabrial-workers"], undefined);
   const second = fake.context("tui");
-  fake.handlers.session_start({ reason: "reload" }, second);
-  assert.equal(fake.count(), 2);
-  fake.pi.events.emit("fabrial:pr", pr());
+  const next = new StatusSession(fake.events, second, { run: noGit });
+  fake.events.emit("fabrial:pr", pr());
   assert.match(plain(second.ui.widgets["fabrial-status"].render(120)[0]), /checks 4\/4 passed/);
-  fake.handlers.session_shutdown({ reason: "quit" }, second);
+  next.stop();
   assert.equal(fake.count(), 0);
 });
 
-test("RPC gets plain status text, and headless sessions get nothing and read nothing", async () => {
+test("RPC gets plain status text", async () => {
   const fake = fakePi();
-  const reads = [];
-  statusArea(fake.pi, { run: async (_c, args) => { reads.push(args); throw new Error("no git"); } });
   const rpc = fake.context("rpc");
-  fake.handlers.session_start({}, rpc);
-  fake.pi.events.emit("fabrial:pr", pr());
+  const session = new StatusSession(fake.events, rpc, { run: noGit });
+  fake.events.emit("fabrial:pr", pr());
   assert.equal(rpc.ui.statuses.fabrial, "PR #7 · draft · checks 4/4 passed · owner/repo · step unknown · workers none");
   assert.deepEqual(rpc.ui.widgets, {});
-  fake.handlers.session_shutdown({}, rpc);
+  session.stop();
   assert.equal(rpc.ui.statuses.fabrial, undefined);
-
-  reads.length = 0;
-  const print = fake.context("print");
-  fake.handlers.session_start({}, print);
-  fake.pi.events.emit("fabrial:pr", pr());
-  fake.handlers.turn_end?.({}, print);
-  assert.equal(fake.count(), 0);
-  assert.deepEqual(print.ui.widgets, {});
-  assert.deepEqual(print.ui.statuses, {});
-  assert.equal(reads.length, 0);
 });

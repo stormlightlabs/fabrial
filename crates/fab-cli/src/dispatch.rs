@@ -898,7 +898,10 @@ fn dispatch(options: Options) -> Result<u8> {
     let p = &private.path;
     fs::create_dir(p.join("input")).map_err(|_| "cannot create trusted input directory")?;
     fs::create_dir(p.join("input/skills")).map_err(|_| "cannot create trusted skill directory")?;
-    write(&p.join("input/worker.ts"), include_str!("../../../pi/worker.ts"))?;
+    write(
+        &p.join("input/worker.ts"),
+        include_str!("../../../packages/pi/worker.ts"),
+    )?;
     write(&p.join("input/task.txt"), read(&options.task)?)?;
     write(
         &p.join("input/role.md"),

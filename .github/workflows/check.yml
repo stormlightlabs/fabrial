@@ -59,5 +59,11 @@ jobs:
       - uses: extractions/setup-just@v3
         if: steps.scope.outputs.build == 'true'
 
+      # The Pi extension tests load TypeScript, which Node strips from 22.18 on.
+      - uses: actions/setup-node@v5
+        if: steps.scope.outputs.build == 'true'
+        with:
+          node-version: 24
+
       - run: just check
         if: steps.scope.outputs.build == 'true'

@@ -12,29 +12,19 @@ const ACTIONS = {
 const MAX_WORKER_LINES = 4;
 
 /**
- * The status area below Pi's editor and the worker widget above it. It reads
- * only `fabrial:pr` and `fabrial:worker` events and local Git, and starts no
- * timer, so headless sessions and dispatch never depend on it. Pi's own footer
- * stays below it with the worktree, context, cost and model.
+ * One session's status area: the rows below Pi's editor and the worker widget
+ * above it. It reads only `fabrial:pr` and `fabrial:worker` events from
+ * `events`, Pi's event bus, and local Git, and starts no timer, so headless
+ * sessions and dispatch never depend on it. Pi's own footer stays below it
+ * with the worktree, context, cost and model. `stop()` releases its
+ * subscriptions and clears what it showed.
  *
  * `fit(line, width)` trims a styled line to the terminal width, and
  * `measure(text)` counts the columns plain text takes; the extension passes
  * pi-tui's `truncateToWidth` and `visibleWidth`.
  */
-export function statusArea(pi, { fit = (line) => line, measure = (text) => text.length, run = git } = {}) {
-  let session;
-  pi.on("session_start", (_event, ctx) => {
-    session?.stop();
-    session = ctx.hasUI ? new StatusSession(pi, ctx, { fit, measure, run }) : undefined;
-  });
-  pi.on("session_shutdown", () => { session?.stop(); session = undefined; });
-  pi.on("turn_end", () => session?.readGit());
-  pi.on("user_bash", () => session?.readGit());
-}
-
-/** One session's subscriptions and state; `stop()` releases all of them. */
-class StatusSession {
-  constructor(pi, ctx, { fit, measure, run }) {
+export class StatusSession {
+  constructor(events, ctx, { fit = (line) => line, measure = (text) => text.length, run = git } = {}) {
     this.ctx = ctx;
     this.fit = fit;
     this.measure = measure;
@@ -42,8 +32,8 @@ class StatusSession {
     this.controller = new AbortController();
     this.state = { pr: undefined, git: undefined, workers: {} };
     this.unsubscribe = [
-      pi.events.on("fabrial:pr", (snapshot) => { this.state.pr = snapshot; this.update(); this.readGit(); }),
-      pi.events.on("fabrial:worker", (event) => { this.state = applyWorker(this.state, event); this.update(); }),
+      events.on("fabrial:pr", (snapshot) => { this.state.pr = snapshot; this.update(); this.readGit(); }),
+      events.on("fabrial:worker", (event) => { this.state = applyWorker(this.state, event); this.update(); }),
     ];
     if (ctx.mode === "tui") {
       ctx.ui.setWidget("fabrial-status", (tui, theme) => {

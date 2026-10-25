@@ -3,9 +3,13 @@ import { notification } from "./workers.mjs";
 /** Messages the journal delivers; worker events are the default. */
 const EVENT_TYPES = ["fabrial.worker-event", "fabrial.pr-event"];
 
-/** Session-local checkpoints and a durable outbox; queued messages are not delivery receipts. */
+/**
+ * Session-local checkpoints and a durable outbox; queued messages are not delivery receipts.
+ * Each extension keeps its own journal: it loads and delivers only outbox items of its
+ * `customType`, `fabrial.worker-event` for workers and `fabrial.pr-event` for PR status.
+ */
 export class WorkerJournal {
-  constructor({ entries, append, send }) {
+  constructor({ entries, append, send, customType = EVENT_TYPES[0] }) {
     this.entries = entries;
     this.append = append;
     this.send = send;
@@ -16,7 +20,8 @@ export class WorkerJournal {
     for (const entry of entries()) {
       if (entry.type === "custom" && entry.customType === "fabrial.worker" && entry.data?.worker?.worker_id) {
         this.states.set(entry.data.worker.worker_id, entry.data);
-      } else if (entry.type === "custom" && entry.customType === "fabrial.worker-outbox" && entry.data?.key) {
+      } else if (entry.type === "custom" && entry.customType === "fabrial.worker-outbox" && entry.data?.key &&
+        (entry.data.customType ?? EVENT_TYPES[0]) === customType) {
         this.outbox.set(entry.data.key, entry.data);
       }
     }
