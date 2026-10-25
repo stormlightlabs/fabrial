@@ -1,6 +1,6 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { startWorker, workerOperation } from "./dispatch.mjs";
 import { WorkerMonitor, isTerminal } from "./workers.mjs";
 import { WorkerJournal, dedupeNotifications } from "./journal.mjs";
@@ -19,7 +19,7 @@ export default function (pi: ExtensionAPI) {
   let collector: PullRequestCollector | undefined;
 
   // Registered first, so it subscribes before the collector and monitor publish.
-  statusArea(pi, { fit: (line: string, width: number) => truncateToWidth(line, width) });
+  statusArea(pi, { fit: (line: string, width: number) => truncateToWidth(line, width), measure: visibleWidth });
 
   pi.on("context", (event) => ({ messages: dedupeNotifications(event.messages) }));
   pi.on("tool_result", (event) => {

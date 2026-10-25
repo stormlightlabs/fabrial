@@ -245,10 +245,12 @@ the worktree, context, cost and model.
 
 Checks count only for the head they were read for. After a push, a branch
 change, a failed read or a local head that differs from the PR's, they show as
-stale with that head and the time of the last good read, never as passed. A
-lookup that has not succeeded shows `PR unknown` with the reason, such as a
-rate limit and when the next read is due. `no PR` means GitHub has none for
-the branch.
+stale, never as passed. A stale result names its cause (`rate limited`,
+`lookup failed`, `head may have moved` or `local head differs`) and keeps the
+passed, failed and pending counts, followed by the time of the last good read,
+the next retry and that head. A lookup that has not succeeded shows
+`PR unknown` with the reason, such as a rate limit and when the next read is
+due. `no PR` means GitHub has none for the branch.
 
 The step comes from the roles of active workers, such as `review` or
 `revise`; with none it shows `unknown`. A widget above the editor lists each
@@ -257,9 +259,13 @@ It shows the kind of a worker report, not its text.
 
 The PR number and repository are links where the terminal supports them; the
 full PR URL appears as text when the row has room. Narrow terminals keep the
-PR, checks and step, and drop the other fields; stale checks keep their counts
-and read time. The branch name goes first, since Pi's footer shows it, and its
-ahead and behind counts stay longer. Each state has a word as well as a color.
+PR, checks and step, and drop the other fields. A stale result keeps its cause
+and counts, and drops the word `checks` before it would cut them, so at 60
+columns a rate limit reads `PR #47 · draft · stale, rate limited, 2/4 passed,
+2 failed`. The rest of the row drops in this order: branch name, PR URL, diff,
+repository, ahead and behind counts, head, retry time, read time. The branch
+name goes first since Pi's footer shows it. Each state has a word as well as
+a color, and the row counts wide characters as two columns.
 
 The rows update from the package's PR and worker events and from Git after
 each turn, and start no timer. RPC clients get the same text through

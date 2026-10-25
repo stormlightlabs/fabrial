@@ -17,14 +17,15 @@ const MAX_WORKER_LINES = 4;
  * timer, so headless sessions and dispatch never depend on it. Pi's own footer
  * stays below it with the worktree, context, cost and model.
  *
- * `fit(line, width)` trims a styled line to the terminal width; the TUI passes
- * pi-tui's `truncateToWidth`.
+ * `fit(line, width)` trims a styled line to the terminal width, and
+ * `measure(text)` counts the columns plain text takes; the extension passes
+ * pi-tui's `truncateToWidth` and `visibleWidth`.
  */
-export function statusArea(pi, { fit = (line) => line, run = git } = {}) {
+export function statusArea(pi, { fit = (line) => line, measure = (text) => text.length, run = git } = {}) {
   let session;
   pi.on("session_start", (_event, ctx) => {
     session?.stop();
-    session = ctx.hasUI ? new StatusSession(pi, ctx, { fit, run }) : undefined;
+    session = ctx.hasUI ? new StatusSession(pi, ctx, { fit, measure, run }) : undefined;
   });
   pi.on("session_shutdown", () => { session?.stop(); session = undefined; });
   pi.on("turn_end", () => session?.readGit());
@@ -33,9 +34,10 @@ export function statusArea(pi, { fit = (line) => line, run = git } = {}) {
 
 /** One session's subscriptions and state; `stop()` releases all of them. */
 class StatusSession {
-  constructor(pi, ctx, { fit, run }) {
+  constructor(pi, ctx, { fit, measure, run }) {
     this.ctx = ctx;
     this.fit = fit;
+    this.measure = measure;
     this.run = run;
     this.controller = new AbortController();
     this.state = { pr: undefined, git: undefined, workers: {} };
@@ -47,7 +49,7 @@ class StatusSession {
       ctx.ui.setWidget("fabrial-status", (tui, theme) => {
         this.tui = tui;
         return {
-          render: (width) => renderStatus(this.state, width, style(theme)).map((line) => this.fit(line, width)),
+          render: (width) => renderStatus(this.state, width, style(theme, this.measure)).map((line) => this.fit(line, width)),
           invalidate() {},
         };
       }, { placement: "belowEditor" });
@@ -60,7 +62,7 @@ class StatusSession {
     if (this.stopped) return;
     if (this.ctx.mode !== "tui") {
       // RPC clients get plain text; component widgets are ignored there.
-      this.ctx.ui.setStatus("fabrial", renderStatus(this.state, 80, PLAIN).join(SEPARATOR));
+      this.ctx.ui.setStatus("fabrial", renderStatus(this.state, 80, { ...PLAIN, width: this.measure }).join(SEPARATOR));
       return;
     }
     // The widget reads the state when it renders, so it is set again only to show or hide it.
@@ -68,7 +70,7 @@ class StatusSession {
     if (shown !== this.workersShown) {
       this.workersShown = shown;
       this.ctx.ui.setWidget("fabrial-workers", shown ? (_tui, theme) => ({
-        render: (width) => renderWorkers(this.state, width, style(theme)).map((line) => this.fit(line, width)),
+        render: (width) => renderWorkers(this.state, width, style(theme, this.measure)).map((line) => this.fit(line, width)),
         invalidate() {},
       }) : undefined);
     }
@@ -105,9 +107,10 @@ class StatusSession {
 
 const PLAIN = { fg: (_color, text) => text, bold: (text) => text, link: (text) => text };
 
-/** Pi's theme plus OSC 8 links, which terminals without link support show as plain text. */
-function style(theme) {
+/** Pi's theme plus OSC 8 links, which terminals without link support show as plain text, and the column measure. */
+function style(theme, width) {
   return {
+    width,
     fg: (color, text) => theme.fg(color, text),
     bold: (text) => theme.bold(text),
     link: (text, url) => `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`,
@@ -228,26 +231,30 @@ function prFields(state, s) {
 
 /**
  * Checks belong to the head they were read for; anything else is stale or
- * unknown, never green. A stale result leads with its counts and last read,
- * which always stay; the retry time, then the head and reason, drop first.
+ * unknown, never green. A stale result always keeps its cause and its passed,
+ * failed and pending counts, dropping the word "checks" when the row is
+ * narrow. The read time, then the retry time, then the head drop first.
  */
 function checks(snapshot, local, s) {
   const { pr, checks: c } = snapshot;
-  const counts = c ? `${c.passed}/${c.total} passed` : "";
+  const counts = c ? [`${c.passed}/${c.total} passed`, c.failed ? `${c.failed} failed` : "", c.pending ? `${c.pending} pending` : ""]
+    .filter(Boolean).join(", ") : "";
   const moved = local?.head && local.head !== pr.head;
   if (snapshot.status === "stale" || snapshot.error || moved) {
-    const why = snapshot.error ?? (moved ? "local head differs" : "head may have moved");
+    const cause = snapshot.error === "GitHub rate limit" ? "rate limited" : snapshot.error ? "lookup failed"
+      : moved ? "local head differs" : "head may have moved";
+    const stale = [`stale, ${cause}`, counts].filter(Boolean).join(", ");
     const warn = (t) => s.fg("warning", t);
     return [
-      { text: ["checks stale", counts, `read ${clock(snapshot.observedAt)}`].filter(Boolean).join(", "), keep: true, paint: warn },
+      { text: `checks ${stale}`, short: stale, keep: true, paint: warn },
+      { text: `read ${clock(snapshot.observedAt)}`, priority: 8, paint: warn },
       ...(snapshot.retryAt ? [{ text: `retry ${clock(snapshot.retryAt)}`, priority: 7, paint: warn }] : []),
-      { text: `head ${pr.head.slice(0, 7)}, ${why}`, priority: 6, paint: (t) => s.fg("muted", t) },
+      { text: `head ${pr.head.slice(0, 7)}`, priority: 6, paint: (t) => s.fg("muted", t) },
     ];
   }
   if (!c?.total) return [{ text: "checks none", keep: true, paint: (t) => s.fg("muted", t) }];
-  const extra = [c.failed ? `${c.failed} failed` : "", c.pending ? `${c.pending} pending` : ""].filter(Boolean);
   const color = c.failed ? "error" : c.pending ? "warning" : "success";
-  return [{ text: `checks ${[counts, ...extra].join(", ")}`, keep: true, paint: (t) => s.fg(color, t) }];
+  return [{ text: `checks ${counts}`, keep: true, paint: (t) => s.fg(color, t) }];
 }
 
 function runFields(state, s) {
@@ -280,14 +287,18 @@ function workerState(state) {
 }
 
 /**
- * Joins fields with separators, dropping the lowest-priority ones until the
- * line fits, then restoring any dropped field that still fits. Kept fields that still overflow are cut with an ellipsis.
- * Widths are counted on plain text, before color and link codes.
+ * Joins fields with separators. When the kept fields alone are too wide, each
+ * field with a `short` text uses it. Then the lowest-priority fields drop until
+ * the line fits, and any dropped field that still fits comes back. Kept fields
+ * that still overflow are cut with an ellipsis. Widths are counted in columns
+ * on plain text, before color and link codes.
  */
 function row(fields, width, s) {
+  const columns = s.width ?? ((text) => text.length);
+  const size = (list) => list.reduce((n, f, i) => n + columns(f.text) + (i ? SEPARATOR.length : 0), 0);
+  if (size(fields.filter((f) => f.keep)) > width) fields = fields.map((f) => (f.short ? { ...f, text: f.short } : f));
   let kept = fields;
   const dropped = [];
-  const size = (list) => list.reduce((n, f, i) => n + f.text.length + (i ? SEPARATOR.length : 0), 0);
   while (size(kept) > width) {
     const drop = kept.filter((f) => !f.keep).sort((a, b) => a.priority - b.priority)[0];
     if (!drop) break;
@@ -303,11 +314,21 @@ function row(fields, width, s) {
   for (const [i, field] of kept.entries()) {
     const gap = i ? SEPARATOR : "";
     if (room - gap.length <= 0) break;
-    const text = field.text.length > room - gap.length ? `${field.text.slice(0, Math.max(0, room - gap.length - 1))}…` : field.text;
+    const text = columns(field.text) > room - gap.length ? cut(field.text, room - gap.length - 1, columns) : field.text;
     line += (gap && s.fg("dim", gap)) + field.paint(text);
-    room -= gap.length + text.length;
+    room -= gap.length + columns(text);
   }
   return line;
+}
+
+/** The longest start of `text` within `limit` columns, plus an ellipsis. */
+function cut(text, limit, columns) {
+  let out = "";
+  for (const char of text) {
+    if (columns(out + char) > limit) break;
+    out += char;
+  }
+  return `${out}…`;
 }
 
 function problem(snapshot) {
@@ -318,7 +339,12 @@ function clock(time) {
   return time === undefined ? "never" : new Date(time).toTimeString().slice(0, 5);
 }
 
-/** Drops control characters, so event text cannot move the cursor or open a link. */
+/**
+ * Drops control characters, so event text cannot move the cursor or open a
+ * link, and bidirectional and zero-width marks, so it cannot reorder or hide
+ * the fields after it.
+ */
 function clean(value) {
-  return typeof value === "string" ? value.replace(/[\x00-\x1f\x7f-\x9f]/g, "") : undefined;
+  return typeof value === "string"
+    ? value.replace(/[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, "") : undefined;
 }

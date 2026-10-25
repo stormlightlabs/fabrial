@@ -5,9 +5,18 @@ import { applyWorker, readGit, renderStatus, renderWorkers, repository, statusAr
 
 const head = "a".repeat(40), local = "b".repeat(40);
 const observedAt = Date.parse("2026-10-25T12:03:00Z");
+// Terminal columns as pi-tui's visibleWidth counts them for the text here:
+// wide CJK and emoji take two, joiners and variation selectors none.
+// pi-tui is a peer dependency, so the gates cannot import it.
+const columns = (text) => [...text].reduce((n, char) =>
+  n + (/[\u200d\ufe0f]/.test(char) ? 0 : /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\uff00-\uff60]|\p{Extended_Pictographic}/u.test(char) ? 2 : 1), 0);
 // Colors show as <color>text</color> and links as [text](url), so tests can read both.
-const theme = { fg: (c, t) => `<${c}>${t}</${c}>`, bold: (t) => t, link: (t, url) => `[${t}](${url})` };
+const theme = { fg: (c, t) => `<${c}>${t}</${c}>`, bold: (t) => t, link: (t, url) => `[${t}](${url})`, width: columns };
 const plain = (line) => line.replace(/<\/?\w+>/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
+const fits = (lines, width) => {
+  for (const line of lines) assert.ok(columns(plain(line)) <= width, `"${plain(line)}" fits ${width}`);
+  return lines;
+};
 const pr = (overrides = {}) => ({
   status: "success", observedAt, key: `owner/repo#7@${head}`, branch: "storm/task",
   pr: { repository: "owner/repo", number: 7, url: "https://github.com/owner/repo/pull/7", head, draft: true, state: "open", stopped: false },
@@ -16,11 +25,7 @@ const pr = (overrides = {}) => ({
 });
 const git = { repository: "owner/repo", branch: "storm/task", head, ahead: 2, behind: 0, diff: { files: 5, added: 120, deleted: 8 } };
 const state = (overrides = {}) => ({ pr: pr(), git, workers: {}, ...overrides });
-const render = (s, width = 120) => {
-  const lines = renderStatus(s, width, theme);
-  for (const line of lines) assert.ok(plain(line).length <= width, `"${plain(line)}" fits ${width}`);
-  return lines;
-};
+const render = (s, width = 120) => fits(renderStatus(s, width, theme), width);
 
 test("a wide terminal shows the repository, branch, PR, checks and diff", () => {
   const [first, second] = render(state(), 140);
@@ -62,10 +67,18 @@ test("a moved head shows the old checks as stale with their head and read time, 
   for (const [s, why] of [[state({ pr: pr({ status: "stale" }) }), "head may have moved"], [state({ git: { ...git, head: local } }), "local head differs"]]) {
     const [first] = render(s);
     assert.doesNotMatch(first, /<success>/);
-    assert.equal(plain(first), `PR #7 · draft · checks stale, 4/4 passed, read 12:03 · head aaaaaaa, ${why} · owner/repo · ↑2 ↓0`);
-    assert.equal(plain(render(s, 80)[0]), "PR #7 · draft · checks stale, 4/4 passed, read 12:03 · owner/repo · ↑2 ↓0");
-    assert.equal(plain(render(s, 60)[0]), "PR #7 · draft · checks stale, 4/4 passed, read 12:03 · ↑2 ↓0");
+    assert.equal(plain(first), `PR #7 · draft · checks stale, ${why}, 4/4 passed · read 12:03 · head aaaaaaa · owner/repo · ↑2 ↓0`);
+    assert.equal(plain(render(s, 80)[0]), `PR #7 · draft · checks stale, ${why}, 4/4 passed · read 12:03`);
+    assert.match(plain(render(s, 60)[0]), new RegExp(`^PR #7 · draft · (checks )?stale, ${why}, 4/4 passed$`));
   }
+});
+
+test("stale checks keep their failed and pending counts at every width", () => {
+  const s = state({ pr: pr({ status: "stale", checks: { total: 4, passed: 1, pending: 1, failed: 2, items: [] } }) });
+  assert.equal(plain(render(s)[0]), "PR #7 · draft · checks stale, head may have moved, 1/4 passed, 2 failed, 1 pending · read 12:03 · head aaaaaaa · ↑2 ↓0");
+  assert.equal(plain(render(s, 80)[0]), "PR #7 · draft · stale, head may have moved, 1/4 passed, 2 failed, 1 pending");
+  // Too narrow for every count: the pending count is cut before the failed one.
+  assert.equal(plain(render(s, 60)[0]), "PR #7 · draft · stale, head may have moved, 1/4 passed, 2 f…");
 });
 
 test("a rate limit or failed lookup is unknown or stale, never green", () => {
@@ -77,9 +90,15 @@ test("a rate limit or failed lookup is unknown or stale, never green", () => {
   const s = state({ pr: pr({ status: "stale", ...limited, pr: { ...pr().pr, number: 47 } }) });
   const [first] = render(s);
   assert.doesNotMatch(first, /<success>/);
-  assert.equal(plain(first), "PR #47 · draft · checks stale, 4/4 passed, read 12:03 · retry 12:08 · head aaaaaaa, GitHub rate limit · ↑2 ↓0");
-  assert.equal(plain(render(s, 80)[0]), "PR #47 · draft · checks stale, 4/4 passed, read 12:03 · retry 12:08 · ↑2 ↓0");
-  assert.equal(plain(render(s, 60)[0]), "PR #47 · draft · checks stale, 4/4 passed, read 12:03");
+  assert.equal(plain(first), "PR #47 · draft · checks stale, rate limited, 4/4 passed · read 12:03 · retry 12:08 · head aaaaaaa · owner/repo · ↑2 ↓0");
+  assert.equal(plain(render(s, 80)[0]), "PR #47 · draft · checks stale, rate limited, 4/4 passed · read 12:03 · ↑2 ↓0");
+  // The cause outranks the read time, so a narrow rate-limited row never reads as plain stale.
+  assert.equal(plain(render(s, 60)[0]), "PR #47 · draft · checks stale, rate limited, 4/4 passed");
+  const failing = state({ pr: pr({ status: "stale", ...limited, pr: { ...pr().pr, number: 47 },
+    checks: { total: 4, passed: 2, pending: 0, failed: 2, items: [] } }) });
+  assert.equal(plain(render(failing, 80)[0]), "PR #47 · draft · checks stale, rate limited, 2/4 passed, 2 failed · read 12:03");
+  assert.equal(plain(render(failing, 60)[0]), "PR #47 · draft · stale, rate limited, 2/4 passed, 2 failed");
+  assert.match(plain(render(state({ pr: pr({ status: "stale", error: "GitHub lookup failed" }) }), 60)[0]), /stale, lookup failed, 4\/4 passed/);
   assert.match(plain(render(state({ pr: pr({ checks: { total: 0, passed: 0, pending: 0, failed: 0, items: [] }, status: "unknown" }) }))[0]),
     /checks none/);
 });
@@ -98,13 +117,23 @@ test("worker events set the step, the counts and the widget, and keep report tex
   assert.deepEqual(renderWorkers(s, 20, theme).map(plain), ["reviewer · working", "reviser · blocked"]);
 });
 
+test("wide characters count as two columns", () => {
+  const s = applyWorker(state(), { workerId: "w1-0000000000", worker: { role: "審査者🔍", state: "running" },
+    event: { type: "progress", event: "tool_execution_start" } });
+  assert.deepEqual(fits(renderWorkers(s, 30, theme), 30).map(plain), ["審査者🔍 · working · w1-00000"]);
+  assert.deepEqual(fits(renderWorkers(s, 12, theme), 12).map(plain), ["審査者🔍 · …"]);
+  const branch = { ...git, branch: "storm/日本語-ブランチ" };
+  assert.equal(plain(render(state({ git: branch }), 160)[0]).split(" · ").at(-3), "storm/日本語-ブランチ");
+  assert.equal(plain(render(state({ pr: { status: "unknown", observedAt }, git: branch }), 30)[0]), "no PR · owner/repo · ↑2 ↓0");
+});
+
 test("Git reads keep the remote's token out and leave failed reads unknown", async () => {
   assert.equal(repository("https://x-access-token:ghs_secret@github.com/owner/repo.git"), "owner/repo");
   assert.equal(repository("git@github.com:owner/repo.git"), "owner/repo");
   assert.equal(repository("https://example.com/owner/repo"), undefined);
   const replies = {
     "remote get-url origin": "https://x-access-token:ghs_secret@github.com/owner/repo.git\n",
-    "rev-parse --abbrev-ref HEAD": "storm/task\n", "rev-parse HEAD": `${head}\n`,
+    "rev-parse --abbrev-ref HEAD": "storm/\u202etask\u2066\u200b\ufeff\n", "rev-parse HEAD": `${head}\n`,
     "rev-parse --abbrev-ref origin/HEAD": "origin/main\n", [`merge-base origin/main HEAD`]: "c".repeat(40),
     [`diff --shortstat ${"c".repeat(40)}`]: " 1 file changed, 3 insertions(+)\n",
   };
@@ -113,6 +142,7 @@ test("Git reads keep the remote's token out and leave failed reads unknown", asy
     if (reply === undefined) throw new Error("no upstream");
     return reply;
   };
+  // Bidirectional and zero-width marks go, so a branch name cannot reorder the diff after it.
   assert.deepEqual(await readGit(run), { repository: "owner/repo", branch: "storm/task", head,
     ahead: undefined, behind: undefined, diff: { files: 1, added: 3, deleted: 0 } });
   assert.equal(plain(render(state({ git: await readGit(run) }))[0]).split(" · ").slice(-2).join(" · "), "storm/task · +3 -0 in 1 file");
