@@ -67,8 +67,10 @@ else console.log(${JSON.stringify(JSON.stringify(pr))});`);
 }
 
 // A session that outlives reloads; each `load` is one extension runtime, as Pi
-// creates on startup and on every reload. Bus errors are collected.
-function session(root, mode = "tui") {
+// creates on startup and on every reload. Bus errors are collected. With
+// `defer`, the bus delivers each event on a later task; Pi does not promise
+// synchronous delivery.
+function session(root, mode = "tui", defer = false) {
   const bus = new EventEmitter();
   const entries = [{ type: "custom", customType: "fabrial.worker",
     data: { worker: { worker_id: "w1", role: "reviewer" }, cursor: 0, reported: false, done: false } }];
@@ -86,7 +88,7 @@ function session(root, mode = "tui") {
     const pi = {
       on: (name, handler) => handlers.push([name, handler]),
       events: {
-        emit: (channel, data) => bus.emit(channel, data),
+        emit: (channel, data) => (defer ? setTimeout(() => bus.emit(channel, data)) : bus.emit(channel, data)),
         on: (channel, handler) => {
           const safe = async (data) => { try { await handler(data); } catch (error) { errors.push(error); } };
           bus.on(channel, safe);
@@ -123,10 +125,11 @@ async function until(condition, what) {
   }
 }
 
-for (const order of [["workers", "pr", "status"], ["status", "pr", "workers"]]) {
-  test(`loaded as ${order.join(", ")}: a stop cancels the workers and the status area renders`, async (t) => {
+for (const [order, defer] of [[["workers", "pr", "status"], false], [["status", "pr", "workers"], false],
+  [["workers", "pr", "status"], true]]) {
+  test(`loaded as ${order.join(", ")}${defer ? " with deferred events" : ""}: a stop cancels the workers and the status area renders`, async (t) => {
     const h = host(t);
-    const s = session(h.root);
+    const s = session(h.root, "tui", defer);
     const runtime = s.load(order);
     assert.deepEqual([...runtime.tools.keys()], ["agent", "agent_control"]);
     assert.deepEqual([...runtime.commands.keys()], ["worker-watch", "worker-steer"]);

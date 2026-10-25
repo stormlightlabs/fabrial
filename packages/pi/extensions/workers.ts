@@ -20,13 +20,14 @@ export default function (pi: ExtensionAPI) {
   let journal: WorkerJournal | undefined;
 
   pi.on("context", (event) => ({ messages: dedupeNotifications(event.messages) }));
-  // An authorized PR stop from the PR status extension. It queues its message once
-  // `respond`'s outcome settles, so answer synchronously, before any await.
+  // An authorized PR stop from the PR status extension. Reply with the outcome
+  // at once, so PR status waits for the cancels rather than timing out.
   pi.events.on("fabrial:stop", (request) => {
-    const respond = (request as { respond?: unknown } | undefined)?.respond;
-    if (typeof respond !== "function") return;
-    respond(cancelWorkers([...(monitor?.workers.keys() ?? [])],
-      (id: string) => workerOperation("cancel", id, [], undefined, host)));
+    const key = (request as { key?: unknown } | undefined)?.key;
+    if (typeof key !== "string") return;
+    const outcome = cancelWorkers([...(monitor?.workers.keys() ?? [])],
+      (id: string) => workerOperation("cancel", id, [], undefined, host));
+    pi.events.emit("fabrial:stop-outcome", { key, outcome });
   });
   pi.on("session_start", (_event, ctx) => {
     monitor?.stop();

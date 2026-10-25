@@ -2,15 +2,21 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { WorkerJournal, dedupeNotifications } from "../lib/journal.mjs";
 import { PullRequestCollector, movesBranch, prNotification } from "../lib/pr.mjs";
 
-/** A `fabrial:stop` request: each listener passes `respond` one outcome sentence that never rejects. */
-type StopRequest = { key: string; respond: (outcome: Promise<string>) => void };
+/** How long a stop waits for the workers extension to reply before it reports no outcome. */
+const STOP_REPLY_MS = 1000;
+
+/** A `fabrial:stop` request for the stop with this key. */
+type StopRequest = { key: string };
+/** The `fabrial:stop-outcome` reply: the cancel outcome sentence, which never rejects. */
+type StopReply = { key: string; outcome: Promise<string> };
 
 /**
  * Watches the session branch's pull request, publishes each reading as a
  * `fabrial:pr` event and resumes the orchestrator on the changes docs/pi.md
  * lists. On an authorized stop it emits `fabrial:stop` and waits for the
- * outcomes before queuing one message, so a reload before then repeats the
- * stop. Without the workers extension nothing answers and the message has no
+ * keyed `fabrial:stop-outcome` reply and its outcome before queuing one
+ * message, so a reload before then repeats the stop. With no reply within
+ * `STOP_REPLY_MS`, as without the workers extension, the message has no
  * outcome.
  */
 export default function (pi: ExtensionAPI) {
@@ -42,12 +48,8 @@ export default function (pi: ExtensionAPI) {
       notify: async (event: { key: string; kind: string; content: string; snapshot: unknown }) => {
         // The owner's stop is trusted: it came from an OWNER, MEMBER or COLLABORATOR or set the label.
         if (event.kind === "stop" && !current.outbox.has(event.key)) {
-          const outcomes: Promise<string>[] = [];
-          // Pi's event bus calls listeners synchronously, so every answer is in before emit returns.
-          pi.events.emit("fabrial:stop", { key: event.key, respond: (outcome) => { outcomes.push(outcome); } } satisfies StopRequest);
-          const settled = await Promise.allSettled(outcomes);
+          const outcome = await stopOutcome(pi, event.key);
           if (journal !== current) return;
-          const outcome = settled.map((result) => (result.status === "fulfilled" ? result.value : "")).filter(Boolean).join(" ");
           event = { ...event, content: prNotification({ ...event, outcome }, event.snapshot) };
         }
         current.enqueue(event);
@@ -59,5 +61,19 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", () => {
     collector?.stop();
     collector = undefined; journal = undefined;
+  });
+}
+
+/** Emits `fabrial:stop` and resolves to the reply's outcome, or "" when none arrives in time. */
+function stopOutcome(pi: ExtensionAPI, key: string): Promise<string> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { off(); resolve(""); }, STOP_REPLY_MS);
+    const off = pi.events.on("fabrial:stop-outcome", (data) => {
+      const reply = data as Partial<StopReply> | undefined;
+      if (reply?.key !== key || !(reply.outcome instanceof Promise)) return;
+      clearTimeout(timer); off();
+      resolve(reply.outcome.then(String, () => ""));
+    });
+    pi.events.emit("fabrial:stop", { key } satisfies StopRequest);
   });
 }
