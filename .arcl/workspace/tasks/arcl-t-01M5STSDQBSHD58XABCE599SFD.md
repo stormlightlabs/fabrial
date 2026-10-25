@@ -4,10 +4,11 @@ spec = "arcl-s-01M5S4QY2GBQ3S3E6VA696T0K9"
 plan = "arcl-pl-01M5S4SCF003F7F6Q4VQE44TFF"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Move the Pi package to packages/pi and the sandbox to conf/sandbox"
-status = "pending"
+status = "completed"
 priority = "normal"
 position = 0
 blocked-by = ["arcl-t-01M5S4SCQ8CMS71YH8SF380RAD"]
+evidence = "Done in #48 at 719691e: packages/pi holds workers, pr-status and status-area extensions over a shared lib, talking through pi.events with a bounded keyed stop reply; sandbox moved to conf/sandbox with an unchanged store path; covered by packages/pi tests in both load orders and alone, a scratch pi install, and shot.sh captures."
 +++
 
 Move the fabrial Pi package to `packages/pi/` as separate extensions, and the

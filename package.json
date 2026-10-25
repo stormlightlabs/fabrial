@@ -4,11 +4,17 @@
   "private": true,
   "type": "module",
   "keywords": ["pi-package"],
-  "pi": { "extensions": ["./pi/extension.ts"] },
+  "pi": {
+    "extensions": [
+      "./packages/pi/extensions/workers.ts",
+      "./packages/pi/extensions/pr-status.ts",
+      "./packages/pi/extensions/status-area.ts"
+    ]
+  },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-tui": "*"
   },
-  "scripts": { "test": "node --test pi/*.test.mjs" }
+  "scripts": { "test": "node --test packages/pi/*.test.mjs packages/pi/lib/*.test.mjs .github/storm/*.test.mjs .github/release/*.test.mjs scripts/*.test.mjs" }
 }

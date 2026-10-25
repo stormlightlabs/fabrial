@@ -1,13 +1,15 @@
-import { Type } from "@earendil-works/pi-ai";
+import { StringEnum, Type } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { startWorker, workerOperation } from "./dispatch.mjs";
-import { WorkerMonitor, isTerminal } from "./workers.mjs";
-import { WorkerJournal, dedupeNotifications } from "./journal.mjs";
-import { PullRequestCollector, cancelWorkers, movesBranch } from "./pr.mjs";
-import { statusArea } from "./status.mjs";
+import { startWorker, workerOperation } from "../lib/dispatch.mjs";
+import { WorkerMonitor, cancelWorkers, isTerminal } from "../lib/workers.mjs";
+import { WorkerJournal, dedupeNotifications } from "../lib/journal.mjs";
 
-/** Fresh workers run independently; the extension observes without owning their lifetime. */
+/**
+ * The `agent` and `agent_control` tools and the `/worker-*` commands. Fresh
+ * workers run independently; the extension observes without owning their
+ * lifetime, publishes progress as `fabrial:worker` events and answers
+ * `fabrial:stop` by cancelling every worker it observes.
+ */
 export default function (pi: ExtensionAPI) {
   const host = {
     config: process.env.FAB_DISPATCH_CONFIG,
@@ -16,19 +18,23 @@ export default function (pi: ExtensionAPI) {
   };
   let monitor: WorkerMonitor | undefined;
   let journal: WorkerJournal | undefined;
-  let collector: PullRequestCollector | undefined;
-
-  // Registered first, so it subscribes before the collector and monitor publish.
-  statusArea(pi, { fit: (line: string, width: number) => truncateToWidth(line, width), measure: visibleWidth });
+  // Aborts this runtime's stop cancels when the session shuts down or reloads.
+  let session = new AbortController();
 
   pi.on("context", (event) => ({ messages: dedupeNotifications(event.messages) }));
-  pi.on("tool_result", (event) => {
-    if (event.toolName === "bash" && movesBranch(event.input.command)) collector?.refresh();
+  // An authorized PR stop from the PR status extension. Reply with the outcome
+  // at once, so PR status waits for the cancels rather than timing out. Each
+  // cancel is bounded by `CANCEL_MS` and aborts on shutdown.
+  pi.events.on("fabrial:stop", (request) => {
+    const key = (request as { key?: unknown } | undefined)?.key;
+    if (typeof key !== "string") return;
+    const outcome = cancelWorkers([...(monitor?.workers.keys() ?? [])],
+      (id: string, signal: AbortSignal) => workerOperation("cancel", id, [], signal, host), { signal: session.signal });
+    pi.events.emit("fabrial:stop-outcome", { key, outcome });
   });
-  pi.on("user_bash", (event) => { if (movesBranch(event.command)) collector?.refresh(); });
   pi.on("session_start", (_event, ctx) => {
     monitor?.stop();
-    collector?.stop();
+    session.abort(); session = new AbortController();
     const sessionId = ctx.sessionManager.getSessionId();
     journal = new WorkerJournal({
       entries: () => ctx.sessionManager.getBranch(),
@@ -58,37 +64,18 @@ export default function (pi: ExtensionAPI) {
       if (!state.done) monitor.track(state.worker, { cursor: state.cursor, reported: state.reported });
     }
     monitor.start();
-    const observer = monitor;
-    collector = new PullRequestCollector({
-      cwd: ctx.sessionManager.getCwd(),
-      since: ctx.sessionManager.getHeader()?.timestamp,
-      notify: async (event: { key: string; kind: string; content: string }) => {
-        // The owner's stop is trusted: it came from an OWNER, MEMBER or COLLABORATOR or set the label.
-        // Cancel first and queue one message with the outcome; a reload before then repeats the cancels.
-        if (event.kind === "stop" && !current.outbox.has(event.key)) {
-          event = await cancelWorkers(event, [...observer.workers.keys()],
-            (id: string) => workerOperation("cancel", id, [], undefined, host));
-          if (observer.disposed) return;
-        }
-        current.enqueue(event);
-      },
-      progress: (snapshot: unknown) => pi.events.emit("fabrial:pr", snapshot),
-    });
-    collector.start();
   });
   pi.on("session_shutdown", () => {
-    monitor?.stop(); collector?.stop();
-    monitor = undefined; journal = undefined; collector = undefined;
+    monitor?.stop();
+    session.abort(); session = new AbortController();
+    monitor = undefined; journal = undefined;
   });
 
   pi.registerTool(defineTool({
     name: "agent", label: "Agent",
     description: "Start one fresh isolated Pi worker and return its ID promptly. Completion or a blocker arrives later. Do not poll with model calls or repeat stages.",
     parameters: Type.Object({
-      role: Type.Union([
-        Type.Literal("reviewer"), Type.Literal("verifier"),
-        Type.Literal("adversarial-reviewer"), Type.Literal("reviser"),
-      ]),
+      role: StringEnum(["reviewer", "verifier", "adversarial-reviewer", "reviser"] as const),
       taskFile: Type.String({ description: "Absolute path to a task file" }),
       worktree: Type.String({ description: "Absolute path to the worker's linked Git worktree" }),
     }),
@@ -112,7 +99,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool(defineTool({
     name: "agent_control", label: "Worker control",
     description: "Inspect or explicitly cancel one worker. Cancellation requests are not cleanup confirmation. Never start a replacement until this worker is stopped.",
-    parameters: Type.Object({ action: Type.Union([Type.Literal("inspect"), Type.Literal("cancel")]), workerId: Type.String() }),
+    parameters: Type.Object({ action: StringEnum(["inspect", "cancel"] as const), workerId: Type.String() }),
     async execute(_id, params, signal) {
       const result = await workerOperation(params.action, params.workerId, [], signal, host);
       return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };

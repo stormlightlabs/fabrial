@@ -1,4 +1,4 @@
-# Build on the trusted host with: nix-build nix/worker.nix
+# Build on the trusted host with: nix-build conf/sandbox/worker.nix
 # No credential values or personal paths are evaluated into the store.
 let
   nixpkgs = builtins.fetchTree {

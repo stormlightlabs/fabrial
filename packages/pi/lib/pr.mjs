@@ -18,11 +18,12 @@ const BRANCH_MOVES = /\bgit\b[^\n]*\b(push|checkout|switch)\b|\bgh\s+pr\s+checko
  * quote PR text, marked untrusted.
  */
 export class PullRequestCollector {
-  constructor({ cwd, since, notify, progress = () => {}, env = process.env, clock = Date.now }) {
+  constructor({ cwd, since, notify, progress = () => {}, replay = () => {}, env = process.env, clock = Date.now }) {
     this.cwd = cwd;
     this.since = since ? Date.parse(since) : 0;
     this.notify = notify;
     this.progress = progress;
+    this.replay = replay;
     this.env = env;
     this.clock = clock;
     this.controller = new AbortController();
@@ -69,8 +70,11 @@ export class PullRequestCollector {
 
   /** Reads GitHub when due: 30 s after the last read, and after any backoff. */
   async poll() {
+    if (this.disposed) return;
+    // Resend a message queued before a reload; the journal skips any already delivered.
+    this.replay();
     const now = this.clock();
-    if (this.disposed || this.busy || now < this.backoff) return;
+    if (this.busy || now < this.backoff) return;
     if (now - this.attempted < MIN_INTERVAL) return;
     this.busy = true;
     this.attempted = now;
@@ -171,26 +175,6 @@ export class PullRequestCollector {
 /** Whether a shell command may move the session's branch or head. */
 export function movesBranch(command) {
   return BRANCH_MOVES.test(String(command ?? ""));
-}
-
-/**
- * Asks each worker to cancel after an authorized stop, then resolves to the
- * stop event with a message that says which workers were asked and which
- * cancels failed. Queue the result only after this settles: a reload before
- * then reads the stop again and repeats the cancels. The message names worker
- * IDs only, never the error or its stderr.
- */
-export async function cancelWorkers(event, ids, cancel) {
-  const results = await Promise.allSettled(ids.map((id) => cancel(id)));
-  const failed = ids.filter((_, i) => results[i].status === "rejected");
-  const asked = ids.filter((_, i) => results[i].status === "fulfilled");
-  const list = (names) => `${names.length === 1 ? "worker" : "workers"} ${names.join(", ")}`;
-  const outcome = [
-    ids.length ? "" : "No workers were active.",
-    asked.length ? `Asked ${list(asked)} to cancel.` : "",
-    failed.length ? `Could not cancel ${list(failed)}; inspect each with agent_control, cancel it again, and start nothing new until it is stopped.` : "",
-  ].filter(Boolean).join(" ");
-  return { ...event, content: prNotification({ ...event, outcome }, event.snapshot) };
 }
 
 /** One read of a PR, keyed by repository, number and head; checks and reviews belong to that head only. */

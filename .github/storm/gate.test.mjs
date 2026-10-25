@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-const worktree = fileURLToPath(new URL("../", import.meta.url));
+const worktree = fileURLToPath(new URL("../../", import.meta.url));
 const head = "a".repeat(40);
 
 // Runs gate.sh against a fake gh that logs every call and answers `pr view`

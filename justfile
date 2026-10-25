@@ -3,7 +3,7 @@ check:
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
     cargo test --workspace
-    node --test pi/*.test.mjs
+    node --test packages/pi/*.test.mjs packages/pi/lib/*.test.mjs .github/storm/*.test.mjs .github/release/*.test.mjs scripts/*.test.mjs
     cargo run -q --bin fab -- check
 
 fmt:
