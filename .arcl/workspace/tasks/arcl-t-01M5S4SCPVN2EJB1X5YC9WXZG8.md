@@ -2,9 +2,10 @@
 id = "arcl-t-01M5S4SCPVN2EJB1X5YC9WXZG8"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Collect PR status for the Pi package"
-status = "in_progress"
+status = "completed"
 priority = "high"
 position = 1
+evidence = "Done in #46 at f7cb835: pi/pr.mjs collects PR status per head; merge, close, stop, failed checks, change requests and authorized /storm:ready resume Pi once; covered by pi/pr.test.mjs and a real gh smoke on #46."
 +++
 
 A shared collector keeps the orchestrator informed about the PR, independently
