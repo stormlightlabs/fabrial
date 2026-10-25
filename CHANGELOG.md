@@ -8,6 +8,20 @@ stays, and replaces the generated line for the PR it names as `(#N)`.
 
 ## Unreleased
 
+## 0.4.0 - 2026-10-25
+
+- Split the Pi package into extensions under packages/pi (#48)
+
+- Show pull request and run status in Pi (#47)
+
+- Collect pull request status in the Pi package (#46)
+
+- Track fabrial's open work in arcl (#45)
+
+- Trim the Pi docs to a guide and a design page (#44)
+
+- Give reviewers their own worktrees and drop verifiers (#43)
+
 ## 0.3.3 - 2026-10-24
 
 - Run CI only when it has work to do (#41)
