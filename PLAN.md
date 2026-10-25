@@ -80,7 +80,7 @@ a paid plan, so rulesets on `main` are enforced.
   including extensions, UI, defaults, and configuration. This is broader than
   dispatch integration. Keep worker isolation and credential custody intact.
   [Pi dispatch](docs/pi.md) documents shipped dispatch, and
-  [Pi design](docs/pi-design.md) designs PR status and the status area.
+  [Pi design](docs/pi-design.md) designs the status area.
 - **Cleanup is lifecycle work.** The host cleans up worker-owned resources
   when a worker exits and task-owned resources after its PR merges. Preserve
   result evidence, shared resources, and unconfirmed credential recovery state.

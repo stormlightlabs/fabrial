@@ -72,7 +72,7 @@ crates/fab-cli    the `fab` binary
 .github/fabrial.toml  the owner, the squash trailer and the gate command
 docs/hosts.md     what each host reads, and where they differ
 docs/pi.md        how to set up a host and run Pi workers
-docs/pi-design.md the planned PR status and Pi status area
+docs/pi-design.md the planned Pi status area
 PLAN.md           decisions, and how to read the open work
 .arcl/            arcl's config; workspace/ holds the tasks, arcl.db is local
 AGENTS.md         this file (CLAUDE.md links to it)

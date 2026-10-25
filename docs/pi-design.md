@@ -1,7 +1,7 @@
 # Pi design
 
-This page holds the planned parts of fabrial's Pi setup: PR status collection
-and the status area. [Pi dispatch](pi.md) covers what ships today, and
+This page holds the planned parts of fabrial's Pi setup: who owns it and the
+status area. [Pi dispatch](pi.md) covers what ships today, and
 arcl's roadmap phase 6 tracks delivery ([PLAN.md](../PLAN.md#work)).
 
 ## Ownership
@@ -18,23 +18,10 @@ its own sandbox and fresh session.
 
 ## PR status
 
-A shared collector keeps the orchestrator informed of the PR's head, draft
-state, checks, reviews, owner commands, and merge or closure. It works without
-the status area, which reads its state instead of polling GitHub itself.
-
-Key each observation by repository, PR and head SHA. A push invalidates the
-old head's checks and reviews. Distinguish unknown, stale, pending, failed and
-successful. Refresh after pushes and branch changes. Polling, if used, runs at
-most every 30 seconds, backs off on errors and rate limits, and stops on
-shutdown or reload. Webhooks or polling are a transport choice and do not
-change this state model.
-
-Relevant changes reach the orchestrator even when it is not making a tool
-call. A merge starts task cleanup, and an authorized stop request cancels the
-active run. A failed check or requested change is input to the current stage,
-never permission to start another review cycle. PR text and worker output stay
-untrusted and grant no authority. Keep credentials out of messages and UI
-events.
+The package collects PR status by polling `gh`, as
+[Pi dispatch](pi.md#pull-request-status) describes. Webhooks could replace
+the polling later; they would change the transport, not the state the status
+area reads.
 
 ## Status area
 
@@ -48,7 +35,7 @@ still works when the terminal cannot open links.
 | ------------ | ---------------------------------------------- | ----------------------------- |
 | Repository   | `stormlightlabs/fabrial` and its link          | Git remote                    |
 | Branch       | Task branch, ahead and behind counts           | Git                           |
-| Pull request | Number, link, and draft, ready or merged state | PR status, above              |
+| Pull request | Number, link, and draft, ready or merged state | PR status collector           |
 | Checks       | Passed of total, with pending and failed apart | PR status, current head       |
 | Diff         | Added and deleted lines, changed-file count    | Git, against the fetched base |
 | Directory    | Current worktree path                          | Session working directory     |
