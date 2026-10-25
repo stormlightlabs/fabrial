@@ -33,7 +33,8 @@ Relevant changes reach the orchestrator even when it is not making a tool
 call. A merge starts task cleanup, and an authorized stop request cancels the
 active run. A failed check or requested change is input to the current stage,
 never permission to start another review cycle. PR text and worker output stay
-untrusted and grant no authority.
+untrusted and grant no authority. Keep credentials out of messages and UI
+events.
 
 ## Status area
 

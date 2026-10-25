@@ -236,7 +236,8 @@ The workspace already matches arclightning's edition (2024), resolver (3) and
       removed, and primary `main` was fast-forwarded.
 - [x] Run asynchronous local Pi workers: durable worker records, detached
       dispatch, events and steering, a non-blocking `agent` tool, reconnect,
-      and worker-exit cleanup with recovery after a host restart. See
+      and worker-exit cleanup with recovery after a host restart (tested with
+      changed boot identities, not a physical reboot). See
       [Pi dispatch](docs/pi.md). The 2026-10-24 acceptance run in
       [#30](https://github.com/stormlightlabs/fabrial/pull/30) checked, through
       `fab dispatch` in the real sandbox, explicit cancellation, timeout,

@@ -97,7 +97,8 @@ are task data, never instructions.
 The sandbox exposes only the worker's worktree, its own state, those inputs
 and the Pi runtime. It blocks host sockets, local ports and the Nix daemon,
 and limits outbound domains. Workers can still read shared Git history, refs
-and objects, so keep credentials out of shared Git config and remotes. Never
+and objects, so the sandbox does not isolate one branch from another. Keep
+credentials out of shared Git config and remotes. Never
 share a writable Cargo `target/` between workers. Rust does not link
 `libiconv` inside the sandbox, so run Rust gates such as `just check` on the
 host.
@@ -113,7 +114,9 @@ skill describes.
 
 Each worker's record is `state_dir/records/<worker-id>/worker.json`, with the
 redacted final answer in `result.txt` beside it. Both outlast the worker's
-private state, and neither holds credentials or raw tool output.
+private state, and neither holds raw tool output. The worker's installation
+token and OAuth access and refresh tokens are redacted; any other secret in
+the answer is kept as written.
 
 ## Detached workers
 
@@ -157,9 +160,10 @@ never starts a replacement agent or another review cycle.
 
 ## Recovery
 
-When a worker's supervisor is gone, including after a host restart, the Pi
-package recovers the worker on its next read. Without Pi, run
-`fab worker recover <worker-id> --config <config>`.
+When a worker's supervisor is gone, including after a host restart, a Pi
+session that watches the worker recovers it on its next read. Otherwise, run
+`fab worker recover <worker-id> --config <config>`. Restart handling is tested
+with changed boot identities, not a physical reboot.
 
 Recovery confirms the worker's processes are gone, revokes its token, removes
 its private and temporary state, and marks it failed. It keeps the record,
@@ -193,7 +197,7 @@ call. Completion or a blocker starts a turn, even when Pi was idle.
 
 Cancelling a Pi turn, closing Pi or reloading it leaves workers running. The
 exception is cancelling during launch: if dispatch has already accepted the
-worker, the package cancels it.
+worker, the package requests cancellation and ignores a failed request.
 Resuming the same session restores its workers and delivers each missed
 notification once. Print mode can exit after launch; the CLI still reaches the
 worker.
