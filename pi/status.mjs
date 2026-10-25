@@ -105,6 +105,8 @@ class StatusSession {
   }
 }
 
+const PULL_URL = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+$/;
+
 const PLAIN = { fg: (_color, text) => text, bold: (text) => text, link: (text) => text };
 
 /** Pi's theme plus OSC 8 links, which terminals without link support show as plain text, and the column measure. */
@@ -113,7 +115,7 @@ function style(theme, width) {
     width,
     fg: (color, text) => theme.fg(color, text),
     bold: (text) => theme.bold(text),
-    link: (text, url) => `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`,
+    link: (text, url) => (url ? `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\` : text),
   };
 }
 
@@ -201,7 +203,9 @@ function git(command, args, cwd, signal) {
 function prFields(state, s) {
   const { pr: snapshot, git: local } = state;
   const fields = [];
-  const pr = snapshot?.pr && { ...snapshot.pr, url: clean(snapshot.pr.url) };
+  // Only a GitHub pull request URL becomes a link or shows; anything else is dropped.
+  const url = clean(snapshot?.pr?.url);
+  const pr = snapshot?.pr && { ...snapshot.pr, url: PULL_URL.test(url) ? url : undefined };
   if (!pr) {
     const known = snapshot?.observedAt !== undefined && !snapshot.error;
     const text = known ? "no PR" : `PR unknown${snapshot?.error ? ` (${problem(snapshot)})` : ""}`;
@@ -212,7 +216,7 @@ function prFields(state, s) {
     fields.push({ text: `PR #${pr.number}`, keep: true, paint: (t) => s.link(s.bold(t), pr.url) });
     fields.push({ text: pr.stopped ? `${label}, stopped` : label, keep: true, paint: (t) => s.fg(pr.stopped ? "warning" : color, t) });
     fields.push(...checks({ ...snapshot, pr }, local, s));
-    fields.push({ text: pr.url, priority: 2, paint: (t) => s.link(s.fg("dim", t), pr.url) });
+    if (pr.url) fields.push({ text: pr.url, priority: 2, paint: (t) => s.link(s.fg("dim", t), pr.url) });
   }
   const repo = local?.repository ?? pr?.repository;
   if (repo) fields.push({ text: repo, priority: 4, paint: (t) => s.link(t, `https://github.com/${repo}`) });

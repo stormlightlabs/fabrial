@@ -11,7 +11,7 @@ const observedAt = Date.parse("2026-10-25T12:03:00Z");
 const columns = (text) => [...text].reduce((n, char) =>
   n + (/[\u200d\ufe0f]/.test(char) ? 0 : /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\uff00-\uff60]|\p{Extended_Pictographic}/u.test(char) ? 2 : 1), 0);
 // Colors show as <color>text</color> and links as [text](url), so tests can read both.
-const theme = { fg: (c, t) => `<${c}>${t}</${c}>`, bold: (t) => t, link: (t, url) => `[${t}](${url})`, width: columns };
+const theme = { fg: (c, t) => `<${c}>${t}</${c}>`, bold: (t) => t, link: (t, url) => (url ? `[${t}](${url})` : t), width: columns };
 const plain = (line) => line.replace(/<\/?\w+>/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
 const fits = (lines, width) => {
   for (const line of lines) assert.ok(columns(plain(line)) <= width, `"${plain(line)}" fits ${width}`);
@@ -49,6 +49,13 @@ test("a branch with no PR says so, and an unread one is unknown", () => {
   assert.equal(plain(render(state({ pr: { status: "unknown", branch: "storm/task", observedAt } }))[0]),
     "no PR · owner/repo · storm/task · ↑2 ↓0 · +120 -8 in 5 files");
   assert.equal(plain(render(state({ pr: undefined, git: undefined }))[0]), "PR unknown");
+});
+
+test("a PR URL that is not a GitHub pull request is neither linked nor shown", () => {
+  const forged = "https://github.com/owner/repo/pull/7]8;;https://evil.example\\FORGED";
+  const [first] = render(state({ pr: pr({ pr: { ...pr().pr, url: forged } }) }), 200);
+  assert.equal(plain(first), "PR #7 · draft · checks 4/4 passed · owner/repo · storm/task · ↑2 ↓0 · +120 -8 in 5 files");
+  assert.doesNotMatch(first, /evil/);
 });
 
 test("failed checks are red and labelled", () => {
