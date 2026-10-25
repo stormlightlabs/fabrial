@@ -3,6 +3,9 @@ import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { startWorker, workerOperation } from "./dispatch.mjs";
 import { WorkerMonitor, isTerminal } from "./workers.mjs";
 import { WorkerJournal, dedupeNotifications } from "./journal.mjs";
+import { PullRequestCollector } from "./pr.mjs";
+
+const BRANCH_MOVES = /\bgit\b[^\n]*\b(push|checkout|switch)\b/;
 
 /** Fresh workers run independently; the extension observes without owning their lifetime. */
 export default function (pi: ExtensionAPI) {
@@ -13,10 +16,16 @@ export default function (pi: ExtensionAPI) {
   };
   let monitor: WorkerMonitor | undefined;
   let journal: WorkerJournal | undefined;
+  let collector: PullRequestCollector | undefined;
 
   pi.on("context", (event) => ({ messages: dedupeNotifications(event.messages) }));
+  pi.on("tool_result", (event) => {
+    if (event.toolName === "bash" && BRANCH_MOVES.test(String(event.input.command ?? ""))) collector?.refresh();
+  });
+  pi.on("user_bash", (event) => { if (BRANCH_MOVES.test(event.command)) collector?.refresh(); });
   pi.on("session_start", (_event, ctx) => {
     monitor?.stop();
+    collector?.stop();
     const sessionId = ctx.sessionManager.getSessionId();
     journal = new WorkerJournal({
       entries: () => ctx.sessionManager.getBranch(),
@@ -46,8 +55,28 @@ export default function (pi: ExtensionAPI) {
       if (!state.done) monitor.track(state.worker, { cursor: state.cursor, reported: state.reported });
     }
     monitor.start();
+    const observer = monitor;
+    collector = new PullRequestCollector({
+      cwd: ctx.sessionManager.getCwd(),
+      since: ctx.sessionManager.getHeader()?.timestamp,
+      notify: (event: { key: string; kind: string; content: string }) => {
+        const fresh = !current.outbox.has(event.key);
+        current.enqueue(event);
+        // The owner's stop is trusted: it came from an OWNER, MEMBER or COLLABORATOR or set the label.
+        if (fresh && event.kind === "stop") {
+          for (const id of observer.workers.keys()) {
+            void workerOperation("cancel", id, [], undefined, host).catch(() => {});
+          }
+        }
+      },
+      progress: (snapshot: unknown) => pi.events.emit("fabrial:pr", snapshot),
+    });
+    collector.start();
   });
-  pi.on("session_shutdown", () => { monitor?.stop(); monitor = undefined; journal = undefined; });
+  pi.on("session_shutdown", () => {
+    monitor?.stop(); collector?.stop();
+    monitor = undefined; journal = undefined; collector = undefined;
+  });
 
   pi.registerTool(defineTool({
     name: "agent", label: "Agent",

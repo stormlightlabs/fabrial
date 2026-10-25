@@ -3,8 +3,7 @@
 `fab dispatch` runs reviewer, verifier, adversarial-reviewer and reviser as
 fresh headless Pi 1.4.0 workers, each in a host tmux session with the whole Pi
 process wrapped in agent-sandbox.nix. This guide sets up the host and runs a
-worker. [Pi design](pi-design.md) covers the planned PR status and status
-area; arcl's roadmap phase 6 tracks delivery ([PLAN.md](../PLAN.md#work)).
+worker. [Pi design](pi-design.md) covers the planned status area; arcl's roadmap phase 6 tracks delivery ([PLAN.md](../PLAN.md#work)).
 
 > **Note:** This is a preview feature under active development.
 
@@ -201,6 +200,37 @@ worker, the package requests cancellation and ignores a failed request.
 Resuming the same session restores its workers and delivers each missed
 notification once. Print mode can exit after launch; the CLI still reaches the
 worker.
+
+### Pull request status
+
+The package also watches the pull request for the session's branch with the
+host's `gh`, which needs its own GitHub login. It reads at most every 30
+seconds and backs off after errors, for at least 5 minutes after a rate
+limit. A Git push, checkout or switch run in Pi marks the last reading stale
+until the next one.
+
+Each reading is keyed by repository, PR number and head SHA, and only counts
+checks and reviews of that head. Its status is `unknown` before the first
+reading or when there is no PR or no check, `stale` when the head may have
+moved or the last read failed, and otherwise `pending`, `failed` or `success`
+from the checks. Every reading goes out as a `fabrial:pr` extension event
+without a model call.
+
+These start a turn, once per session even across reloads:
+
+| Change                                 | What the orchestrator is told                         |
+| -------------------------------------- | ----------------------------------------------------- |
+| Merge                                  | Start task cleanup                                    |
+| Closure                                | Stop work and report to the driver                    |
+| `storm:stopped` label or `/storm:stop` | Start nothing new; active workers are asked to cancel |
+| `/storm:ready`                         | Act on it within the current stage                    |
+| Failed check                           | Input to the current stage, not a new review cycle    |
+| Requested change                       | Input to the current stage, not a new review cycle    |
+
+Commands and requested changes count only from an owner, member or
+collaborator, and only when made after the Pi session started. Comment and
+review text arrives marked as untrusted data, and no PR event starts a worker.
+Readings and messages carry no `gh` output or credentials.
 
 ## Verification
 

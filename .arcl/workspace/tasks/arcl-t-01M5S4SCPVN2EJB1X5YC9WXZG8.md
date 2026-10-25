@@ -2,7 +2,7 @@
 id = "arcl-t-01M5S4SCPVN2EJB1X5YC9WXZG8"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Collect PR status for the Pi package"
-status = "pending"
+status = "in_progress"
 priority = "high"
 position = 1
 +++

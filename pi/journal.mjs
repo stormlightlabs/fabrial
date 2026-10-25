@@ -1,5 +1,8 @@
 import { notification } from "./workers.mjs";
 
+/** Messages the journal delivers; worker events are the default. */
+const EVENT_TYPES = ["fabrial.worker-event", "fabrial.pr-event"];
+
 /** Session-local checkpoints and a durable outbox; queued messages are not delivery receipts. */
 export class WorkerJournal {
   constructor({ entries, append, send }) {
@@ -35,9 +38,12 @@ export class WorkerJournal {
     return state;
   }
 
+  /** Queue a worker event, or a PR event that carries its own `content`. */
   enqueue(event) {
     if (!this.outbox.has(event.key)) {
-      const message = { key: event.key, workerId: event.worker.worker_id, content: notification(event) };
+      const message = event.worker
+        ? { key: event.key, workerId: event.worker.worker_id, content: notification(event) }
+        : { key: event.key, customType: "fabrial.pr-event", content: event.content };
       this.append("fabrial.worker-outbox", message);
       this.outbox.set(event.key, message);
     }
@@ -47,13 +53,13 @@ export class WorkerJournal {
   flush() {
     // A follow-up may have been committed since the preceding poll or during reload.
     for (const entry of this.entries()) {
-      if (entry.type === "custom_message" && entry.customType === "fabrial.worker-event" && entry.details?.eventKey) {
+      if (entry.type === "custom_message" && EVENT_TYPES.includes(entry.customType) && entry.details?.eventKey) {
         this.seen.add(entry.details.eventKey);
       }
     }
     for (const [key, message] of this.outbox) {
       if (this.seen.has(key) || this.sent.has(key)) continue;
-      this.send({ customType: "fabrial.worker-event", content: message.content, display: true,
+      this.send({ customType: message.customType ?? "fabrial.worker-event", content: message.content, display: true,
         details: { eventKey: key, workerId: message.workerId } });
       this.sent.add(key);
     }
@@ -64,7 +70,7 @@ export class WorkerJournal {
 export function dedupeNotifications(messages) {
   const seen = new Set();
   return messages.filter((message) => {
-    if (message.role !== "custom" || message.customType !== "fabrial.worker-event") return true;
+    if (message.role !== "custom" || !EVENT_TYPES.includes(message.customType)) return true;
     const key = message.details?.eventKey;
     if (!key) return true;
     if (seen.has(key)) return false;
