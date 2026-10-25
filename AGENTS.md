@@ -66,8 +66,9 @@ crates/fab-cli    the `fab` binary
 .claude/skills/   skills; .agents/skills links here for Codex and Pi
 .claude/agents/   implementer, reviewer, adversarial-reviewer, verifier, reviser
 .github/          CODEOWNERS and the Check, Branch PR and Review gate workflows
-.github/storm/    gate.sh, which the Review gate workflow runs, and
-                  squash-body.sh, which turns a PR body into the squash body
+.github/storm/    gate.sh, which the Review gate workflow runs,
+                  squash-body.sh, which turns a PR body into the squash body,
+                  and shot.sh, which captures a terminal UI as a PNG
 .github/fabrial.toml  the owner, the squash trailer and the gate command
 docs/hosts.md     what each host reads, and where they differ
 docs/pi.md        the design for running fabrial on Pi 1.x
@@ -85,15 +86,12 @@ Follow arclightning's conventions, since the two share crates:
   before private.
 - Use at most one level of `super`.
 
-## Plan and ledger
+## Plan
 
 - Include `PLAN.md` updates in the PR they describe.
 - Leave `CHANGELOG.md` alone. The Release workflow writes each release's
   section from the squash subjects since the last tag, and the owner edits it
   in the release PR.
-- The [Fabrial Ledger](https://claude.ai/artifact/FeWinSfPXLQYoGyRAHoE39)
-  shows `PLAN.md`'s items and a log of pull requests from its database. When a
-  PR opens or merges, update its rows in the `items` and `log` collections.
 
 <!-- fabrial:begin -->
 ## Branches and pull requests
