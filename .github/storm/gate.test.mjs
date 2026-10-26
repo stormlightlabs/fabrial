@@ -153,21 +153,6 @@ test("an edit during the run posts the edited text last", () => {
   assert(posts[1].body.includes("Edited (#1)\n"));
 });
 
-// squash-body.sh with only the kept text.
-function kept(description) {
-  return spawnSync("bash", [".github/storm/squash-body.sh", "--text"], { cwd: worktree, encoding: "utf8", input: description }).stdout;
-}
-
-test("squash body keeps a Session line in prose and drops one naming a link", () => {
-  assert.equal(kept("Keep.\nSession: tokens now expire.\nSession: https://pi.dev/s/abc\n> Session: <https://pi.dev/s/abc>\nSession: [run](https://x.io/s)\n"),
-    "Keep.\nSession: tokens now expire.\n");
-});
-
-test("squash body treats code blocks like any other text", () => {
-  assert.equal(kept("Keep.\n````\n```\nCo-authored-by: A <a@b>\n````\nAlso kept.\n<!-- fabrial:footer -->\nGone.\n"),
-    "Keep.\n````\n```\n````\nAlso kept.\n");
-});
-
 test("a failed ready posts no success", () => {
   const { status, calls } = gate({ ...finished, TEST_FAIL: "ready" });
   assert.notEqual(status, 0);

@@ -37,62 +37,37 @@ jobs:
           ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 2
 
-      - name: Tag
+      # A dispatched commit must be on main before anything from it runs
+      # with the App token: the next step builds fab from it.
+      - name: Check the commit is on main
         env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
           sha=$(git rev-parse HEAD)
-          # A dispatched commit must be on main, not only somewhere in the repository.
           status=$(gh api "repos/$REPO/compare/$sha...main" --jq .status)
           if [[ $status != ahead && $status != identical ]]; then
             echo "::error title=release::$sha is not on main; nothing was tagged."
             exit 1
           fi
-          version() {
-            sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p'
-          }
-          now=$(version < Cargo.toml)
-          before=$(git show HEAD^:Cargo.toml | version)
-          if [[ $now == "$before" || $(printf '%s\n%s\n' "$before" "$now" | sort -V | tail -n 1) != "$now" ]]; then
-            echo "The version did not rise ($before to $now); nothing to tag."
+
+      - uses: ./.github/actions/fab
+        with:
+          command: release
+
+      - name: Tag
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # `fab release check-tag` prints the version when this commit is
+          # the merge of its release pull request, and nothing when there is
+          # nothing to tag; it fails on a commit off main, a version raised
+          # outside a release pull request, a tag on another commit, or no
+          # notes in CHANGELOG.md.
+          version=$(fab release check-tag)
+          if [[ -z $version ]]; then
             exit 0
-          fi
-          # The commit must be the merge of a storm/release-<version> pull
-          # request from this repository; the owner's approval of it is the
-          # gate. GitHub can take a moment to link a fresh merge to its pull
-          # request, so ask three times.
-          set -o pipefail
-          for attempt in 1 2 3; do
-            release=$(gh api "repos/$REPO/commits/$sha/pulls" | jq --arg sha "$sha" --arg ref "storm/release-$now" --arg repo "$REPO" \
-              '[.[] | select(.merge_commit_sha == $sha and .merged_at != null and .head.ref == $ref
-                and .head.repo.full_name == $repo)] | length')
-            [[ $release =~ ^[0-9]+$ ]] || { echo "::error title=release::Cannot read the pull request behind $sha."; exit 1; }
-            (( release > 0 )) && break
-            (( attempt < 3 )) && sleep 10
-          done
-          if (( release == 0 )); then
-            echo "::error title=release::The version rose to $now outside a storm/release-$now pull request; nothing was tagged. If it was one, run Release tag from the Actions tab with $sha."
-            exit 1
-          fi
-          # A tag already on this commit is done; one elsewhere stops the run.
-          if tagged=$(git ls-remote --tags origin "refs/tags/v$now" | cut -f1) && [[ -n $tagged ]]; then
-            if [[ $tagged == "$sha" ]]; then
-              echo "v$now is already tagged on $sha."
-              exit 0
-            fi
-            echo "::error title=tag::v$now is tagged on $tagged, not $sha."
-            exit 1
-          fi
-          # dist publishes this section as the release notes.
-          awk -v v="$now" '
-            $0 ~ "^## " v "( |$)" { on = 1; next }
-            on && /^## / { exit }
-            on { print }
-          ' CHANGELOG.md > notes.md
-          if ! grep -q '[^[:space:]]' notes.md; then
-            echo "::error title=changelog::CHANGELOG.md has no notes under '## $now'."
-            exit 1
           fi
           # dist's Release workflow builds this commit once the tag exists, and
           # a tag cannot be moved, so check its plan here first: a dist change
@@ -100,7 +75,7 @@ jobs:
           dist_version=$(sed -n 's/^cargo-dist-version = "\(.*\)"$/\1/p' dist-workspace.toml)
           curl --proto '=https' --tlsv1.2 -LsSf \
             "https://github.com/axodotdev/cargo-dist/releases/download/v$dist_version/cargo-dist-installer.sh" | sh
-          "$HOME/.cargo/bin/dist" plan --tag "v$now" >/dev/null
+          "$HOME/.cargo/bin/dist" plan --tag "v$version" >/dev/null
           # The App token's tag push starts the dist workflow; a push made with
           # GITHUB_TOKEN would not.
-          gh api "repos/$REPO/git/refs" -f "ref=refs/tags/v$now" -f "sha=$sha" >/dev/null
+          gh api "repos/$REPO/git/refs" -f "ref=refs/tags/v$version" -f "sha=$(git rev-parse HEAD)" >/dev/null

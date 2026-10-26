@@ -1,7 +1,7 @@
 # Opens the pull request for a fabrial release, run by hand with the version.
 # The bot sets the workspace version, records it in .github/fabrial.toml with
 # `fab update`, writes the release's section of CHANGELOG.md from the squash
-# subjects since the last tag (.github/release/changelog.sh), and pushes
+# subjects since the last tag (`fab release changelog`), and pushes
 # storm/release-<version>, which Branch PR opens. The owner edits the lines
 # there before accepting it. Release tag tags the merge commit. Nothing here
 # writes to main.
@@ -72,11 +72,7 @@ jobs:
           sed -i "/^\[workspace.package\]/,/^\[/s/^version = \"$current\"$/version = \"$VERSION\"/" Cargo.toml
           cargo update --workspace --quiet
           cargo run --quiet --bin fab -- update
-          if ! .github/release/changelog.sh "$VERSION" "$(date -u +%F)" 2>notes.err; then
-            echo "::error title=changelog::$(cat notes.err)"
-            exit 1
-          fi
-          rm notes.err
+          cargo run --quiet --bin fab -- release changelog "$VERSION" "$(date -u +%F)"
           # dist's Release workflow runs only once the tag exists, so check
           # here that its config, release.yml and the notes still agree.
           dist_version=$(sed -n 's/^cargo-dist-version = "\(.*\)"$/\1/p' dist-workspace.toml)

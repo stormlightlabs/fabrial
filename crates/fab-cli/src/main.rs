@@ -3,9 +3,13 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+mod branch_pr;
 #[cfg(unix)]
 mod dispatch;
 mod gate;
+mod release;
+mod run;
+mod squash;
 
 use clap::{Args, Parser, Subcommand};
 use fab_core::install::{self, Report};
@@ -79,6 +83,14 @@ enum Command {
     /// Set the storm/review check for a pull request event; the Review gate
     /// workflow runs it from a checkout of main.
     Gate(gate::Options),
+    /// Open a draft pull request for an agent's work branch; the Branch PR
+    /// workflow runs it.
+    BranchPr(branch_pr::Options),
+    /// fabrial's own release steps, which its release workflows run.
+    Release {
+        #[command(subcommand)]
+        step: release::Command,
+    },
 }
 
 #[derive(Args)]
@@ -109,15 +121,9 @@ fn main() -> ExitCode {
             install::update(dir, change, force).map(|r| written(&r, "updated"))
         }),
         Command::Check { repo } => in_repo(&repo, check),
-        Command::Gate(options) => {
-            return gate::run(options).map_or_else(
-                |e| {
-                    eprintln!("fab: {e}");
-                    ExitCode::from(2)
-                },
-                |()| ExitCode::SUCCESS,
-            );
-        }
+        Command::Gate(options) => return in_workflow(gate::run(options)),
+        Command::BranchPr(options) => return in_workflow(branch_pr::run(options)),
+        Command::Release { step } => return in_workflow(step.run()),
         #[cfg(unix)]
         Command::Dispatch(options) => return ExitCode::from(dispatch::run(options)),
         #[cfg(unix)]
@@ -137,6 +143,23 @@ fn in_repo(
 ) -> Result<ExitCode, fab_core::Error> {
     install::require_repo_root(&repo.dir)?;
     run(&repo.dir)
+}
+
+/// The exit code for a command a workflow runs. A failure is printed to
+/// standard error, as an error annotation when it runs in GitHub Actions, so
+/// a step that reads standard output does not swallow it.
+fn in_workflow(result: run::Result<()>) -> ExitCode {
+    let Err(e) = result else {
+        return ExitCode::SUCCESS;
+    };
+    if std::env::var_os("GITHUB_ACTIONS").is_some_and(|v| v == "true") {
+        // An annotation is one line; GitHub reads `%0A` as a line break.
+        let e = e.replace('%', "%25").replace('\r', "%0D").replace('\n', "%0A");
+        eprintln!("::error title=fab::{e}");
+    } else {
+        eprintln!("fab: {e}");
+    }
+    ExitCode::from(2)
 }
 
 fn check(dir: &Path) -> Result<ExitCode, fab_core::Error> {

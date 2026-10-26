@@ -74,32 +74,9 @@ jobs:
 
       # fabrial builds its own gate from main; a repository that installs
       # fabrial runs the release that wrote its files.
-      - uses: Swatinem/rust-cache@v2
-        if: hashFiles('crates/fab-cli/Cargo.toml') != ''
-
-      - name: Install fab
-        run: |
-          set -o pipefail
-          if [[ -f crates/fab-cli/Cargo.toml ]] && grep -qx 'name = "fab-cli"' crates/fab-cli/Cargo.toml; then
-            cargo build --quiet --locked -p fab-cli
-            bin=$PWD/target/debug
-          else
-            version=$(sed -n 's/^version = "\(.*\)"$/\1/p' .github/fabrial.toml)
-            if [[ -z $version ]]; then
-              echo "::error title=fab::.github/fabrial.toml names no version; run fab update."
-              exit 1
-            fi
-            curl --proto '=https' --tlsv1.2 -LsSf \
-              "https://github.com/stormlightlabs/fabrial/releases/download/v$version/fab-cli-installer.sh" | sh
-            bin=$HOME/.cargo/bin
-            # A fab built from main before a release can stamp a version
-            # that has no gate.
-            if ! "$bin/fab" gate --help >/dev/null 2>&1; then
-              echo "::error title=fab::fab $version has no gate command; run fab update from fabrial 0.5.0 or later."
-              exit 1
-            fi
-          fi
-          echo "$bin" >> "$GITHUB_PATH"
+      - uses: ./.github/actions/fab
+        with:
+          command: gate
 
       - name: Set the check
         env:

@@ -23,15 +23,17 @@
 //! `HEAD_DIR` and `origin/main` fetched there, and talks to GitHub through
 //! `gh` with `GH_TOKEN`. With `DRY_RUN=1`, writes are printed instead of sent.
 
-use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use clap::builder::FalseyValueParser;
 use clap::{ArgAction, Args, ValueEnum};
 use fab_core::settings::Settings;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+
+use crate::run::{self, Result};
+use crate::squash;
 
 const CHECK_NAME: &str = "storm/review";
 const BOT_SLUG: &str = "stormlight-thunderbot";
@@ -40,8 +42,6 @@ const INTRO: &str = "When you merge, by hand or with auto-merge, squash with thi
 const AUTO_MERGE_NOTE: &str = "Auto-merge is on and squashes with the message it was turned on with. \
                                To use this one, turn auto-merge off and on again with it.";
 const MARKER: &str = "<!-- storm-review diff=";
-
-type Result<T> = std::result::Result<T, String>;
 
 /// The pull request event the gate answers.
 #[derive(Clone, Copy, PartialEq, ValueEnum)]
@@ -109,47 +109,17 @@ impl Gate {
         &self.head[..self.head.len().min(7)]
     }
 
-    /// Runs `gh` and returns its standard output.
-    fn gh(&self, args: &[&str]) -> Result<String> {
-        let output = Command::new("gh")
-            .args(args)
-            .output()
-            .map_err(|e| format!("cannot run gh: {e}"))?;
-        if !output.status.success() {
-            let what = args.iter().take(4).copied().collect::<Vec<_>>().join(" ");
-            return Err(format!(
-                "gh {what} failed: {}",
-                String::from_utf8_lossy(&output.stderr).trim()
-            ));
-        }
-        Ok(String::from_utf8_lossy(&output.stdout)
-            .trim_end_matches('\n')
-            .to_string())
-    }
-
-    /// Runs `gh` for a write, or prints it under `DRY_RUN`, with the text of
-    /// any `--body-file` it names.
+    /// Runs `gh` for a write, or prints it under `DRY_RUN`.
     fn gh_write(&self, args: &[&str]) -> Result<()> {
-        if !self.dry_run {
-            return self.gh(args).map(drop);
+        if self.dry_run {
+            run::print_write(args);
+            return Ok(());
         }
-        eprintln!(
-            "DRY_RUN gh {}",
-            args.iter().map(|a| format!("{a:?}")).collect::<Vec<_>>().join(" ")
-        );
-        for pair in args.windows(2) {
-            if pair[0] == "--body-file" {
-                eprintln!(
-                    "DRY_RUN body: {:?}",
-                    std::fs::read_to_string(pair[1]).unwrap_or_default()
-                );
-            }
-        }
-        Ok(())
+        run::gh(args).map(drop)
     }
 
     fn view(&self, fields: &str) -> Result<Value> {
-        let text = self.gh(&["pr", "view", &self.pr, "--repo", &self.repo, "--json", fields])?;
+        let text = run::gh(&["pr", "view", &self.pr, "--repo", &self.repo, "--json", fields])?;
         serde_json::from_str(&text).map_err(|e| format!("cannot read gh pr view: {e}"))
     }
 
@@ -185,7 +155,7 @@ impl Gate {
             "[.check_runs[] | select(.status == \"completed\" and .app.slug == \"{BOT_SLUG}\")] \
              | sort_by(.completed_at) | last | select(.conclusion == \"success\") | .output.summary"
         );
-        self.gh(&["api", &path, "--jq", &filter]).unwrap_or_default()
+        run::gh(&["api", &path, "--jq", &filter]).unwrap_or_default()
     }
 
     /// A hash of a commit's diff against its merge base with main, or empty
@@ -280,7 +250,7 @@ impl Gate {
             title = format!("{title} {number}");
         }
         let branch = info["headRefName"].as_str().unwrap_or_default();
-        let body = self.squash_body(info["body"].as_str().unwrap_or_default(), branch)?;
+        let body = squash::body(info["body"].as_str().unwrap_or_default(), branch, &self.trailer);
         // The fence outgrows any backtick run in the message, so a title
         // cannot close it early.
         let fence = "`".repeat(longest_backtick_run(&format!("{title}{body}")).max(2) + 1);
@@ -308,32 +278,6 @@ impl Gate {
         Ok(true)
     }
 
-    /// The squash body from `.github/storm/squash-body.sh`, as Branch PR
-    /// builds it.
-    fn squash_body(&self, description: &str, branch: &str) -> Result<String> {
-        let mut child = Command::new(".github/storm/squash-body.sh")
-            .args([branch, &self.trailer])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("cannot run squash-body.sh: {e}"))?;
-        child
-            .stdin
-            .take()
-            .expect("stdin is piped")
-            .write_all(description.as_bytes())
-            .map_err(|e| format!("cannot write to squash-body.sh: {e}"))?;
-        let output = child
-            .wait_with_output()
-            .map_err(|e| format!("squash-body.sh failed: {e}"))?;
-        if !output.status.success() {
-            return Err("squash-body.sh failed".into());
-        }
-        Ok(String::from_utf8_lossy(&output.stdout)
-            .trim_end_matches('\n')
-            .to_string())
-    }
-
     /// Asks for a command again when the SHA it names is not the head.
     fn wrong_sha(&self, command: &str, named: &str) -> Result<()> {
         let named = if named.is_empty() { "nothing" } else { named };
@@ -350,7 +294,7 @@ impl Gate {
         if sender != format!("{BOT_SLUG}[bot]") {
             let sender = if sender.is_empty() { "none" } else { sender };
             let path = format!("repos/{}/collaborators/{sender}/permission", self.repo);
-            let permission = self.gh(&["api", &path, "--jq", ".permission"]).unwrap_or_default();
+            let permission = run::gh(&["api", &path, "--jq", ".permission"]).unwrap_or_default();
             if !matches!(permission.as_str(), "admin" | "maintain" | "write") {
                 return Ok(());
             }
@@ -458,7 +402,7 @@ pub fn run(options: Options) -> Result<()> {
     };
     gate.head = match given(options.head_sha) {
         Some(sha) => sha,
-        None => gate.gh(&[
+        None => run::gh(&[
             "pr",
             "view",
             &gate.pr,

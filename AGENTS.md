@@ -62,7 +62,8 @@ Clippy warnings fail it whether or not your change caused them.
 
 ```text
 crates/fab-core   install and settings; later, the run operations
-crates/fab-cli    the `fab` binary, including the Review gate (`fab gate`)
+crates/fab-cli    the `fab` binary, including what workflows run: `fab gate`,
+                  `fab branch-pr` and `fab release`
 packages/pi/      the Pi package: extensions/ holds workers, PR status and the
                   status area, lib/ their shared code, and worker.ts the
                   extension `fab dispatch` gives each worker
@@ -71,8 +72,8 @@ package.json      the Pi package manifest, at the root so git installs find it
 .claude/skills/   skills; .agents/skills links here for Codex and Pi
 .claude/agents/   implementer, reviewer, adversarial-reviewer, verifier, reviser
 .github/          CODEOWNERS and the Check, Branch PR and Review gate workflows
-.github/storm/    squash-body.sh, which turns a PR body into the squash body,
-                  and shot.sh, which captures a terminal UI as a PNG
+.github/actions/fab/  the action that puts `fab` on the PATH for workflows
+.github/storm/    shot.sh, which captures a terminal UI as a PNG
 .github/fabrial.toml  the owner, the squash trailer and the gate command
 docs/hosts.md     what each host reads, and where they differ
 docs/pi.md        how to set up a host and run Pi workers
