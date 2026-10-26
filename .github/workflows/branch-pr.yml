@@ -12,7 +12,8 @@
 # `fab` comes from the branch, as this workflow does: in fabrial it is built
 # from the branch, and elsewhere it is the release the branch's
 # .github/fabrial.toml names, so a branch that runs `fab update` gets the
-# release it updates to.
+# release it updates to. In fabrial, a first push that does not build opens
+# no pull request; once it builds, run this from the Actions tab.
 #
 # It runs only on the push that creates the branch; later pushes skip the job,
 # which costs no runner time. A branch pushed with no commits ahead of main,
