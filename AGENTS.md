@@ -54,9 +54,10 @@ alone. If cleanup is blocked, name what remains and why in the handoff.
 just check    # fmt --check, clippy with warnings denied, tests, fab check
 ```
 
-`gates` in `.github/fabrial.toml` names this command for the skills. CI runs
-the same recipe as the `check` job, which the ruleset on `main` requires.
-Clippy warnings fail it whether or not your change caused them.
+It needs Rust, Node 22.18 or later, git, and jq for the gate tests' fake
+`gh`. `gates` in `.github/fabrial.toml` names this command for the skills.
+CI runs the same recipe as the `check` job, which the ruleset on `main`
+requires. Clippy warnings fail it whether or not your change caused them.
 
 ## Layout
 
