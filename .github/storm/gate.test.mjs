@@ -194,17 +194,18 @@ test("a rebase that only moves the base keeps the review, and a new change does 
       { cwd: repo, encoding: "utf8" }).trim();
     const commit = (file, text, message) => { writeFileSync(join(repo, file), text); git("add", file); git("commit", "-qm", message); return git("rev-parse", "HEAD"); };
     git("init", "-q", "-b", "main");
-    commit("a.txt", "one\ntwo\nthree\n", "base");
+    commit("a.txt", "  one\n  two\n  three\n", "base");
     git("checkout", "-qb", "topic");
-    const first = commit("a.txt", "one\ntwo\nthree\nfour\n", "change");
+    const first = commit("a.txt", "  one\n  two\n  three\n  four\n", "change");
     git("checkout", "-q", "main");
-    // Moves the change's hunk down a line, so only the cut hunk headers match.
-    commit("a.txt", "zero\none\ntwo\nthree\n", "main moves");
+    // Moves the change's hunk down a line, so only the cut ranges match.
+    // Indented lines give git no context label for the hunk header.
+    commit("a.txt", "  zero\n  one\n  two\n  three\n", "main moves");
     git("update-ref", "refs/remotes/origin/main", "HEAD");
     git("checkout", "-q", "topic");
     git("rebase", "-q", "main");
     const second = git("rev-parse", "HEAD");
-    const third = commit("a.txt", "one\ntwo\nthree\nfive\n", "another change");
+    const third = commit("a.txt", "  zero\n  one\n  two\n  three\n  five\n", "another change");
 
     const reviewed = gate({ ...finished, BODY: `Review finished at ${first}`, HEAD_SHA: first, HEAD_DIR: repo });
     const success = reviewed.calls.find(c => c.args.includes("conclusion=success"));

@@ -190,10 +190,11 @@ impl Gate {
 
     /// A hash of a commit's diff against its merge base with main, or empty
     /// when the commit is not in the clone or adds nothing. The hash leaves
-    /// out where the change sits: `index` lines, and whole hunk headers,
-    /// line ranges and the context label git adds after them, so a rebase
-    /// over an earlier line of the same file keeps it. Every other byte
-    /// counts, whitespace included.
+    /// out where the change sits: `index` lines, and the line ranges in hunk
+    /// headers, so a rebase over an earlier line of the same file keeps it.
+    /// The context label git adds after the ranges stays, so a change moved
+    /// into another function does not. Every other byte counts, whitespace
+    /// included.
     fn diff_hash(&self, sha: &str) -> String {
         let git = |args: &[&str]| {
             Command::new("git")
@@ -531,8 +532,8 @@ fn longest_backtick_run(text: &str) -> usize {
     text.split(|c| c != '`').map(str::len).max().unwrap_or(0)
 }
 
-/// Drops a diff's `index` and similarity lines and cuts each hunk header,
-/// with its context label, to `@@`, keeping every other byte.
+/// Drops a diff's `index` and similarity lines and cuts hunk headers' line
+/// ranges, keeping every other byte, the context label included.
 fn normalize_diff(diff: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(diff.len());
     let mut lines = diff.split(|&b| b == b'\n').peekable();
@@ -551,7 +552,7 @@ fn normalize_diff(diff: &[u8]) -> Vec<u8> {
     out
 }
 
-/// `@@ -a,b +c,d @@ label` becomes `@@`; any other line is unchanged.
+/// `@@ -a,b +c,d @@ label` becomes `@@ label`; any other line is unchanged.
 fn cut_hunk_header(line: &[u8]) -> Vec<u8> {
     let range = |s: &[u8]| s.iter().take_while(|b| b.is_ascii_digit() || **b == b',').count();
     let Some(rest) = line.strip_prefix(b"@@ -") else {
@@ -563,7 +564,7 @@ fn cut_hunk_header(line: &[u8]) -> Vec<u8> {
     };
     let new = range(rest);
     match rest[new..].strip_prefix(b" @@").filter(|_| new > 0) {
-        Some(_) => b"@@".to_vec(),
+        Some(label) => [&b"@@"[..], label].concat(),
         None => line.to_vec(),
     }
 }
@@ -575,7 +576,7 @@ mod tests {
     #[test]
     fn hunk_headers_lose_their_ranges_and_index_lines_go() {
         let diff = b"diff --git a/x b/x\nindex 1..2 100644\n@@ -1,3 +1,4 @@ fn x\n-a\n+b\n";
-        assert_eq!(normalize_diff(diff), b"diff --git a/x b/x\n@@\n-a\n+b\n");
+        assert_eq!(normalize_diff(diff), b"diff --git a/x b/x\n@@ fn x\n-a\n+b\n");
         assert_eq!(cut_hunk_header(b"@@ -1 +1 @@"), b"@@");
         assert_eq!(cut_hunk_header(b"@@ not a header"), b"@@ not a header");
     }
