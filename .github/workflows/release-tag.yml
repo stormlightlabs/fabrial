@@ -37,7 +37,7 @@ jobs:
           ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 2
 
-      - name: Tag and publish
+      - name: Tag
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}

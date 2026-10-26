@@ -16,7 +16,8 @@ fab init --owner <github-login> --trailer "Name <email>" --gates "<gate command>
 ```
 
 The installer fetches the prebuilt `fab` for Linux x86_64 or Apple Silicon
-into `~/.cargo/bin`. `cargo binstall --git
+into `~/.cargo/bin`. Releases after v0.4.0 carry it; until the first one, use
+the `cargo install` line below. `cargo binstall --git
 https://github.com/stormlightlabs/fabrial fab-cli` fetches the same archives.
 On another platform, build it:
 `cargo install --git https://github.com/stormlightlabs/fabrial --tag v<version> fab-cli`.
@@ -68,4 +69,6 @@ and that section of the changelog. Change targets or installers in
 `dist-workspace.toml` and run `dist generate`; `dist plan` fails while the
 workflow is out of date. The Release PR and Release tag workflows need the bot
 to have Contents write access. If Release tag fails, fix the cause and
-run Release tag from the Actions tab with the merge commit.
+run Release tag from the Actions tab with the merge commit. If the Release
+workflow fails after the tag exists, fix the cause and re-run that run; a new
+Release tag run sees the tag and does nothing.

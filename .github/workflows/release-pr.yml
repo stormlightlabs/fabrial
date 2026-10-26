@@ -77,6 +77,12 @@ jobs:
             exit 1
           fi
           rm notes.err
+          # dist's Release workflow runs only once the tag exists, so check
+          # here that its config, release.yml and the notes still agree.
+          dist_version=$(sed -n 's/^cargo-dist-version = "\(.*\)"$/\1/p' dist-workspace.toml)
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            "https://github.com/axodotdev/cargo-dist/releases/download/v$dist_version/cargo-dist-installer.sh" | sh
+          "$HOME/.cargo/bin/dist" plan --tag "v$VERSION" >/dev/null
 
           git switch -c "$branch"
           git -c user.name='stormlight-thunderbot[bot]' \
