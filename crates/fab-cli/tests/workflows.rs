@@ -239,6 +239,13 @@ fn check_tag_prints_nothing_when_there_is_nothing_to_tag() {
     assert_eq!(stdout(&output), "");
     assert!(String::from_utf8_lossy(&output.stderr).contains("did not rise"));
 
+    // A candidate parent is not below its release's predecessor.
+    let (fixture, sha) = release("0.7.0-rc.1", "0.6.0");
+    let env = [("TEST_GH_COMPARE", "ahead"), ("TEST_GH_PULLS", &pulls(&sha, "0.6.0"))];
+    let output = fixture.fab(&["release", "check-tag", "--repo", "o/r"], &env);
+    assert!(output.status.success());
+    assert_eq!(stdout(&output), "");
+
     let (fixture, sha) = release("0.1.0", "0.2.0");
     fixture.git(&["tag", "v0.2.0"]);
     fixture.git(&["push", "-q", "origin", "v0.2.0"]);

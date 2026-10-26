@@ -37,6 +37,20 @@ jobs:
           ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 2
 
+      # A dispatched commit must be on main before anything from it runs
+      # with the App token: the next step builds fab from it.
+      - name: Check the commit is on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          sha=$(git rev-parse HEAD)
+          status=$(gh api "repos/$REPO/compare/$sha...main" --jq .status)
+          if [[ $status != ahead && $status != identical ]]; then
+            echo "::error title=release::$sha is not on main; nothing was tagged."
+            exit 1
+          fi
+
       - uses: ./.github/actions/fab
         with:
           command: release

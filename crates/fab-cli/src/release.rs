@@ -112,7 +112,7 @@ fn is_release_subject(subject: &str) -> bool {
             .and_then(|n| n.strip_suffix(')'))
             .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
     };
-    fab_core::release(version).is_some() && !version.contains('+') && number.is_none_or(numbered)
+    is_release(version) && number.is_none_or(numbered)
 }
 
 /// The changelog with the section above the first `## <digit>` heading, or
@@ -154,11 +154,17 @@ fn check_tag(repo: &str, commit: &str) -> Result<Option<String>> {
         return Err(format!("{sha} is not on main; nothing was tagged."));
     }
     let now = workspace_version(&run::git(here, &["show", &format!("{sha}:Cargo.toml")])?)
+        .filter(|v| is_release(v))
         .ok_or("Cargo.toml has no [workspace.package] version that is a release like 0.2.0.")?;
+    // A parent with no workspace version counts as below any release; one
+    // with a version that is not a release, such as a candidate, does not.
     let before = run::git(here, &["show", &format!("{sha}^:Cargo.toml")])
         .ok()
         .and_then(|t| workspace_version(&t));
-    if before.as_deref().and_then(fab_core::release) >= fab_core::release(&now) {
+    let rose = before
+        .as_deref()
+        .is_none_or(|b| is_release(b) && fab_core::release(b) < fab_core::release(&now));
+    if !rose {
         eprintln!(
             "The version did not rise ({} to {now}); nothing to tag.",
             before.as_deref().unwrap_or("none")
@@ -205,12 +211,17 @@ fn check_tag(repo: &str, commit: &str) -> Result<Option<String>> {
     Ok(Some(now))
 }
 
-/// The `[workspace.package]` version in a `Cargo.toml`, when it is a
-/// release.
+/// The `[workspace.package]` version in a `Cargo.toml`.
 fn workspace_version(cargo_toml: &str) -> Option<String> {
     let table: toml::Table = cargo_toml.parse().ok()?;
     let version = table.get("workspace")?.get("package")?.get("version")?.as_str()?;
-    (fab_core::release(version).is_some() && !version.contains('+')).then(|| version.to_string())
+    Some(version.to_string())
+}
+
+/// Whether a version is a release like 0.2.0, with no pre-release or build
+/// part.
+fn is_release(version: &str) -> bool {
+    fab_core::release(version).is_some() && !version.contains('+')
 }
 
 /// Whether the commit's pull requests include the merged
@@ -357,12 +368,15 @@ mod tests {
     }
 
     #[test]
-    fn the_workspace_version_must_be_a_release() {
+    fn the_workspace_version_is_read_and_releases_are_known() {
         let cargo = |v: &str| format!("[workspace]\nmembers = []\n\n[workspace.package]\nversion = \"{v}\"\n");
         assert_eq!(workspace_version(&cargo("0.5.0")).as_deref(), Some("0.5.0"));
-        assert_eq!(workspace_version(&cargo("0.5.0-rc.1")), None);
-        assert_eq!(workspace_version(&cargo("0.5")), None);
+        assert_eq!(workspace_version(&cargo("0.5.0-rc.1")).as_deref(), Some("0.5.0-rc.1"));
         assert_eq!(workspace_version("[package]\nversion = \"0.5.0\"\n"), None);
+        assert!(is_release("0.5.0"));
+        for version in ["0.5.0-rc.1", "0.5", "0.5.0+abc"] {
+            assert!(!is_release(version), "{version}");
+        }
     }
 
     #[test]
