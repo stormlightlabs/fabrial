@@ -22,10 +22,12 @@ https://github.com/stormlightlabs/fabrial fab-cli` fetches the same archives.
 On another platform, build it:
 `cargo install --git https://github.com/stormlightlabs/fabrial --tag v<version> fab-cli`.
 
-It writes the Branch PR, Review gate and Bot comment workflows, `gate.sh`,
-`squash-body.sh` and `shot.sh`, `CODEOWNERS`, `.github/fabrial.toml`, the skills and agents,
-and a section of `AGENTS.md`. Commit the result on a `claude/` branch and push
-it; the Branch PR workflow opens the pull request.
+It writes the Branch PR, Review gate and Bot comment workflows,
+`squash-body.sh` and `shot.sh`, `CODEOWNERS`, `.github/fabrial.toml`, the
+skills and agents, and a section of `AGENTS.md`. The Review gate installs the
+`fab` release that `.github/fabrial.toml` names and runs `fab gate`. Commit
+the result on a `claude/` branch and push it; the Branch PR workflow opens the
+pull request.
 
 To take a newer release, install that `fab` and run `fab update`. It keeps the
 settings in `.github/fabrial.toml`, unless `--owner`, `--trailer` or `--gates`
@@ -75,5 +77,6 @@ sees the tag and does nothing. When the tagged commit itself is the cause,
 delete the tag, fix `main`, and release the next version.
 
 Any `v*` tag pushed to the repository starts the Release workflow and
-publishes a release. Add a tag ruleset that lets only stormlight-thunderbot
-create `v*` tags, so a release only comes from a merged release PR.
+publishes a release. A tag ruleset on `v*` with the owner and
+stormlight-thunderbot on its bypass list keeps other writers, agents included,
+from publishing one.

@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 #[cfg(unix)]
 mod dispatch;
+mod gate;
 
 use clap::{Args, Parser, Subcommand};
 use fab_core::install::{self, Report};
@@ -75,6 +76,9 @@ enum Command {
         #[command(flatten)]
         repo: Repo,
     },
+    /// Set the storm/review check for a pull request event; the Review gate
+    /// workflow runs it from a checkout of main.
+    Gate(gate::Options),
 }
 
 #[derive(Args)]
@@ -105,6 +109,15 @@ fn main() -> ExitCode {
             install::update(dir, change, force).map(|r| written(&r, "updated"))
         }),
         Command::Check { repo } => in_repo(&repo, check),
+        Command::Gate(options) => {
+            return gate::run(options).map_or_else(
+                |e| {
+                    eprintln!("fab: {e}");
+                    ExitCode::from(2)
+                },
+                |()| ExitCode::SUCCESS,
+            );
+        }
         #[cfg(unix)]
         Command::Dispatch(options) => return ExitCode::from(dispatch::run(options)),
         #[cfg(unix)]
