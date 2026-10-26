@@ -1,9 +1,10 @@
-# Tags a release when the Release workflow's pull request merges: the push to
+# Tags a release when the Release PR workflow's pull request merges: the push to
 # main raises the workspace version, and GitHub names storm/release-<version>
 # as the merged pull request behind the commit, whatever its squash message
-# says. It publishes a GitHub release with that version's section of
-# CHANGELOG.md, on the merge commit the owner approved. A revert or a hand edit
-# of the version tags nothing. To tag a release merge a run missed, run this
+# says. It tags v<version> on the merge commit the owner approved, which
+# starts the dist workflow (release.yml): that builds fab and publishes the
+# GitHub release with the version's section of CHANGELOG.md. A revert or a
+# hand edit of the version tags nothing. To tag a release merge a run missed, run this
 # from the Actions tab with that commit; a re-run uses the workflow as it was
 # at that commit.
 name: Release tag
@@ -74,17 +75,16 @@ jobs:
             echo "::error title=release::The version rose to $now outside a storm/release-$now pull request; nothing was tagged. If it was one, run Release tag from the Actions tab with $sha."
             exit 1
           fi
-          if gh release view "v$now" >/dev/null 2>&1; then
-            echo "v$now is already released."
-            exit 0
-          fi
-          # gh would publish on an existing tag and ignore --target, so a tag
-          # made by hand elsewhere stops the run instead.
-          if git ls-remote --exit-code --tags origin "refs/tags/v$now" >/dev/null; then
-            echo "::error title=tag::v$now is tagged but not released; check that the tag is on $sha and publish it by hand."
+          # A tag already on this commit is done; one elsewhere stops the run.
+          if tagged=$(git ls-remote --tags origin "refs/tags/v$now" | cut -f1) && [[ -n $tagged ]]; then
+            if [[ $tagged == "$sha" ]]; then
+              echo "v$now is already tagged on $sha."
+              exit 0
+            fi
+            echo "::error title=tag::v$now is tagged on $tagged, not $sha."
             exit 1
           fi
-          # The section from this version's heading to the next heading.
+          # dist publishes this section as the release notes.
           awk -v v="$now" '
             $0 ~ "^## " v "( |$)" { on = 1; next }
             on && /^## / { exit }
@@ -94,4 +94,6 @@ jobs:
             echo "::error title=changelog::CHANGELOG.md has no notes under '## $now'."
             exit 1
           fi
-          gh release create "v$now" --target "$sha" --title "v$now" --notes-file notes.md
+          # The App token's tag push starts the dist workflow; a push made with
+          # GITHUB_TOKEN would not.
+          gh api "repos/$REPO/git/refs" -f "ref=refs/tags/v$now" -f "sha=$sha" >/dev/null

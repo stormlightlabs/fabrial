@@ -5,7 +5,7 @@
 # storm/release-<version>, which Branch PR opens. The owner edits the lines
 # there before accepting it. Release tag tags the merge commit. Nothing here
 # writes to main.
-name: Release
+name: Release PR
 
 on:
   workflow_dispatch:

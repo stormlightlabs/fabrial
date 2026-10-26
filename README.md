@@ -10,9 +10,16 @@ Install a release of `fab`, then run it at the root of the repository that
 should use fabrial:
 
 ```sh
-cargo install --git https://github.com/stormlightlabs/fabrial --tag v<version> fab-cli
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/stormlightlabs/fabrial/releases/latest/download/fab-cli-installer.sh | sh
 fab init --owner <github-login> --trailer "Name <email>" --gates "<gate command>"
 ```
+
+The installer fetches the prebuilt `fab` for Linux x86_64 or Apple Silicon
+into `~/.cargo/bin`. `cargo binstall --git
+https://github.com/stormlightlabs/fabrial fab-cli` fetches the same archives.
+On another platform, build it:
+`cargo install --git https://github.com/stormlightlabs/fabrial --tag v<version> fab-cli`.
 
 It writes the Branch PR, Review gate and Bot comment workflows, `gate.sh`,
 `squash-body.sh` and `shot.sh`, `CODEOWNERS`, `.github/fabrial.toml`, the skills and agents,
@@ -47,13 +54,18 @@ not worker isolation. This feature is under active development.
 
 ## Releases
 
-Run the Release workflow from the Actions tab with the new version, such as
+Run the Release PR workflow from the Actions tab with the new version, such as
 `0.2.0`. The bot opens a pull request that sets the version, records it in
 `.github/fabrial.toml` and writes the release's section of `CHANGELOG.md`, with
 `Cargo.lock` to match. The section lists each commit subject since the last
-tag; a squash subject ends with its pull request number. Edit the lines on the release branch,
-then accept it with `/storm:ready <sha>`, since it holds no code to review.
-When it merges, the Release tag workflow tags `v<version>` on the merge commit
-and publishes a GitHub release with that section of the changelog. Both need
-the bot to have Contents write access. If Release tag fails, fix the cause and
+tag; a squash subject ends with its pull request number. Edit the lines on the
+release branch, then accept it with `/storm:ready <sha>`, since it holds no
+code to review.
+When it merges, the Release tag workflow tags `v<version>` on the merge commit.
+The tag starts the Release workflow, which dist generates: it builds `fab` for
+each target and publishes a GitHub release with the archives, the installer
+and that section of the changelog. Change targets or installers in
+`dist-workspace.toml` and run `dist generate`; `dist plan` fails while the
+workflow is out of date. The Release PR and Release tag workflows need the bot
+to have Contents write access. If Release tag fails, fix the cause and
 run Release tag from the Actions tab with the merge commit.
