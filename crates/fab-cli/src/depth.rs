@@ -69,12 +69,24 @@ pub struct Options {
 /// to `head`, with the reason on standard error.
 pub fn run(options: Options) -> Result<()> {
     let here = Path::new(".");
-    let range = format!("{}...{}", options.base, options.head);
-    let names = run::git(here, &["diff", "--name-only", "--no-renames", &range])?;
+    let base = run::git(here, &["merge-base", &options.base, &options.head])?;
+    let names = run::git(here, &["diff", "--name-only", "--no-renames", &base, &options.head])?;
     let paths: Vec<&str> = names.lines().filter(|l| !l.is_empty()).collect();
+    // An empty diff is more likely a wrong base or head than a pull request
+    // with nothing in it, so it reads as a failure and the skill runs both
+    // passes.
+    if paths.is_empty() {
+        return Err(format!(
+            "{base}..{} changes nothing; check --base and --head.",
+            options.head
+        ));
+    }
     let version_only = |path: &str| {
-        run::git(here, &["diff", "-U0", "--no-renames", &range, "--", path])
-            .is_ok_and(|diff| changes_only_versions(&diff))
+        let show = |rev: &str| run::git(here, &["show", &format!("{rev}:{path}")]);
+        match (show(&base), show(&options.head)) {
+            (Ok(old), Ok(new)) => only_versions_differ(path, &old, &new),
+            _ => false,
+        }
     };
     let (depth, reason) = classify(&paths, version_only);
     println!("{}", depth.name());
@@ -83,15 +95,16 @@ pub fn run(options: Options) -> Result<()> {
 }
 
 /// The depth for a diff's paths, and why. `version_only` says whether a
-/// version file's diff changes only `version` lines.
+/// version file changes only its own version.
 fn classify(paths: &[&str], version_only: impl Fn(&str) -> bool) -> (Depth, String) {
-    if paths.is_empty() {
-        return (Depth::None, "the diff changes nothing".into());
-    }
-    let bump = paths
-        .iter()
-        .all(|p| *p == "CHANGELOG.md" || (VERSION_FILES.contains(p) && version_only(p)));
-    if bump && paths.iter().any(|p| VERSION_FILES.contains(p)) {
+    // A bump moves the workspace version and lists the release in the
+    // changelog; a version file changed on its own, such as the release
+    // fabrial.toml installs, is configuration.
+    let bump = ["Cargo.toml", "CHANGELOG.md"].iter().all(|p| paths.contains(p))
+        && paths
+            .iter()
+            .all(|p| *p == "CHANGELOG.md" || (VERSION_FILES.contains(p) && version_only(p)));
+    if bump {
         return (Depth::None, "a version bump and its changelog".into());
     }
     match paths.iter().find(|p| !is_doc(p) && !is_test(p)) {
@@ -119,21 +132,42 @@ fn is_test(path: &str) -> bool {
     rust || path.ends_with(".test.mjs")
 }
 
-/// Whether a `git diff -U0` changes only `version = "..."` lines.
-fn changes_only_versions(diff: &str) -> bool {
-    let mut changed = 0;
-    for line in diff.lines() {
-        if line.starts_with("+++ ") || line.starts_with("--- ") {
-            continue;
-        }
-        if let Some(text) = line.strip_prefix('+').or_else(|| line.strip_prefix('-')) {
-            if !text.starts_with("version = \"") || !text.ends_with('"') {
-                return false;
+/// Whether a version file's two texts parse as TOML and differ only in
+/// their own version: the package or workspace version in `Cargo.toml`, the
+/// workspace members' versions in `Cargo.lock`, and `version` in
+/// `.github/fabrial.toml`. A dependency's version is not the file's own.
+fn only_versions_differ(path: &str, old: &str, new: &str) -> bool {
+    let strip = |text: &str| {
+        let mut table: toml::Table = text.parse().ok()?;
+        match path {
+            "Cargo.toml" => {
+                if let Some(package) = table.get_mut("package").and_then(|p| p.as_table_mut()) {
+                    package.remove("version");
+                }
+                let workspace = table.get_mut("workspace").and_then(|w| w.as_table_mut());
+                if let Some(package) = workspace
+                    .and_then(|w| w.get_mut("package"))
+                    .and_then(|p| p.as_table_mut())
+                {
+                    package.remove("version");
+                }
             }
-            changed += 1;
+            "Cargo.lock" => {
+                let packages = table.get_mut("package").and_then(|p| p.as_array_mut());
+                for package in packages.into_iter().flatten().filter_map(|p| p.as_table_mut()) {
+                    // A package with no source is a workspace member.
+                    if !package.contains_key("source") {
+                        package.remove("version");
+                    }
+                }
+            }
+            _ => {
+                table.remove("version");
+            }
         }
-    }
-    changed > 0
+        Some(table)
+    };
+    matches!((strip(old), strip(new)), (Some(old), Some(new)) if old == new)
 }
 
 #[cfg(test)]
@@ -150,12 +184,16 @@ mod tests {
             depth(&["CHANGELOG.md", "Cargo.toml", "Cargo.lock", ".github/fabrial.toml"]),
             Depth::None
         );
-        assert_eq!(depth(&[]), Depth::None);
         // A version file that changes more than its version is code.
         assert_eq!(classify(&["Cargo.toml", "CHANGELOG.md"], |_| false).0, Depth::Full);
         // The changelog alone is documentation.
         assert_eq!(depth(&["CHANGELOG.md"]), Depth::Standard);
         assert_eq!(depth(&["Cargo.toml", "README.md"]), Depth::Full);
+        // A bump moves Cargo.toml and lists the release; fabrial.toml alone
+        // picks the fab that workflows install.
+        assert_eq!(depth(&[".github/fabrial.toml"]), Depth::Full);
+        assert_eq!(depth(&[".github/fabrial.toml", "CHANGELOG.md"]), Depth::Full);
+        assert_eq!(depth(&["Cargo.toml", "Cargo.lock"]), Depth::Full);
     }
 
     #[test]
@@ -200,13 +238,57 @@ mod tests {
     }
 
     #[test]
-    fn only_version_lines_count_as_a_bump() {
-        let bump = "diff --git a/Cargo.toml b/Cargo.toml\n--- a/Cargo.toml\n+++ b/Cargo.toml\n\
-                    @@ -3 +3 @@\n-version = \"0.5.0\"\n+version = \"0.6.0\"\n";
-        assert!(changes_only_versions(bump));
-        let dependency = format!("{bump}@@ -9 +9 @@\n-serde = \"1\"\n+serde = \"2\"\n");
-        assert!(!changes_only_versions(&dependency));
-        assert!(!changes_only_versions("diff --git a/x b/x\n"));
-        assert!(!changes_only_versions("+version = \"0.6.0\" # and more\n"));
+    fn only_the_files_own_version_counts() {
+        let cargo = |v: &str, serde: &str| {
+            format!("[workspace.package]\nversion = \"{v}\"\n\n[dependencies.serde]\nversion = \"{serde}\"\n")
+        };
+        assert!(only_versions_differ(
+            "Cargo.toml",
+            &cargo("0.5.0", "1"),
+            &cargo("0.6.0", "1")
+        ));
+        assert!(!only_versions_differ(
+            "Cargo.toml",
+            &cargo("0.5.0", "1"),
+            &cargo("0.5.0", "*")
+        ));
+        assert!(!only_versions_differ(
+            "Cargo.toml",
+            &cargo("0.5.0", "1"),
+            &cargo("0.6.0", "2")
+        ));
+        let package = |v: &str| format!("[package]\nname = \"x\"\nversion = \"{v}\"\n");
+        assert!(only_versions_differ("Cargo.toml", &package("0.1.0"), &package("0.2.0")));
+
+        let lock = |member: &str, dep: &str| {
+            format!(
+                "version = 4\n\n[[package]]\nname = \"fab-cli\"\nversion = \"{member}\"\n\n\
+                 [[package]]\nname = \"serde\"\nversion = \"{dep}\"\nsource = \"registry+https://x\"\n"
+            )
+        };
+        assert!(only_versions_differ(
+            "Cargo.lock",
+            &lock("0.5.0", "1.0.1"),
+            &lock("0.6.0", "1.0.1")
+        ));
+        assert!(!only_versions_differ(
+            "Cargo.lock",
+            &lock("0.5.0", "1.0.1"),
+            &lock("0.6.0", "1.0.2")
+        ));
+
+        let settings = |v: &str, gates: &str| format!("owner = \"o\"\ngates = \"{gates}\"\nversion = \"{v}\"\n");
+        let path = ".github/fabrial.toml";
+        assert!(only_versions_differ(
+            path,
+            &settings("0.5.0", "just check"),
+            &settings("0.6.0", "just check")
+        ));
+        assert!(!only_versions_differ(
+            path,
+            &settings("0.5.0", "just check"),
+            &settings("0.6.0", "true")
+        ));
+        assert!(!only_versions_differ(path, "not toml [", &settings("0.6.0", "true")));
     }
 }

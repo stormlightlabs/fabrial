@@ -136,7 +136,8 @@ revise did about them. Each comment is one Bot comment run.
 
 For an arcl task, first complete it on the branch and push, as the
 `implement` skill's **Complete the task** says, so the checks below and the
-gate read the final head.
+gate read the final head. Run `fab review-depth` again on that head; when the
+depth rose, run the passes it now adds before posting.
 
 Before posting it, check that the pull request still merges. The review
 passes read the diff, not the base, so they do not see a conflict. `gh pr
