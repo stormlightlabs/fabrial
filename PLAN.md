@@ -95,7 +95,9 @@ a paid plan, so rulesets on `main` are enforced.
   section lists the squash subjects since the last tag, which the owner
   edits there; pull requests do not edit `CHANGELOG.md`. The tag lands on its
   merge commit, so nothing writes to `main` and the owner approves each
-  release. Repositories install a tagged `fab` and refresh with `fab update`.
+  release. The tag starts dist's workflow, which publishes prebuilt `fab`
+  binaries and an installer with the release. Repositories install a tagged
+  `fab` and refresh with `fab update`.
 
 ### Using the arcl crates
 

@@ -29,30 +29,24 @@ function release(changelog, subjects, { tag = true, candidate = false } = {}) {
   } finally { rmSync(root, { recursive: true, force: false }); }
 }
 
-const top = "# Changelog\n\n## Unreleased\n";
+const top = "# Changelog\n\nWhat each release changes.\n";
 const older = "## 0.1.0 - 2026-10-01\n\n- Old.\n";
 
-test("each commit since the last tag becomes a line, newest first", () => {
+test("each commit since the last tag becomes a line above the newest release", () => {
   const { status, changelog } = release(`${top}\n${older}`, ["Add a (#3)", "Release 0.1.1 (#4)", "Fix b (#5)"]);
   assert.equal(status, 0);
   assert.equal(changelog, `${top}\n## 0.2.0 - 2026-10-25\n\n- Fix b (#5)\n\n- Add a (#3)\n\n${older}`);
 });
 
-test("lines under Unreleased stay first and replace their PR's line", () => {
-  const { changelog } = release(`${top}\n- Add a, in my words (#3).\n\n${older}`, ["Add a (#3)", "Fix b (#5)", "Fix c (#35)"]);
-  assert.equal(changelog,
-    `${top}\n## 0.2.0 - 2026-10-25\n\n- Add a, in my words (#3).\n\n- Fix c (#35)\n\n- Fix b (#5)\n\n${older}`);
+test("a changelog with no release yet gets the section at the end", () => {
+  const { changelog } = release(top, ["Fix b (#5)"]);
+  assert.equal(changelog, `${top}\n## 0.2.0 - 2026-10-25\n\n- Fix b (#5)\n\n`);
 });
 
-test("a PR named in prose keeps its own line", () => {
-  const { changelog } = release(`${top}\n- Follows #5 up.\n\n${older}`, ["Fix b (#5)"]);
-  assert.equal(changelog, `${top}\n## 0.2.0 - 2026-10-25\n\n- Follows #5 up.\n\n- Fix b (#5)\n\n${older}`);
-});
-
-test("lines under Unreleased alone make a release", () => {
-  const { status, changelog } = release(`${top}\n- By hand.\n\n${older}`, []);
-  assert.equal(status, 0);
-  assert.equal(changelog, `${top}\n## 0.2.0 - 2026-10-25\n\n- By hand.\n\n${older}`);
+test("a heading inside the intro is not a release", () => {
+  const intro = "# Changelog\n\n```md\n## Example\n```\n";
+  const { changelog } = release(`${intro}\n${older}`, ["Fix b (#5)"]);
+  assert.equal(changelog, `${intro}\n## 0.2.0 - 2026-10-25\n\n- Fix b (#5)\n\n${older}`);
 });
 
 test("without a tag, every commit is listed", () => {

@@ -97,7 +97,7 @@ Follow arclightning's conventions, since the two share crates:
 
 - Open work lives in arcl, in `.arcl/workspace`; `PLAN.md` shows how to read
   it. Put task status updates and new tasks in the PR they describe.
-- Leave `CHANGELOG.md` alone. The Release workflow writes each release's
+- Leave `CHANGELOG.md` alone. The Release PR workflow writes each release's
   section from the squash subjects since the last tag, and the owner edits it
   in the release PR.
 
