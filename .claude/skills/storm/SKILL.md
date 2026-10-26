@@ -56,10 +56,22 @@ in a cloud session.
 
 ## Review
 
-The sequence is fixed: one standard pass, its revise, one adversarial pass,
-its revise. It runs once per pull request, never in a loop. Reviewers check
-their own findings before reporting them. Dispatch the `verifier` agent only
-when the driver asks for it.
+The sequence is one standard pass, its revise, one adversarial pass, its
+revise, cut short by the pull request's review depth. It runs once per pull
+request, never in a loop. Reviewers check their own findings before reporting
+them. Dispatch the `verifier` agent only when the driver asks for it.
+
+Fetch the branch and run `fab review-depth --head <sha>` in the worktree. It
+prints the depth on its first line and the reason on standard error:
+
+| Depth      | Passes                                                         |
+| ---------- | -------------------------------------------------------------- |
+| `none`     | None: a version bump and its changelog. Go to **Finish**.      |
+| `standard` | Steps 1 to 3: documentation, planning records and tests only.  |
+| `full`     | Steps 1 to 5: anything else.                                   |
+
+Without `fab`, or when it fails, the depth is `full`. The driver can ask for
+more passes than the depth gives, never fewer.
 
 1. **Standard pass.** Fetch the branch and pin its head SHA. Dispatch the
    `reviewer` agent with the pull request, the SHA and the task ID.
@@ -108,15 +120,17 @@ history is not a fresh reader.
 
 ## Finish
 
-After the adversarial pass and its revise, post one comment whose first line
-is exactly:
+After the last pass the depth gives and its revise, post one comment whose
+first line is exactly:
 
 ```text
 Review finished at <full head sha>
 ```
 
-Below a blank line, the same comment carries the adversarial pass's findings
-and what the revise did about them. Each comment is one Bot comment run.
+Below a blank line, the same comment names the depth and its reason, such as
+`Review depth: standard (documentation, planning records and tests only)`,
+then carries the adversarial pass's findings, when it ran, and what the
+revise did about them. Each comment is one Bot comment run.
 
 For an arcl task, first complete it on the branch and push, as the
 `implement` skill's **Complete the task** says, so the checks below and the
@@ -201,6 +215,8 @@ Any of these ends the run without `Review finished`. Report the reason.
 
 - Review, revise or verify in this session's own context.
 - Post `Review finished` before the sequence has run to its end.
+- Skip a pass the review depth gives, or pick a lower depth than `fab
+  review-depth` printed.
 - Start another review pass on your own. A second sequence needs
   `/storm:review`.
 - Approve or merge.

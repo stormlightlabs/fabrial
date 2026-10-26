@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 mod branch_pr;
+mod depth;
 #[cfg(unix)]
 mod dispatch;
 mod gate;
@@ -86,6 +87,8 @@ enum Command {
     /// Open a draft pull request for an agent's work branch; the Branch PR
     /// workflow runs it.
     BranchPr(branch_pr::Options),
+    /// Print how many review passes the diff takes: none, standard or full.
+    ReviewDepth(depth::Options),
     /// fabrial's own release steps, which its release workflows run.
     Release {
         #[command(subcommand)]
@@ -124,6 +127,7 @@ fn main() -> ExitCode {
         Command::Gate(options) => return in_workflow(gate::run(options)),
         Command::BranchPr(options) => return in_workflow(branch_pr::run(options)),
         Command::Release { step } => return in_workflow(step.run()),
+        Command::ReviewDepth(options) => return in_workflow(depth::run(options)),
         #[cfg(unix)]
         Command::Dispatch(options) => return ExitCode::from(dispatch::run(options)),
         #[cfg(unix)]
