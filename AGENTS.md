@@ -19,9 +19,12 @@ Check host tools, credentials, permissions, and isolation early. Run the smalles
 real end-to-end integration smoke during implementation, before review. Report
 missing prerequisites and host-only failures as soon as they appear.
 
-Skip a fix stage when there are no actionable findings. After the final fixes,
-run the required gates, post `Review finished at <head>`, and hand off. Do not
-start another review cycle or wait for the driver's approval.
+`fab review-depth` cuts the reviews by risk: a version bump takes none, and
+documentation, planning records and tests take only the standard review and
+its fixes. Skip a fix stage when there are no actionable findings. After the
+final fixes, run the required gates, post `Review finished at <head>`, and
+hand off. Do not start another review cycle or wait for the driver's
+approval.
 
 This sequence takes precedence over extra verifier stages or dispatch loops in
 skills. Reviewers must validate their own findings. Extra agents, review passes,
@@ -63,8 +66,9 @@ requires. Clippy warnings fail it whether or not your change caused them.
 
 ```text
 crates/fab-core   install and settings; later, the run operations
-crates/fab-cli    the `fab` binary, including what workflows run: `fab gate`,
-                  `fab branch-pr` and `fab release`
+crates/fab-cli    the `fab` binary, including what workflows and skills run:
+                  `fab gate`, `fab branch-pr`, `fab release` and
+                  `fab review-depth`
 packages/pi/      the Pi package: extensions/ holds workers, PR status and the
                   status area, lib/ their shared code, and worker.ts the
                   extension `fab dispatch` gives each worker
