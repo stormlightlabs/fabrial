@@ -14,8 +14,9 @@ const BOT: &str = "stormlight-thunderbot[bot]";
 
 /// The fake `gh`. It fails `pr <TEST_FAIL>`; answers `pr view` with
 /// `TEST_PR`, or `TEST_PR_LATER` once the run has posted a comment, plus the
-/// comments posted so far; answers other `api` reads with `TEST_API`; and
-/// accepts the writes the gate makes.
+/// comments posted so far; answers a collaborator's permission with
+/// `TEST_PERMISSION` and a commit's check runs with `TEST_CHECK_RUNS`,
+/// applying `--jq` as gh does; and accepts the writes the gate makes.
 const FAKE_GH: &str = r#"#!/bin/bash
 set -u
 body=
@@ -33,7 +34,17 @@ case "$1 ${2:-}" in
     if [[ $posted != "[]" && -n ${TEST_PR_LATER:-} ]]; then view=$TEST_PR_LATER; fi
     jq -c --argjson posted "$posted" '.comments += $posted' <<<"$view" ;;
   "api -X") echo '{}' ;;
-  "api "*) printf '%s\n' "${TEST_API:-}" ;;
+  "api "*)
+    case "$2" in
+      */collaborators/*/permission) out="{\"permission\": \"${TEST_PERMISSION:-none}\"}" ;;
+      */check-runs\?*) out=${TEST_CHECK_RUNS:-"{\"check_runs\": []}"} ;;
+      *) exit 92 ;;
+    esac
+    filter=
+    for ((i = 1; i < $#; i++)); do
+      if [[ ${!i} == --jq ]]; then j=$((i + 1)); filter=${!j}; fi
+    done
+    if [[ -n $filter ]]; then jq -r "$filter" <<<"$out"; else printf '%s\n' "$out"; fi ;;
   "label "* | "pr comment" | "pr ready" | "pr edit" | "pr merge") echo '{}' ;;
   *) exit 91 ;;
 esac
@@ -170,6 +181,25 @@ fn bot_comment(body: &str) -> Value {
     json!({"author": {"login": "stormlight-thunderbot"}, "body": body})
 }
 
+/// A commit's check runs as the API lists them: one completed run per
+/// `(app, conclusion, summary)`, each finishing after the one before.
+fn check_runs(runs: &[(&str, &str, &str)]) -> String {
+    let runs: Vec<Value> = runs
+        .iter()
+        .enumerate()
+        .map(|(i, (app, conclusion, summary))| {
+            json!({"status": "completed", "conclusion": conclusion, "completed_at": format!("2026-10-26T00:00:0{i}Z"),
+                   "app": {"slug": app}, "output": {"summary": summary}})
+        })
+        .collect();
+    json!({"check_runs": runs}).to_string()
+}
+
+/// The bot's passed review with `summary`.
+fn passed_review(summary: &str) -> String {
+    check_runs(&[("stormlight-thunderbot", "success", summary)])
+}
+
 #[test]
 fn branch_pr_never_turns_on_auto_merge() {
     let workflow = fs::read_to_string(root().join(".github/workflows/branch-pr.yml")).unwrap();
@@ -268,17 +298,39 @@ fn storm_stop_turns_auto_merge_off() {
 
 #[test]
 fn an_edit_from_the_bot_posts_only_for_a_reviewed_ready_pull_request() {
-    for (name, pr, api, posts) in [
+    let passed = passed_review("Reviewed");
+    let other_app = check_runs(&[("eve-app", "success", "Reviewed")]);
+    let failed_since = check_runs(&[
+        ("stormlight-thunderbot", "success", "Reviewed"),
+        ("stormlight-thunderbot", "failure", "Changed"),
+    ]);
+    for (name, pr, runs, posts) in [
         (
             "reviewed and ready",
             json!({"isDraft": false, "title": "New title"}),
-            "Reviewed",
+            passed.as_str(),
             true,
         ),
-        ("a draft", json!({"isDraft": true}), "Reviewed", false),
+        ("a draft", json!({"isDraft": true}), passed.as_str(), false),
         ("an unreviewed head", json!({"isDraft": false}), "", false),
+        (
+            "passed by another app",
+            json!({"isDraft": false}),
+            other_app.as_str(),
+            false,
+        ),
+        (
+            "failed since its review",
+            json!({"isDraft": false}),
+            failed_since.as_str(),
+            false,
+        ),
     ] {
-        let run = gate(&[("EVENT", "edit"), ("SENDER", BOT), ("TEST_API", api)], pr, None);
+        let mut env = vec![("EVENT", "edit"), ("SENDER", BOT)];
+        if !runs.is_empty() {
+            env.push(("TEST_CHECK_RUNS", runs));
+        }
+        let run = gate(&env, pr, None);
         assert_eq!(run.code, Some(0), "{name}: {}", run.stderr);
         assert_eq!(run.posts().len(), usize::from(posts), "{name}");
         if posts {
@@ -293,10 +345,14 @@ fn an_edit_from_the_bot_posts_only_for_a_reviewed_ready_pull_request() {
 
 #[test]
 fn an_edit_posts_only_for_a_sender_with_write_access() {
-    // The fake answers every `gh api` read with TEST_API, so "write" is both
-    // the sender's permission and a passed review.
-    for (permission, posts) in [("write", true), ("read", false)] {
-        let env = [("EVENT", "edit"), ("SENDER", "someone"), ("TEST_API", permission)];
+    let passed = passed_review("Reviewed");
+    for (permission, posts) in [("write", true), ("maintain", true), ("read", false)] {
+        let env = [
+            ("EVENT", "edit"),
+            ("SENDER", "someone"),
+            ("TEST_PERMISSION", permission),
+            ("TEST_CHECK_RUNS", &passed),
+        ];
         let run = gate(&env, json!({"isDraft": false}), None);
         assert_eq!(run.code, Some(0));
         assert_eq!(!run.posts().is_empty(), posts, "{permission}");
@@ -357,7 +413,12 @@ fn a_rebase_that_only_moves_the_base_keeps_the_review_and_a_new_change_does_not(
     let target = root().join("target");
     let repo = tempfile::tempdir_in(target).unwrap();
     let git = |args: &[&str]| {
+        // A clear environment, so a GIT_DIR from a hook cannot point these
+        // commands at another repository.
         let output = Command::new("git")
+            .env_clear()
+            .env("PATH", std::env::var("PATH").unwrap())
+            .env("HOME", repo.path())
             .args([
                 "-c",
                 "user.name=t",
@@ -430,7 +491,7 @@ fn a_rebase_that_only_moves_the_base_keeps_the_review_and_a_new_change_does_not(
             ("HEAD_SHA", &second),
             ("BEFORE", &first),
             ("HEAD_DIR", dir),
-            ("TEST_API", &summary),
+            ("TEST_CHECK_RUNS", &passed_review(&summary)),
         ],
         json!({}),
         None,
@@ -449,11 +510,100 @@ fn a_rebase_that_only_moves_the_base_keeps_the_review_and_a_new_change_does_not(
             ("HEAD_SHA", &third),
             ("BEFORE", &second),
             ("HEAD_DIR", dir),
-            ("TEST_API", &summary),
+            ("TEST_CHECK_RUNS", &passed_review(&summary)),
         ],
         json!({}),
         None,
     );
     assert!(changed.calls.iter().any(|c| c.has("status=in_progress")));
     assert!(!changed.succeeded_check());
+}
+
+#[test]
+fn storm_ready_accepts_the_head_and_posts_the_squash_message() {
+    let body = format!("/storm:ready {}", &HEAD[..7]);
+    let run = gate(
+        &[("EVENT", "comment"), ("AUTHOR", "desertthunder"), ("BODY", &body)],
+        json!({}),
+        None,
+    );
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(run.calls.iter().any(|c| c.is("pr", "ready")));
+    assert!(
+        run.calls
+            .iter()
+            .any(|c| c.has("conclusion=success") && c.has("output[title]=Marked ready by @desertthunder"))
+    );
+    assert_eq!(run.posts().len(), 1);
+    assert!(run.posts()[0].contains("Test change (#1)\n"));
+}
+
+#[test]
+fn a_command_naming_another_commit_asks_again_and_accepts_nothing() {
+    for body in [
+        "Review finished at bbbbbbb",
+        "/storm:ready bbbbbbb",
+        "/storm:ready",
+        "Review finished at aaaa",
+    ] {
+        let author = if body.starts_with('/') { "desertthunder" } else { BOT };
+        let run = gate(
+            &[("EVENT", "comment"), ("AUTHOR", author), ("BODY", body)],
+            json!({}),
+            None,
+        );
+        assert_eq!(run.code, Some(0), "{body}: {}", run.stderr);
+        assert!(!run.succeeded_check(), "{body}");
+        assert!(!run.calls.iter().any(|c| c.is("pr", "ready")), "{body}");
+        let asks = run.calls.iter().filter(|c| c.is("pr", "comment")).collect::<Vec<_>>();
+        assert_eq!(asks.len(), 1, "{body}");
+        assert!(
+            asks[0].args.iter().any(|a| a.contains("but the head is `aaaaaaa`")),
+            "{body}"
+        );
+    }
+}
+
+#[test]
+fn a_closed_pull_request_is_not_marked_ready_or_sent_a_message() {
+    let run = gate(&with(&finished(), &[]), json!({"state": "CLOSED"}), None);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(!run.calls.iter().any(|c| c.is("pr", "ready")));
+    assert!(run.posts().is_empty());
+}
+
+#[test]
+fn a_reopened_head_keeps_its_own_success_and_otherwise_waits() {
+    let passed = passed_review("Reviewed");
+    let run = gate(
+        &[("EVENT", "push"), ("ACTION", "reopened"), ("TEST_CHECK_RUNS", &passed)],
+        json!({}),
+        None,
+    );
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(!run.calls.iter().any(|c| c.is("api", "-X")));
+
+    let run = gate(&[("EVENT", "push"), ("ACTION", "reopened")], json!({}), None);
+    assert!(run.calls.iter().any(|c| c.has("status=in_progress")));
+}
+
+#[test]
+fn storm_stop_labels_the_pull_request() {
+    let env = [
+        ("EVENT", "comment"),
+        ("AUTHOR", "desertthunder"),
+        ("BODY", "/storm:stop now"),
+    ];
+    let run = gate(&env, json!({}), None);
+    assert_eq!(run.code, Some(0));
+    assert!(
+        run.calls
+            .iter()
+            .any(|c| c.is("label", "create") && c.has("storm:stopped"))
+    );
+    assert!(
+        run.calls
+            .iter()
+            .any(|c| c.is("pr", "edit") && c.has("--add-label") && c.has("storm:stopped"))
+    );
 }

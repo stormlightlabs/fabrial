@@ -57,6 +57,8 @@ esac
 
     fn git(&self, args: &[&str]) -> String {
         let output = Command::new("git")
+            .env_clear()
+            .envs(self.env())
             .args([
                 "-c",
                 "user.name=t",
@@ -91,20 +93,27 @@ esac
     /// Runs fab in the repository with the fake `gh` and the given
     /// environment.
     fn fab(&self, args: &[&str], env: &[(&str, &str)]) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_fab"))
+            .args(args)
+            .current_dir(self.repo())
+            .env_clear()
+            .envs(self.env())
+            .env("TEST_GH_LOG", self.temp.path().join("calls"))
+            .envs(env.iter().copied())
+            .output()
+            .unwrap()
+    }
+
+    /// The only variables git and fab see, so nothing from the caller's
+    /// shell, such as GIT_DIR or GH_TOKEN, reaches them: the fake `gh` first
+    /// on the PATH, and a home in the scratch directory.
+    fn env(&self) -> [(&'static str, String); 2] {
         let path = format!(
             "{}:{}",
             self.temp.path().join("bin").display(),
             std::env::var("PATH").unwrap()
         );
-        Command::new(env!("CARGO_BIN_EXE_fab"))
-            .args(args)
-            .current_dir(self.repo())
-            .env("PATH", path)
-            .env("TEST_GH_LOG", self.temp.path().join("calls"))
-            .env_remove("GITHUB_ACTIONS")
-            .envs(env.iter().copied())
-            .output()
-            .unwrap()
+        [("PATH", path), ("HOME", self.temp.path().display().to_string())]
     }
 
     /// The fake `gh`'s calls, each as its arguments and any body.
@@ -199,6 +208,8 @@ fn release(before: &str, now: &str) -> (Fixture, String) {
     );
     let origin = fixture.temp.path().join("origin.git");
     let status = Command::new("git")
+        .env_clear()
+        .envs(fixture.env())
         .args(["init", "-q", "--bare"])
         .arg(&origin)
         .status()
