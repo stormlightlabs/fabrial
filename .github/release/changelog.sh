@@ -7,7 +7,7 @@
 # HEAD (`v` and a version, without a pre-release part), newest first, from its
 # subject. A squash subject ends with its pull request number, so each line
 # names the PR. Release commits are left out. The section goes above the
-# newest release's, or at the end when there is none. The owner edits the
+# newest release's `## <version>` heading, or at the end when there is none. The owner edits the
 # lines in the release pull request. Exits 1, changing nothing, when there is
 # nothing to list.
 set -euo pipefail
@@ -35,7 +35,7 @@ trap 'rm -f "$file"' EXIT
 printf '## %s - %s\n\n%s' "$version" "$date" "$section" >"$file"
 awk -v file="$file" '
   function insert() { while ((getline line < file) > 0) print line; done = 1 }
-  !done && /^## / { insert() }
+  !done && /^## [0-9]/ { insert() }
   { print }
   END { if (!done) { print ""; insert() } }
 ' CHANGELOG.md >CHANGELOG.md.new

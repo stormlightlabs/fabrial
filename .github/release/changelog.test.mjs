@@ -43,6 +43,12 @@ test("a changelog with no release yet gets the section at the end", () => {
   assert.equal(changelog, `${top}\n## 0.2.0 - 2026-10-25\n\n- Fix b (#5)\n\n`);
 });
 
+test("a heading inside the intro is not a release", () => {
+  const intro = "# Changelog\n\n```md\n## Example\n```\n";
+  const { changelog } = release(`${intro}\n${older}`, ["Fix b (#5)"]);
+  assert.equal(changelog, `${intro}\n## 0.2.0 - 2026-10-25\n\n- Fix b (#5)\n\n${older}`);
+});
+
 test("without a tag, every commit is listed", () => {
   const { changelog } = release(`${top}\n${older}`, ["Fix b (#5)"], { tag: false });
   assert.equal(changelog, `${top}\n## 0.2.0 - 2026-10-25\n\n- Fix b (#5)\n\n- Start\n\n${older}`);

@@ -70,5 +70,10 @@ and that section of the changelog. Change targets or installers in
 workflow is out of date. The Release PR and Release tag workflows need the bot
 to have Contents write access. If Release tag fails, fix the cause and
 run Release tag from the Actions tab with the merge commit. If the Release
-workflow fails after the tag exists, fix the cause and re-run that run; a new
-Release tag run sees the tag and does nothing.
+workflow fails after the tag exists, re-run that run; a new Release tag run
+sees the tag and does nothing. When the tagged commit itself is the cause,
+delete the tag, fix `main`, and release the next version.
+
+Any `v*` tag pushed to the repository starts the Release workflow and
+publishes a release. Add a tag ruleset that lets only stormlight-thunderbot
+create `v*` tags, so a release only comes from a merged release PR.
