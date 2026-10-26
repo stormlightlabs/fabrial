@@ -6,9 +6,11 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const worktree = fileURLToPath(new URL("../../", import.meta.url));
+// `cargo test`, which `just check` runs first, builds the binary.
+const fab = process.env.FAB_BIN ?? join(worktree, "target/debug/fab");
 const head = "a".repeat(40);
 
-// Runs gate.sh against a fake gh that logs every call and answers `pr view`
+// Runs `fab gate` against a fake gh that logs every call and answers `pr view`
 // with `pr`, plus the comments the run has posted as the bot. After the first
 // post it answers with `later` instead, as if the pull request was edited
 // while the run worked. Returns the exit status and the logged calls.
@@ -36,7 +38,7 @@ else if (args[0] === "api" && args[1] !== "-X") console.log(process.env.TEST_API
 else if (args[0] === "api" || args[0] === "label" || (args[0] === "pr" && ["comment", "ready", "edit", "merge"].includes(args[1]))) console.log("{}");
 else process.exit(91);
 `, { mode: 0o700 });
-    const output = spawnSync("bash", [".github/storm/gate.sh"], { cwd: worktree, encoding: "utf8", timeout: 10000,
+    const output = spawnSync(fab, ["gate"], { cwd: worktree, encoding: "utf8", timeout: 10000,
       env: { ...process.env, PATH: `${root}:${process.env.PATH}`, REPO: "owner/repo", PR: "1", HEAD_SHA: head,
         HEAD_DIR: join(root, "absent"), TEST_GH_LOG: log, TEST_PR: JSON.stringify({ ...base, ...pr }),
         TEST_PR_LATER: later ? JSON.stringify({ ...base, ...pr, ...later }) : "", ...env } });
@@ -175,4 +177,11 @@ test("a failed ready posts no success", () => {
 test("a failed squash message fails the run", () => {
   const { status } = gate({ ...finished, TEST_FAIL: "comment" });
   assert.notEqual(status, 0);
+});
+
+test("DRY_RUN=1 reads but writes nothing", () => {
+  const { status, stderr, calls } = gate({ ...finished, DRY_RUN: "1" });
+  assert.equal(status, 0, stderr);
+  assert(calls.every(c => c.args[1] === "view"), JSON.stringify(calls.map(c => c.args.slice(0, 2))));
+  assert.match(stderr, /DRY_RUN gh "pr" "ready"/);
 });
