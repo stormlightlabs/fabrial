@@ -48,9 +48,9 @@ const EMBEDDED: &[(&str, &str, bool)] = &[
         false,
     ),
     (
-        ".github/storm/squash-body.sh",
-        include_str!("../../../.github/storm/squash-body.sh"),
-        true,
+        ".github/actions/fab/action.yml",
+        include_str!("../../../.github/actions/fab/action.yml"),
+        false,
     ),
     (
         ".github/storm/shot.sh",
@@ -589,12 +589,7 @@ mod tests {
     fn init_then_check_reports_no_drift() {
         let dir = tempfile::tempdir().unwrap();
         let report = init(dir.path(), &settings(), false).unwrap();
-        assert!(
-            report
-                .written
-                .iter()
-                .any(|p| p == Path::new(".github/storm/squash-body.sh"))
-        );
+        assert!(report.written.iter().any(|p| p == Path::new(".github/storm/shot.sh")));
         assert_eq!(check(dir.path()).unwrap(), vec![]);
         let toml = fs::read_to_string(dir.path().join(SETTINGS_PATH)).unwrap();
         assert!(toml.contains(r#"gates = "npm test""#));
@@ -614,7 +609,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         assert!(matches!(update(dir.path(), |_| {}, false), Err(Error::NotInstalled)));
         install(dir.path(), &settings(), false).unwrap();
-        fs::write(dir.path().join(".github/storm/squash-body.sh"), "#!/bin/sh\n").unwrap();
+        fs::write(dir.path().join(".github/storm/shot.sh"), "#!/bin/sh\n").unwrap();
         let report = update(dir.path(), |s| s.gates = "just check".into(), false).unwrap();
         assert_eq!(report.written.len(), 2, "{:?}", report.written);
         let toml = fs::read_to_string(dir.path().join(SETTINGS_PATH)).unwrap();
@@ -659,10 +654,10 @@ mod tests {
     fn check_reports_an_edited_and_a_deleted_file() {
         let dir = tempfile::tempdir().unwrap();
         init(dir.path(), &settings(), false).unwrap();
-        fs::write(dir.path().join(".github/storm/squash-body.sh"), "#!/bin/sh\n").unwrap();
+        fs::write(dir.path().join(".github/storm/shot.sh"), "#!/bin/sh\n").unwrap();
         fs::remove_file(dir.path().join(".claude/agents/verifier.md")).unwrap();
         let drift = check(dir.path()).unwrap();
-        assert!(drift.contains(&Drift::Differs(".github/storm/squash-body.sh".into())));
+        assert!(drift.contains(&Drift::Differs(".github/storm/shot.sh".into())));
         assert!(drift.contains(&Drift::Missing(".claude/agents/verifier.md".into())));
     }
 
@@ -821,13 +816,13 @@ mod tests {
         fs::write(&target, "theirs\n").unwrap();
         let dir = tempfile::tempdir().unwrap();
         fs::create_dir_all(dir.path().join(".github/storm")).unwrap();
-        std::os::unix::fs::symlink(&target, dir.path().join(".github/storm/squash-body.sh")).unwrap();
+        std::os::unix::fs::symlink(&target, dir.path().join(".github/storm/shot.sh")).unwrap();
         std::os::unix::fs::symlink(outside.path(), dir.path().join(".claude")).unwrap();
         for force in [false, true] {
             let err = init(dir.path(), &settings(), force).unwrap_err();
             assert!(
                 matches!(&err, Error::Unmanageable(paths)
-                    if *paths == vec![PathBuf::from(".claude"), PathBuf::from(".github/storm/squash-body.sh")]),
+                    if *paths == vec![PathBuf::from(".claude"), PathBuf::from(".github/storm/shot.sh")]),
                 "{err}"
             );
             assert!(!dir.path().join(SETTINGS_PATH).exists());
@@ -841,7 +836,7 @@ mod tests {
         // `check` reports it without reading through it.
         let dir = tempfile::tempdir().unwrap();
         init(dir.path(), &settings(), false).unwrap();
-        let script = dir.path().join(".github/storm/squash-body.sh");
+        let script = dir.path().join(".github/storm/shot.sh");
         fs::remove_file(&script).unwrap();
         std::os::unix::fs::symlink(&target, &script).unwrap();
         assert!(matches!(
@@ -851,7 +846,7 @@ mod tests {
         assert_eq!(fs::read_to_string(&target).unwrap(), "theirs\n");
         assert_eq!(
             check(dir.path()).unwrap(),
-            vec![Drift::Differs(".github/storm/squash-body.sh".into())]
+            vec![Drift::Differs(".github/storm/shot.sh".into())]
         );
     }
 
@@ -923,9 +918,10 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         init(dir.path(), &settings(), false).unwrap();
-        for script in [".github/storm/squash-body.sh", ".github/storm/shot.sh"] {
-            let mode = fs::metadata(dir.path().join(script)).unwrap().permissions().mode();
-            assert_eq!(mode & 0o111, 0o111, "{script}");
-        }
+        let mode = fs::metadata(dir.path().join(".github/storm/shot.sh"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o111, 0o111);
     }
 }

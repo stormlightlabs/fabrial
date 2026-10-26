@@ -22,18 +22,20 @@ https://github.com/stormlightlabs/fabrial fab-cli` fetches the same archives.
 On another platform, build it:
 `cargo install --git https://github.com/stormlightlabs/fabrial --tag v<version> fab-cli`.
 
-It writes the Branch PR, Review gate and Bot comment workflows,
-`squash-body.sh` and `shot.sh`, `CODEOWNERS`, `.github/fabrial.toml`, the
-skills and agents, and a section of `AGENTS.md`. The Review gate installs the
-`fab` release that `.github/fabrial.toml` names and runs `fab gate`. Commit
-the result on a `claude/` branch and push it; the Branch PR workflow opens the
-pull request.
+It writes the Branch PR, Review gate and Bot comment workflows, the action
+that installs `fab` for them, `shot.sh`, `CODEOWNERS`, `.github/fabrial.toml`,
+the skills and agents, and a section of `AGENTS.md`. Branch PR and the Review
+gate install the `fab` release that `.github/fabrial.toml` names and run
+`fab branch-pr` and `fab gate`. Commit the result on a `claude/` branch and
+push it; the Branch PR workflow opens the pull request.
 
 To take a newer release, install that `fab` and run `fab update`. It keeps the
 settings in `.github/fabrial.toml`, unless `--owner`, `--trailer` or `--gates`
 changes one, and replaces the files with this build's. It refuses to install
-an older release over a newer one unless you pass `--force`. `CHANGELOG.md`
-says what each release changes.
+an older release over a newer one unless you pass `--force`. It leaves files
+that only older releases wrote, such as `.github/storm/gate.sh` and
+`.github/storm/squash-body.sh`; delete them. `CHANGELOG.md` says what each
+release changes.
 
 `fab check` lists files that differ from this build's and an installed version
 that differs from it, and exits 1 when there is any drift.
