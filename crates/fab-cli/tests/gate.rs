@@ -20,7 +20,8 @@ const FAKE_GH: &str = r#"#!/bin/bash
 set -u
 body=
 for ((i = 1; i < $#; i++)); do
-  if [[ ${!i} == --body-file ]]; then j=$((i + 1)); body=$(cat "${!j}"); fi
+  # The x keeps trailing newlines, which command substitution strips.
+  if [[ ${!i} == --body-file ]]; then j=$((i + 1)); body=$(cat "${!j}"; echo x); body=${body%x}; fi
 done
 printf '%s\0' "$@" | jq -Rsc --arg body "$body" '{args: split("\u0000")[:-1], body: $body}' >> "$TEST_GH_LOG"
 if [[ $1 == pr && ${2:-} == "${TEST_FAIL:-}" ]]; then exit 1; fi
@@ -412,8 +413,16 @@ fn a_rebase_that_only_moves_the_base_keeps_the_review_and_a_new_change_does_not(
         .find_map(|a| a.strip_prefix("output[summary]="))
         .unwrap()
         .to_string();
-    let marker = summary.split("<!-- storm-review diff=").nth(1).unwrap();
-    assert!(marker.strip_suffix(" -->").is_some_and(|h| h.len() == 64), "{summary}");
+    let hash = summary
+        .split("<!-- storm-review diff=")
+        .nth(1)
+        .and_then(|rest| rest.split_once(" -->"))
+        .map(|(hash, _)| hash)
+        .unwrap_or_default();
+    assert!(
+        hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)),
+        "{summary}"
+    );
 
     let rebased = gate(
         &[
