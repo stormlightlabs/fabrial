@@ -25,8 +25,9 @@ On another platform, build it:
 It writes the Branch PR, Review gate and Bot comment workflows,
 `squash-body.sh` and `shot.sh`, `CODEOWNERS`, `.github/fabrial.toml`, the
 skills and agents, and a section of `AGENTS.md`. The Review gate installs the
-`fab` release that `.github/fabrial.toml` names and runs `fab gate`. Commit the result on a `claude/` branch and push
-it; the Branch PR workflow opens the pull request.
+`fab` release that `.github/fabrial.toml` names and runs `fab gate`. Commit
+the result on a `claude/` branch and push it; the Branch PR workflow opens the
+pull request.
 
 To take a newer release, install that `fab` and run `fab update`. It keeps the
 settings in `.github/fabrial.toml`, unless `--owner`, `--trailer` or `--gates`

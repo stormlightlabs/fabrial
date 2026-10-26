@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -184,4 +184,39 @@ test("DRY_RUN=1 reads but writes nothing", () => {
   assert.equal(status, 0, stderr);
   assert(calls.every(c => c.args[1] === "view"), JSON.stringify(calls.map(c => c.args.slice(0, 2))));
   assert.match(stderr, /DRY_RUN gh "pr" "ready"/);
+});
+
+test("a rebase that only moves the base keeps the review, and a new change does not", () => {
+  const target = join(worktree, "target"); mkdirSync(target, { recursive: true });
+  const repo = mkdtempSync(join(target, "gate-repo-"));
+  try {
+    const git = (...args) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args],
+      { cwd: repo, encoding: "utf8" }).trim();
+    const commit = (file, text, message) => { writeFileSync(join(repo, file), text); git("add", file); git("commit", "-qm", message); return git("rev-parse", "HEAD"); };
+    git("init", "-q", "-b", "main");
+    commit("a.txt", "one\ntwo\nthree\n", "base");
+    git("checkout", "-qb", "topic");
+    const first = commit("a.txt", "one\ntwo\nthree\nfour\n", "change");
+    git("checkout", "-q", "main");
+    // Moves the change's hunk down a line, so only the cut hunk headers match.
+    commit("a.txt", "zero\none\ntwo\nthree\n", "main moves");
+    git("update-ref", "refs/remotes/origin/main", "HEAD");
+    git("checkout", "-q", "topic");
+    git("rebase", "-q", "main");
+    const second = git("rev-parse", "HEAD");
+    const third = commit("a.txt", "one\ntwo\nthree\nfive\n", "another change");
+
+    const reviewed = gate({ ...finished, BODY: `Review finished at ${first}`, HEAD_SHA: first, HEAD_DIR: repo });
+    const success = reviewed.calls.find(c => c.args.includes("conclusion=success"));
+    const summary = success.args.find(a => a.startsWith("output[summary]=")).slice("output[summary]=".length);
+    assert.match(summary, /<!-- storm-review diff=[0-9a-f]{64} -->/);
+
+    const rebased = gate({ EVENT: "push", HEAD_SHA: second, BEFORE: first, HEAD_DIR: repo, TEST_API: summary });
+    assert(rebased.calls.some(c => c.args.includes("conclusion=success") && c.args.includes(`output[title]=Same change as ${first.slice(0, 7)}`)),
+      JSON.stringify(rebased.calls));
+
+    const changed = gate({ EVENT: "push", HEAD_SHA: third, BEFORE: second, HEAD_DIR: repo, TEST_API: summary });
+    assert(changed.calls.some(c => c.args.includes("status=in_progress")));
+    assert(!changed.calls.some(c => c.args.includes("conclusion=success")));
+  } finally { rmSync(repo, { recursive: true, force: false }); }
 });
