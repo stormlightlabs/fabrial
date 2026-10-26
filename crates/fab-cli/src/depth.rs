@@ -6,8 +6,10 @@
 //!   `Cargo.toml`, `Cargo.lock` or `.github/fabrial.toml`, and
 //!   `CHANGELOG.md`. The owner reads its changelog lines before accepting it.
 //! - `standard`: documentation, planning records and tests only. The
-//!   documentation paths are the ones the Check workflow skips the build
-//!   for, plus `.arcl/workspace/`.
+//!   documentation is the files the Check workflow skips the build for,
+//!   except that under `docs/` only Markdown and images count, since another
+//!   repository's `docs/` can hold a site with its own code. Planning
+//!   records are `.arcl/workspace/`'s Markdown and TOML.
 //! - `full`: anything else, including skills and agent roles, which change
 //!   how agents work, and workflows, the gate, release code and the sandbox.
 //!
@@ -22,8 +24,12 @@ use crate::run::{self, Result};
 
 /// Files that hold only documentation, matched as the Check workflow does.
 const DOCS: &[&str] = &["PLAN.md", "README.md", "CHANGELOG.md"];
-/// Directories whose files hold only documentation or planning records.
-const DOC_DIRS: &[&str] = &["docs/", ".arcl/workspace/"];
+/// Directories whose files with these extensions hold only documentation or
+/// planning records.
+const DOC_DIRS: &[(&str, &[&str])] = &[
+    ("docs/", &[".md", ".png", ".jpg", ".gif"]),
+    (".arcl/workspace/", &[".md", ".toml"]),
+];
 /// Files a version bump may change, each only on its `version` lines.
 const VERSION_FILES: &[&str] = &["Cargo.toml", "Cargo.lock", ".github/fabrial.toml"];
 
@@ -99,7 +105,10 @@ fn classify(paths: &[&str], version_only: impl Fn(&str) -> bool) -> (Depth, Stri
 
 /// Whether a path holds only documentation or planning records.
 fn is_doc(path: &str) -> bool {
-    DOCS.contains(&path) || DOC_DIRS.iter().any(|d| path.starts_with(d) && path.len() > d.len())
+    DOCS.contains(&path)
+        || DOC_DIRS
+            .iter()
+            .any(|(dir, kinds)| path.starts_with(dir) && kinds.iter().any(|k| path.ends_with(k)))
 }
 
 /// Whether a path holds only tests: a Rust integration test or a Node test
@@ -152,7 +161,7 @@ mod tests {
     #[test]
     fn documentation_planning_and_tests_take_the_standard_pass() {
         for paths in [
-            &["README.md", "docs/pi.md"][..],
+            &["README.md", "docs/pi.md", "docs/images/status.png"][..],
             &[".arcl/workspace/tasks/arcl-t-1.md", "PLAN.md"],
             &["crates/fab-cli/tests/gate.rs", "packages/pi/lib/status.test.mjs"],
         ] {
@@ -171,6 +180,10 @@ mod tests {
             "AGENTS.md",
             "conf/sandbox/worker.nix",
             "docs",
+            "docs/package.json",
+            "docs/astro.config.mjs",
+            "docs/src/components/Nav.astro",
+            ".arcl/config.toml",
             "crates/fab-cli/tests/fixtures/gh",
             "crates/fab-cli/tests/sub/x.rs",
             "justfile",

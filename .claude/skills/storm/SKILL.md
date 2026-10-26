@@ -1,6 +1,6 @@
 ---
 name: storm
-description: Run one task (an arcl task, a GitHub issue or a description) or one open pull request through implement, a standard review and its revise, then an adversarial review and its revise, ending with `Review finished at <sha>`. Use for /storm, when asked to take a task to a reviewed pull request, or to review and finish a pull request this session opened.
+description: Run one task (an arcl task, a GitHub issue or a description) or one open pull request through implement, a standard review and its revise, then an adversarial review and its revise, as many passes as `fab review-depth` gives, ending with `Review finished at <sha>`. Use for /storm, when asked to take a task to a reviewed pull request, or to review and finish a pull request this session opened.
 argument-hint: <task|pr-number>
 ---
 
@@ -80,7 +80,9 @@ more passes than the depth gives, never fewer.
    `Standard pass on <short sha> · <model>`.
 3. **Revise.** When anything above `nit` was found, dispatch the `reviser`
    agent with the pull request, the worktree and the findings. It fixes,
-   pushes and replies.
+   pushes and replies. Then run `fab review-depth` again on the new head: a
+   revise that touched code raises a `standard` pull request to `full`, and
+   the run goes on to step 4. The depth never drops.
 4. **Adversarial pass.** Pin the new head. Dispatch the `adversarial-reviewer`
    agent with it, the standard pass's findings and the reviser's reply.
 5. **Revise** as in step 3, but tell the reviser to report back rather than
