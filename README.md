@@ -16,8 +16,9 @@ fab init --owner <github-login> --trailer "Name <email>" --gates "<gate command>
 ```
 
 The installer fetches the prebuilt `fab` for Linux x86_64 or Apple Silicon
-into `~/.cargo/bin`. With Homebrew, `brew install stormlightlabs/tap/fab`
-installs the same build, from releases after v0.7.0. `cargo binstall --git
+into `~/.cargo/bin`. With Homebrew on those two platforms,
+`brew install stormlightlabs/tap/fab` installs the same build, from releases
+after v0.7.0. `cargo binstall --git
 https://github.com/stormlightlabs/fabrial fab-cli` fetches the same archives.
 On another platform, build it:
 `cargo install --git https://github.com/stormlightlabs/fabrial --tag v<version> fab-cli`.

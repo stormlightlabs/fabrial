@@ -6,7 +6,7 @@
 # It follows dist's own Homebrew job, except for the token: it mints a
 # stormlight-thunderbot token for the tap alone instead of reading a stored
 # HOMEBREW_TAP_TOKEN, so the bot must be installed on homebrew-tap with
-# Contents write.
+# Contents write. The action versions follow dist's job in release.yml.
 name: Publish Homebrew formula
 
 on:
@@ -29,14 +29,15 @@ jobs:
           private-key: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}
           owner: stormlightlabs
           repositories: homebrew-tap
+          permission-contents: write
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           repository: stormlightlabs/homebrew-tap
           token: ${{ steps.app.outputs.token }}
 
       # The formula is one of the release's artifacts.
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           pattern: artifacts-*
           path: Formula/
