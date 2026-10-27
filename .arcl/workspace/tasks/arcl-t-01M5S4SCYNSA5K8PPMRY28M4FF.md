@@ -15,4 +15,5 @@ Acceptance criteria:
 
 - [ ] The UI shows runs, steps and logs, and the PR status Pi's status area shows
 - [ ] It offers the same operations the `/storm:` comments trigger
-- [ ] A Cloudflare Worker serves it behind GitHub sign-in
+- [ ] If the GPUI spike ships it in the browser, a Cloudflare Worker serves it behind GitHub sign-in
+- [ ] If the spike picks a desktop client, the client reaches `fab serve` through the same Worker and sign-in

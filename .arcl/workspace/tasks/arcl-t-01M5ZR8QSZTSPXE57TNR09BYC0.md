@@ -11,4 +11,5 @@ blocked-by = ["arcl-t-01M5ZR8BMPW31BN1PQDSZFYTBV"]
 Acceptance criteria:
 
 - [ ] A worker uploads its record, result and transcript to R2 through presigned URLs the control plane issues
+- [ ] Each presigned URL expires within the worker's run and covers only that worker's object keys
 - [ ] No worker holds R2 credentials

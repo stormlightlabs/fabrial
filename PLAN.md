@@ -46,11 +46,12 @@ a paid plan, so rulesets on `main` are enforced.
   `/storm:` PR comments.
 - **Enforcement is server-side:** rulesets, required checks and the review
   workflow. There is no shell-command parsing or general token broker. Worker
-  sessions never hold the App's private key. Actions, the daemon, and the
-  explicitly authorized local spike issuer may hold it. The local issuer
-  retrieves only configured BWS secrets from the host's secret store, the
-  Keychain on macOS and the Secret Service on Linux, and mints
-  repository-restricted App installation tokens; it never accepts an owner PAT.
+  sessions never hold the App's private key. Actions, the daemon, the VPS
+  control plane's token issuer, and the explicitly authorized local spike
+  issuer may hold it. The local issuer retrieves only configured BWS secrets
+  from the host's secret store, the Keychain on macOS and the Secret Service on
+  Linux, and mints repository-restricted App installation tokens; it never
+  accepts an owner PAT.
 - **The bot is `stormlight-thunderbot`,** with its App ID and private key as
   org secrets shared with each repository that uses fabrial.
 - **Pull requests.** The bot opens each PR as a draft, and it stays one until
@@ -94,8 +95,12 @@ a paid plan, so rulesets on `main` are enforced.
   backends: tmux on the host, a k3s Job on OVH or a home machine, and an
   exe.dev VM for disposable work. A worker connects only outward, to report
   events to the control plane, push its branch and upload artifacts to R2
-  through presigned URLs. Run state lives in git and on the VPS; workers,
-  Cloudflare and R2 hold none.
+  through presigned URLs. Events go through the Cloudflare Tunnel, since the
+  tmux sandbox blocks local ports and exe.dev VMs are off the tailnet. Each
+  worker sends them with a short-lived credential of its own, which the
+  control plane issues at launch and revokes on exit, as it does the
+  worker's installation token. Run state lives in git and on the VPS;
+  workers, Cloudflare and R2 hold none.
 - **Web UI.** The web UI is fabrial's frontend to Pi, written in GPUI. A
   Cloudflare Worker serves it and holds only the GitHub sign-in session; it
   reaches the VPS through a Cloudflare Tunnel, so the VPS opens no public

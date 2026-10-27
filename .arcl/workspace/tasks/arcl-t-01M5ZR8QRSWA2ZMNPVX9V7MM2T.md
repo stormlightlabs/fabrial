@@ -5,7 +5,7 @@ title = "Add an exe.dev runner"
 status = "pending"
 priority = "normal"
 position = 0
-blocked-by = ["arcl-t-01M5ZR8BMPW31BN1PQDSZFYTBV"]
+blocked-by = ["arcl-t-01M5ZR8BMPW31BN1PQDSZFYTBV", "arcl-t-01M5ZR8QVVENQJM8YWKGWBMAB4"]
 +++
 
 Acceptance criteria:
