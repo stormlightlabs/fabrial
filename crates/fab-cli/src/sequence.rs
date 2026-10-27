@@ -43,7 +43,7 @@ struct Stage {
     role: String,
     /// The lowest depth that runs the stage.
     depth: Depth,
-    /// When a stage with nothing to act on is skipped.
+    /// The condition the stage needs to run; without one it always runs.
     when: Option<String>,
     /// What the stage leaves on the pull request.
     posts: String,
@@ -147,8 +147,9 @@ mod tests {
     fn a_missing_role_or_an_unknown_key_is_refused() {
         let err = parse(FILE, |role| role != "reviser").unwrap_err();
         assert!(err.contains("role `reviser`"), "{err}");
-        let typo = FILE.replace("posts = \"Its fixes", "post = \"Its fixes");
-        assert!(parse(&typo, |_| true).is_err());
+        let extra = FILE.replacen("role = \"reviser\"", "role = \"reviser\"\nmodel = \"x\"", 1);
+        let err = parse(&extra, |_| true).unwrap_err();
+        assert!(err.contains("unknown field `model`"), "{err}");
         let bad_depth = FILE.replacen("depth = \"full\"", "depth = \"deep\"", 1);
         assert!(parse(&bad_depth, |_| true).is_err());
     }

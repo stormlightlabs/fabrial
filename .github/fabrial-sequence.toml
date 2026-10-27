@@ -1,9 +1,9 @@
 # The review sequence the `storm` skill runs on a pull request, read by
 # `fab sequence`. Each stage runs once, in this order, in a fresh agent whose
 # role is in .claude/agents/. `depth` is the lowest review depth that runs the
-# stage: `fab review-depth` gives none, standard or full. `when` says when a
-# stage that ran nothing to fix is skipped, and `posts` what it leaves on the
-# pull request. `fab init` installs this file and `fab update` refreshes it.
+# stage: `fab review-depth` gives none, standard or full. `when` is the
+# condition a stage needs to run, and `posts` what it leaves on the pull
+# request. `fab init` installs this file and `fab update` refreshes it.
 
 [[stage]]
 name = "standard review"

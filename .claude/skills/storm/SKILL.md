@@ -1,6 +1,6 @@
 ---
 name: storm
-description: Run one task (an arcl task, a GitHub issue or a description) or one open pull request through implement, a standard review and its revise, then an adversarial review and its revise, as many stages as `fab sequence` gives, ending with `Review finished at <sha>`. Use for /storm, when asked to take a task to a reviewed pull request, or to review and finish a pull request this session opened.
+description: Run one task (an arcl task, a GitHub issue or a description) or one open pull request through implement and the review stages `fab sequence` gives, ending with `Review finished at <sha>`. Use for /storm, when asked to take a task to a reviewed pull request, or to review and finish a pull request this session opened.
 argument-hint: <task|pr-number>
 ---
 
@@ -56,32 +56,27 @@ in a cloud session.
 
 ## Review
 
-The stages live in `.github/fabrial-sequence.toml`: a standard review and its
-revise, then an adversarial review and its revise, each with its role, when it
-is skipped and what it posts. The sequence runs once per pull request, never
-in a loop. Reviewers check their own findings before reporting them. Dispatch
-the `verifier` agent only when the driver asks for it.
+The stages live in `.github/fabrial-sequence.toml`. The sequence runs once
+per pull request, never in a loop. Reviewers check their own findings before
+reporting them. Dispatch the `verifier` agent only when the driver asks for it.
 
 Fetch the branch, pin its head SHA and run `fab sequence --head <sha>` in the
-worktree. It prints the review depth, `none`, `standard` or `full`, with its
-reason, then the numbered stages that depth gives and the finish. A version
-bump and its changelog take none; documentation, planning records and tests
-take the standard stages; anything else takes all four. Without `fab`, or when
-it fails, read the file and run every stage. The driver can ask for more
-stages than the depth gives, never fewer.
+worktree. It prints the review depth with its reason, then the numbered stages
+that depth gives, each with its role, the condition it needs to run and what
+it posts, then the finish. Without `fab`, or when it fails, read the file and
+run every stage. The driver can ask for more stages than the depth gives,
+never fewer.
 
-Run the stages in order, each in a fresh agent of its role:
+Run the stages in order, each in a fresh agent of its role, and post what each
+stage's line says:
 
-- A **reviewer** gets the pull request, the pinned head and the task ID. The
-  adversarial reviewer also gets the standard review's findings and the
-  reviser's reply. Post what the stage's `posts` line says.
-- A **reviser** runs only when its review found anything above `nit`. It gets
-  the pull request, the task worktree and the findings, fixes them and
-  pushes. The first replies on the pull request; the second reports back,
-  and its report goes in the finish comment.
-- After each revise, pin the new head and run `fab sequence` on it again. A
-  revise that touched code raises a `standard` pull request to `full`, and
-  the run goes on to the stages that adds. The depth never drops.
+- A reviewer gets the pull request, the pinned head and the task ID, and the
+  earlier stages' findings and replies when there are any.
+- A reviser gets the pull request, the task worktree and its review's
+  findings.
+- After each stage that pushes, pin the new head and run `fab sequence` on it
+  again. When the depth rose, the run goes on to the stages it added. The
+  depth never drops.
 
 Nits are left in the comments for the owner; they start no revise.
 

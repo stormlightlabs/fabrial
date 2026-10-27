@@ -8,12 +8,9 @@ arcl holds the open work.
 ## Delivery sequence
 
 Run this sequence once per task: implement the task, including integration
-checks and required gates, then run the review stages `fab sequence` prints,
-then hand the PR to the driver. `.github/fabrial-sequence.toml` holds the
-stages: a fresh standard reviewer and its fixes, then a fresh adversarial
-reviewer and its fixes, cut by the pull request's review depth. A version
-bump takes none, and documentation, planning records and tests take only the
-standard review and its fixes.
+checks and required gates, then run the review stages `fab sequence` prints
+from `.github/fabrial-sequence.toml` for the pull request's review depth, then
+hand the PR to the driver.
 
 Check host tools, credentials, permissions, and isolation early. Run the smallest
 real end-to-end integration smoke during implementation, before review. Report
