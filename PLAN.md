@@ -13,21 +13,18 @@ a paid plan, so rulesets on `main` are enforced.
 
 ## Decisions
 
-- **Rust.** fabrial shares crates with arclightning (`arcl-core`, `arcl-store`)
-  instead of shelling out to `arcl`, and each project feeds the other's
-  development. Compile times are kept down with a crate-per-concern workspace,
+- **Rust.** Compile times are kept down with a crate-per-concern workspace,
   `cargo check` in the loop, `mold` and CI caching.
-- **arcl owns the work.** Tasks, blockers, readiness (`arcl ready`), handoffs,
-  completion evidence and agent context (`arcl context`, MCP) come from
-  arclightning. Its repository-native workspace is committed to git, so every
-  machine sees the same work. There is no GitHub Projects board. GitHub keeps
+- **A task source owns the work, and fabrial depends on none.** A repository
+  keeps its tasks where it chooses and names the tracker, with the commands
+  for each step, in a **Tasks** section of its `AGENTS.md`. Without one, a
+  task is a GitHub issue or a description from the owner. Nothing fabrial
+  installs names a tracker, and fabrial links no tracker's code. GitHub keeps
   pull requests and reviews.
-- **The two projects build each other, in this order.** fabrial first becomes
-  usable across the stormlightlabs org, then implements arclightning's work,
-  including the repository-native workspace. Only then does arcl take over
-  fabrial's own tasks. That happened in phase 4: fabrial's open work now
-  lives in arcl, and the skills take a task from arcl, a GitHub issue, or a
-  description from the owner.
+- **fabrial tracks its own work in arclightning.** arclightning is the owner's
+  project, and fabrial dogfoods it: fabrial's tasks live in `arcl`'s
+  repository-native workspace, as `AGENTS.md`'s **Tasks** says. arclightning
+  appears elsewhere in fabrial only as a documented recommendation.
 - **`fab init` installs fabrial by copying.** It writes the Branch PR, Review
   gate and Bot comment workflows, the action that installs `fab`,
   `CODEOWNERS`, the skills, the agents and an `AGENTS.md` section into a
@@ -36,7 +33,7 @@ a paid plan, so rulesets on `main` are enforced.
   call its reusable workflows.
 - **fabrial executes it.** It picks ready tasks, claims one, runs the review
   loop on a `storm/<task>` branch in its own worktree, opens the PR, and writes
-  the handoff and evidence back to arcl.
+  the handoff and evidence back to the task source.
 - **Claims live in git, off `main`.** A claim is a commit on a dedicated ref,
   `refs/fabrial/claims`, naming the task, machine, run and an expiry. The push
   is the lock: a rejected push means another machine claimed first, so fetch,
@@ -62,7 +59,7 @@ a paid plan, so rulesets on `main` are enforced.
   owner's `Co-authored-by` trailer. The owner merges with it or edits it.
   Nothing reads the message after the merge. "Verified
   with" and "Not covered" never reach `main`: verification goes in the review
-  comment and in arcl's completion evidence. PR bodies stay short.
+  comment and in the task's completion evidence. PR bodies stay short.
 - **The agent that opens a PR reviews it,** in its own Claude Code (or Codex)
   session: implement, one standard review by a fresh agent, implement its fixes,
   one adversarial review by a fresh agent, implement its fixes, then hand off
@@ -91,8 +88,7 @@ a paid plan, so rulesets on `main` are enforced.
   whether Claude Code, Codex and Pi read the same `SKILL.md` layout. Port
   per-host differences only where thunderstorm's `docs/internal/hosts.md` shows
   they are needed.
-- **Dashboard** per machine, reusing arclightning's Svelte `packages/ui`
-  (`PlanningTree`, `Readiness`, `ReviewSurface`).
+- **Dashboard** per machine, showing every run from the claims ref.
 - **Releases:** a workflow run opens a release pull request whose changelog
   section lists the squash subjects since the last tag, which the owner
   edits there; pull requests do not edit `CHANGELOG.md`. The tag lands on its
@@ -100,33 +96,6 @@ a paid plan, so rulesets on `main` are enforced.
   release. The tag starts dist's workflow, which publishes prebuilt `fab`
   binaries and an installer with the release. Repositories install a tagged
   `fab` and refresh with `fab update`.
-
-### Using the arcl crates
-
-arclightning's crates are not published to crates.io, and its repository is
-public. fabrial takes them as git dependencies pinned to a commit, so CI fetches
-them without credentials and a change upstream lands here only when the pin
-moves:
-
-```toml
-[workspace.dependencies]
-arcl-core = { git = "https://github.com/stormlightlabs/arclightning", rev = "<sha>" }
-arcl-store = { git = "https://github.com/stormlightlabs/arclightning", rev = "<sha>" }
-```
-
-Cargo finds each crate by name inside arclightning's workspace. To work on both
-projects at once, a developer overrides the source with a path in an
-uncommitted `.cargo/config.toml`:
-
-```toml
-[patch."https://github.com/stormlightlabs/arclightning"]
-arcl-core = { path = "../arclightning/crates/arcl-core" }
-arcl-store = { path = "../arclightning/crates/arcl-store" }
-```
-
-The workspace already matches arclightning's edition (2024), resolver (3) and
-`rustfmt.toml`. arclightning's crates are still pre-1.0, so expect the pin to
-move with API changes.
 
 ## Open questions
 
@@ -155,7 +124,7 @@ When moving the arcl pin, rerun `arcl skill install` and commit the result.
 
 ### Shipped
 
-What each phase has shipped. Phases 1, 2, 4 and 6 are done in part; their
+What each phase has shipped. Phases 1, 2 and 6 are done in part; their
 remaining tasks are in arcl.
 
 - Phase 0: the ruleset, `CODEOWNERS`, the bot, `AGENTS.md`, the writing skill,
@@ -168,7 +137,8 @@ remaining tasks are in arcl.
   (`v0.2.0`), and `fab update` in arclightning from it.
 - Phase 3: fabrial installed in arclightning (arclightning#1), and
   arclightning's repository-native workspace, its roadmap's milestone 3.
-- Phase 4: `arcl init` here, and `PLAN.md`'s open items moved into arcl.
+- Phase 4: `arcl init` here, `PLAN.md`'s open items moved into arcl, and
+  the session hook that installs `arcl` in cloud sessions.
 - Phase 6: Rust dispatch of four sandboxed Pi review roles, exercised on
   PR #21, and asynchronous Pi workers with worker-exit cleanup, accepted in
   [#30](https://github.com/stormlightlabs/fabrial/pull/30).

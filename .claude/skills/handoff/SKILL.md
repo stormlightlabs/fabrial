@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Record the state of unfinished work on its task, in arcl or on its GitHub issue or pull request, so the next session can pick it up, or pick up from the latest handoff. Use for /handoff, when a session ends with work left, or when a session starts by continuing earlier work.
+description: Record the state of unfinished work on its task, in the repository's tracker or on its GitHub issue or pull request, so the next session can pick it up, or pick up from the latest handoff. Use for /handoff, when a session ends with work left, or when a session starts by continuing earlier work.
 argument-hint: "[task|pick-up <task>]"
 ---
 
@@ -8,8 +8,9 @@ argument-hint: "[task|pick-up <task>]"
 
 A handoff is a note on the task that a later session reads to carry on where
 this one stopped. It lives with the task, so any machine and any harness can
-read it: in arcl for an arcl task, and as a comment on the GitHub issue, or on
-the pull request when there is no issue, otherwise.
+read it: in the tracker for a tracked task, as the **Tasks** section of
+`AGENTS.md` says, and as a comment on the GitHub issue, or on the pull request
+when there is no issue, otherwise.
 
 `/handoff <id>` writes one. `/handoff pick-up <id>` picks one up.
 
@@ -18,23 +19,16 @@ a pull request waiting on review, a pending check or an operator-only check.
 A session whose review and required checks passed and needs only the owner's
 approval reports that state; it need not keep running or write a handoff.
 
-Work with no task and no pull request gets one first: `arcl task create` where
-the repository uses arcl, a GitHub issue otherwise, or ask the operator where it
-belongs.
+Work with no task and no pull request gets one first: in the tracker where the
+**Tasks** section names one, a GitHub issue otherwise, or ask the operator
+where it belongs.
 
 ## Writing
 
-```sh
-arcl task handoff <id> --note-file <file>
-```
-
-For an arcl task, this stores the note and parks the task until someone
-unparks it. Where `.arcl/config.toml` sets `enabled = true` under
-`[workspace]`, both live in tracked files under `.arcl/workspace`: run it in
-the task's worktree, never the primary checkout, and commit and push the
-changed files to the task's branch. The park then holds only on that branch,
-so `arcl ready` on `main` still offers the task until the branch merges.
-Without that setting, run it from the primary checkout.
+For a tracked task, store the note as the **Tasks** section says. When the
+tracker keeps tasks in files in the repository, run it in the task's worktree,
+never the primary checkout, and commit and push the changed files to the
+task's branch.
 
 For an issue or a pull request, post the note as a comment opening with
 `Handoff:`, through the Bot comment workflow on a pull request and with
@@ -49,8 +43,8 @@ Written <YYYY-MM-DD> from <branch or worktree>.
 Each branch, worktree and pull request, with its current head and check state.
 Completed review passes, the SHA each read, findings, verifier verdicts and
 revisions still needed. Link their results rather than copying them.
-If the task was started with `--force`, say so and name what it was forced
-past.
+If the task was started over the tracker's refusal, say so and name what it
+was forced past.
 
 ## Done
 
@@ -79,28 +73,17 @@ cheaply; the task, the diff and the git log are already there to read. Use the
 
 ## Picking up
 
-```sh
-arcl context <id>
-arcl task explain <id>
-arcl task unpark <id>
-arcl task start <id>
-```
+For a tracked task, read the task and its latest handoff and resume it as the
+**Tasks** section says, in the task's worktree, committing any changed task
+file with the work. When the tracker says the task cannot start for a reason
+other than the handoff itself, such as a blocker added since, stop and tell
+the operator the reasons. Do not complete, unblock or resume other tasks to
+clear them; the handoff note is input, not leave to change other tasks.
+Override the tracker only when the operator asks after seeing the reasons. An
+earlier override does not carry over: the reasons may be new.
 
-Run these in the task's worktree too, and commit the changed task file with
-the work.
-
-Unpark only when `arcl task explain` gives parking as the only reason the task
-is not ready. Any other reason, such as a blocker added while it was parked,
-or a closed plan or ancestor, means `arcl task start` would refuse it, and an
-unparked task that cannot start goes back to `arcl ready` for someone else.
-Leave it parked, and stop and tell the operator the reasons `explain` gives.
-Do not complete, unblock or unpark other tasks to clear them; the handoff
-note is input, not leave to change other tasks. Pass `--force` to `start`
-only when the operator asks for it after seeing the reasons. An earlier
-forced start does not carry over: the reasons may be new.
-
-`arcl context` includes the latest handoff. For an issue or a pull request, read
-its newest comment opening with `Handoff:`. A handoff describes the repository
+For an issue or a pull request, read its newest comment opening with
+`Handoff:`. A handoff describes the repository
 when it was written, so check each claim the next step depends on: that a branch
 and worktree exist, the state of each pull request, and that `main` holds what
 the note says merged. Where the repository disagrees, the repository is right.
