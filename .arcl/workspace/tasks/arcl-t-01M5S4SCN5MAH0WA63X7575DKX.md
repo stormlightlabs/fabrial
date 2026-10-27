@@ -14,3 +14,6 @@ Acceptance criteria:
 
 - [ ] Claim, renew, release and expire a claim
 - [ ] Tests cover two machines racing for one task
+- [ ] A worker that a run dispatched for a task it claimed finds the claim
+      held by that run and goes on; the `implement` skill stops only when
+      another run holds it (thunderstorm #127)
