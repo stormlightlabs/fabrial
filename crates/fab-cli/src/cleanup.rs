@@ -5,10 +5,11 @@
 //! Everything it acts on comes from git and from GitHub's REST API through
 //! `gh api`, so it needs no record from the run that made the worktrees and
 //! works after a restart. A worktree is removed only when its pull request
-//! merged, `git status --porcelain` prints nothing and its branch tip equals
-//! the pull request's head. Anything that fails stops that item, which stays
-//! as it was, and is reported. It never forces a removal, rebases, resets or
-//! stashes; resyncing is the caller's, with the `resync` skill.
+//! merged, `git status --porcelain --ignored` lists nothing but Cargo's
+//! `target/`, and its branch tip equals the pull request's head. The branch
+//! is deleted only at that tip. Anything that fails stops that item, which
+//! stays as it was, and is reported. It never forces a removal, rebases,
+//! resets or stashes; resyncing is the caller's, with the `resync` skill.
 //!
 //! Exit codes: 0 when everything was handled or needs nothing, 1 when
 //! something was kept or needs a resync, 2 when something failed.
@@ -23,6 +24,12 @@ use crate::run::{self, Result};
 
 /// The branch prefixes agents push, as AGENTS.md names them.
 const AGENT_PREFIXES: [&str; 3] = ["claude/", "codex/", "storm/"];
+
+/// The ignored paths `git worktree remove` may delete with the worktree:
+/// Cargo's build output at the worktree's root, which a build recreates.
+/// Every other ignored file, such as an `.env` or a Nix `result` link, keeps
+/// the worktree.
+const DISPOSABLE: [&str; 1] = ["target/"];
 
 /// What `cleanup` does with one worktree, decided from its pull requests.
 #[derive(Debug, PartialEq)]
@@ -115,8 +122,8 @@ fn cleanup(options: &Options) -> Result<ExitCode> {
         };
         if worktree.prunable {
             println!(
-                "stale {branch} at {}: the directory is gone; run `git worktree prune`",
-                worktree.path.display()
+                "stale {branch} at {at}: the directory is gone; run `git worktree remove {at}`",
+                at = worktree.path.display()
             );
             tally.kept = true;
             continue;
@@ -158,18 +165,26 @@ fn one_worktree(
     );
     let pulls = pulls(&run::gh(&["api", &path])?)?;
     let tip = run::git(primary, &["rev-parse", &format!("refs/heads/{branch}")])?;
-    let dirty = !run::git(&worktree.path, &["status", "--porcelain"])?.is_empty();
-    let mut plan = plan(&pulls, &tip, dirty);
+    let status = run::git(&worktree.path, &["status", "--porcelain", "--ignored"])?;
+    let (ignored, changed): (Vec<&str>, Vec<&str>) = status.lines().partition(|l| l.starts_with("!! "));
+    let mut plan = plan(&pulls, &tip, !changed.is_empty());
+    let kept: Vec<&str> = ignored
+        .iter()
+        .map(|l| &l[3..])
+        .filter(|p| !DISPOSABLE.contains(p))
+        .collect();
     let inside = here.starts_with(worktree.path.canonicalize().unwrap_or(worktree.path.clone()));
-    if inside && matches!(plan, Plan::Remove(_)) {
-        plan = Plan::Keep("it holds the current directory; run from another checkout".into());
+    if matches!(plan, Plan::Remove(_)) {
+        if inside {
+            plan = Plan::Keep("it holds the current directory; run from another checkout".into());
+        } else if !kept.is_empty() {
+            plan = Plan::Keep(format!("removal would delete ignored files: {}", kept.join(", ")));
+        }
     }
     match plan {
         Plan::Remove(number) if dry_run => println!("would remove {branch} at {at}: #{number} merged"),
         Plan::Remove(number) => {
-            let path = worktree.path.to_string_lossy();
-            run::git(primary, &["worktree", "remove", &path])?;
-            run::git(primary, &["branch", "-D", branch])?;
+            remove(primary, &worktree.path, branch, &tip)?;
             println!("removed {branch} at {at}: #{number} merged");
         }
         Plan::Keep(why) => {
@@ -177,6 +192,31 @@ fn one_worktree(
             tally.kept = true;
         }
         Plan::Leave(why) => println!("left {branch} at {at}: {why}"),
+    }
+    Ok(())
+}
+
+/// Removes a worktree and its branch, deleting the branch first and only at
+/// `tip`, so a commit added since it was judged is kept. The worktree is
+/// detached for the deletion and put back on its branch if that fails, and
+/// the branch is recreated if the removal then fails, so a failure leaves
+/// both for the next run to see.
+fn remove(primary: &Path, dir: &Path, branch: &str, tip: &str) -> Result<()> {
+    let reference = format!("refs/heads/{branch}");
+    run::git(dir, &["checkout", "-q", "--detach"])?;
+    if let Err(e) = run::git(primary, &["update-ref", "-d", &reference, tip]) {
+        return Err(match run::git(dir, &["checkout", "-q", branch]) {
+            Ok(_) => format!("cannot delete the branch: {e}"),
+            Err(back) => format!("cannot delete the branch ({e}), and the worktree stays detached: {back}"),
+        });
+    }
+    if let Err(e) = run::git(primary, &["worktree", "remove", &dir.to_string_lossy()]) {
+        let back = run::git(primary, &["update-ref", &reference, tip, ""])
+            .and_then(|_| run::git(dir, &["checkout", "-q", branch]));
+        return Err(match back {
+            Ok(_) => format!("cannot remove the worktree: {e}"),
+            Err(back) => format!("cannot remove the worktree ({e}) or put back {branch} at {tip}: {back}"),
+        });
     }
     Ok(())
 }

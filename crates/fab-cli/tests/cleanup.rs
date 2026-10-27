@@ -141,8 +141,11 @@ impl Fixture {
     /// Pushes a new commit to origin's main from another clone.
     fn advance_origin(&self) -> String {
         let temp = self.temp.path().to_path_buf();
-        self.git(&temp, &["clone", "-q", "origin.git", "other"]);
-        let head = self.commit(&self.path("other"), "later", "later\n");
+        if !self.path("other").exists() {
+            self.git(&temp, &["clone", "-q", "origin.git", "other"]);
+        }
+        let n = self.git(&self.path("other"), &["rev-list", "--count", "HEAD"]);
+        let head = self.commit(&self.path("other"), "later", &format!("later {n}\n"));
         self.git(&self.path("other"), &["push", "-q", "origin", "main"]);
         head
     }
@@ -259,7 +262,10 @@ fn a_worktree_whose_directory_is_gone_is_reported_not_failed() {
     let out = stdout(&output);
     assert_eq!(output.status.code(), Some(1), "{out}");
     assert!(
-        out.contains("stale storm/gone at") && out.contains("run `git worktree prune`"),
+        out.contains(&format!(
+            "stale storm/gone at {at}: the directory is gone; run `git worktree remove {at}`",
+            at = gone.display()
+        )),
         "{out}"
     );
     assert!(f.has_branch("storm/gone"));
@@ -298,6 +304,8 @@ fn a_dry_run_changes_nothing() {
     let before = f.git(&f.primary(), &["rev-parse", "main"]);
     let head = f.advance_origin();
     f.git(&f.primary(), &["fetch", "-q", "origin"]);
+    // A dry run that fetched would move origin/main to this commit.
+    f.advance_origin();
     let worktrees = f.git(&f.primary(), &["worktree", "list", "--porcelain"]);
     let output = f.cleanup(&["--dry-run"]);
     let out = stdout(&output);
@@ -323,4 +331,81 @@ fn a_failed_lookup_keeps_the_worktree_and_exits_two() {
     assert_eq!(output.status.code(), Some(2), "{out}");
     assert!(out.contains("error storm/merged at"), "{out}");
     assert!(merged.exists() && f.has_branch("storm/merged"));
+}
+
+#[test]
+fn ignored_files_other_than_target_keep_a_merged_worktree() {
+    let f = Fixture::new();
+    let (kept, tip) = f.worktree("storm/kept");
+    f.pull("storm/kept", 1, "closed", true, &tip);
+    fs::write(kept.join(".gitignore"), ".env\nresult\ntarget/\n").unwrap();
+    f.git(&kept, &["add", ".gitignore"]);
+    f.git(&kept, &["commit", "-q", "-m", "ignore"]);
+    let tip = f.git(&kept, &["rev-parse", "HEAD"]);
+    f.pull("storm/kept", 1, "closed", true, &tip);
+    fs::write(kept.join(".env"), "SECRET=1\n").unwrap();
+    std::os::unix::fs::symlink("/nix/store/x", kept.join("result")).unwrap();
+    fs::create_dir_all(kept.join("target/debug")).unwrap();
+    let output = f.cleanup(&[]);
+    let out = stdout(&output);
+    assert_eq!(output.status.code(), Some(1), "{out}");
+    assert!(
+        out.contains("kept storm/kept at") && out.contains("removal would delete ignored files: .env, result"),
+        "{out}"
+    );
+    assert!(kept.join(".env").exists() && f.has_branch("storm/kept"));
+}
+
+#[test]
+fn a_merged_worktree_with_only_target_ignored_is_removed() {
+    let f = Fixture::new();
+    let (merged, _) = f.worktree("storm/merged");
+    fs::write(merged.join(".gitignore"), "target/\n").unwrap();
+    f.git(&merged, &["add", ".gitignore"]);
+    f.git(&merged, &["commit", "-q", "-m", "ignore"]);
+    let tip = f.git(&merged, &["rev-parse", "HEAD"]);
+    f.pull("storm/merged", 1, "closed", true, &tip);
+    fs::create_dir_all(merged.join("target/debug")).unwrap();
+    fs::write(merged.join("target/debug/fab"), "built").unwrap();
+    let output = f.cleanup(&[]);
+    let out = stdout(&output);
+    assert_eq!(output.status.code(), Some(0), "{out}");
+    assert!(out.contains("removed storm/merged at"), "{out}");
+    assert!(!merged.exists() && !f.has_branch("storm/merged"));
+}
+
+#[test]
+fn a_branch_that_cannot_be_deleted_keeps_its_worktree() {
+    let f = Fixture::new();
+    let (merged, tip) = f.worktree("storm/merged");
+    f.pull("storm/merged", 1, "closed", true, &tip);
+    let common = f.git(&f.primary(), &["rev-parse", "--git-common-dir"]);
+    let lock = f.primary().join(common).join("refs/heads/storm/merged.lock");
+    fs::write(&lock, "").unwrap();
+    let output = f.cleanup(&[]);
+    let out = stdout(&output);
+    assert_eq!(output.status.code(), Some(2), "{out}");
+    assert!(
+        out.contains("error storm/merged at") && out.contains("cannot delete the branch"),
+        "{out}"
+    );
+    fs::remove_file(&lock).unwrap();
+    assert!(merged.join("work").exists() && f.has_branch("storm/merged"));
+    let listed = f.git(&f.primary(), &["worktree", "list", "--porcelain"]);
+    assert!(listed.contains("branch refs/heads/storm/merged"), "{listed}");
+}
+
+#[test]
+fn a_worktree_that_cannot_be_removed_keeps_its_branch() {
+    let f = Fixture::new();
+    let (merged, tip) = f.worktree("storm/merged");
+    f.pull("storm/merged", 1, "closed", true, &tip);
+    f.git(&f.primary(), &["worktree", "lock", &merged.to_string_lossy()]);
+    let output = f.cleanup(&[]);
+    let out = stdout(&output);
+    assert_eq!(output.status.code(), Some(2), "{out}");
+    assert!(out.contains("cannot remove the worktree"), "{out}");
+    assert!(merged.join("work").exists());
+    assert_eq!(f.git(&merged, &["symbolic-ref", "HEAD"]), "refs/heads/storm/merged");
+    assert_eq!(f.git(&f.primary(), &["rev-parse", "storm/merged"]), tip);
 }
