@@ -62,7 +62,8 @@ requires. Clippy warnings fail it whether or not your change caused them.
 crates/fab-core   install and settings; later, the run operations
 crates/fab-cli    the `fab` binary, including what workflows and skills run:
                   `fab gate`, `fab branch-pr`, `fab release`,
-                  `fab review-depth`, `fab sequence` and `fab pr-status`
+                  `fab review-depth`, `fab sequence`, `fab pr-status`,
+                  `fab pr-review` and `fab pr-answer`
 packages/pi/      the Pi package: extensions/ holds workers, PR status and the
                   status area, lib/ their shared code, and worker.ts the
                   extension `fab dispatch` gives each worker

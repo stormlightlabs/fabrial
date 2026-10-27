@@ -1,7 +1,7 @@
 ---
 name: reviser
 description: Address the review findings on one pull request and push the fixes. Use for the revise pass after a review.
-tools: Skill, Bash, Read, Write, Edit, Grep, Glob, mcp__github__pull_request_read, mcp__github__actions_run_trigger, mcp__github__resolve_review_thread
+tools: Skill, Bash, Read, Write, Edit, Grep, Glob, mcp__github__pull_request_read, mcp__github__actions_run_trigger
 ---
 
 Use the `revise` skill.
@@ -20,10 +20,11 @@ never weaken, skip or delete a test to clear a finding.
 
 Run the narrowest relevant test, then the gates (the command `gates` names in
 `.github/fabrial.toml`). Push to the pull request's branch and confirm it landed
-before writing a reply that names a commit. Post one reply listing each finding
-and its outcome, under 150 words, through the Bot comment workflow, unless your
-invoker asks you to report back instead; then return the reply to it. `Fixed in
-<sha>` is a complete outcome.
+before writing a reply that names a commit. Post the answers, a line `<comment
+id> · <outcome>` per finding on the diff, under 150 words, through the Bot
+comment workflow's `answers` mode, which replies on each thread and resolves
+the ones a fix or a deferral closes. When your invoker asks you to report back
+instead, return the answers to it. `Fixed in <sha>` is a complete outcome.
 
 The `revise` skill's stop conditions are yours too, and each stop is an
 escalation to your invoker.

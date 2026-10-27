@@ -36,8 +36,8 @@ scratch directory, never inside the repository. The comment appears once the
 run finishes, after about ten seconds.
 
 A stage whose `posts` line names a section of the status comment adds
-`section`, such as `-f section="Standard pass"` or `"section": "Standard
-pass"` in `inputs`. That section of the bot's one status comment is set
+`section` with the section's name, as `-f section="<name>"` or `"section":
+"<name>"` in `inputs`. That section of the bot's one status comment is set
 instead of a new comment, and an edit sends the owner no notification. The
 gate sets the `Squash message` section the same way. `Review finished` and
 the gate's requests to post a command again stay separate comments, since
@@ -45,15 +45,27 @@ they need the owner or start the gate. A section post installs `fab` first,
 which in fabrial builds it and can take several minutes, so it lands later
 than a comment.
 
-Both return once the run is queued, before it is listed, so a run that fails on
+A review pass posts its report as one review: add `review` set to the full
+head SHA the pass read. Each finding line whose `<path>:<line>` falls in the
+diff becomes a comment on that line, and the rest of the report is the
+review's body. A revise pass posts its answers with `answers` set to `true`:
+a line `<comment id> · <outcome>` per finding, where the id is the finding's
+review comment, and any other lines for the review's body. The answers post
+as replies on the findings' threads in one review, and each thread whose
+outcome starts with `Fixed` or `Deferred` is resolved. One review is one
+notification, whatever it holds. Both install `fab` as a section does.
+
+Either call returns once the run is queued, before it is listed, so a run that fails on
 a bad `pr` or a missing secret goes unseen, and the newest listed run may be an
 earlier one. Confirm each post by its result: within about a minute, or for a
 section once its `comment.yml` run has finished, `gh pr view <n> --comments`,
 or `pull_request_read` method `get_comments` in a cloud session, should show a
 comment from `stormlight-thunderbot[bot]`, created after you dispatched, whose
 first line matches yours, or for a section, the status comment holding your
-text. If none appears, look for a failure among the newest `comment.yml` runs
-and report it. Do not retry in a loop.
+text, or for a review or answers, a review from the bot created after you
+dispatched (`gh pr view <n> --json reviews`, or method `get_reviews`). If
+none appears, look for a failure among the newest `comment.yml` runs and
+report it. Do not retry in a loop.
 
 ## Implement
 
@@ -87,7 +99,7 @@ stage's line says:
 - A reviewer gets the pull request, the pinned head and the task ID, and the
   earlier stages' findings and replies when there are any.
 - A reviser gets the pull request, the task worktree and its review's
-  findings.
+  findings, as the review the bot posted.
 - After each stage that pushes, pin the new head and run `fab sequence` on it
   again. When the depth rose, the run goes on to the stages it added. The
   depth never drops.

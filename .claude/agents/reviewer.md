@@ -29,5 +29,6 @@ Return findings one per line, most severe first, under 200 words in total:
 <severity> · <path>:<line> — <problem> → <why it matters> → <fix direction>
 ```
 
-Severity is `blocker`, `high`, `medium`, `low` or `nit`. When ten findings do
-not fit, cut one and say how many you left out.
+Severity is `blocker`, `high`, `medium`, `low` or `nit`. The path is from the
+repository root, so a finding on the diff lands on its line. When ten
+findings do not fit, cut one and say how many you left out.
