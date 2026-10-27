@@ -290,3 +290,34 @@ fn check_tag_refuses_a_commit_off_main_or_a_tag_elsewhere() {
     assert_eq!(output.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&output.stderr).contains("is tagged on"));
 }
+
+#[test]
+fn sequence_reads_its_stages_from_the_base_not_the_head() {
+    let fixture = Fixture::new();
+    let sequence = include_str!("../../../.github/fabrial-sequence.toml");
+    let roles: Vec<String> = ["reviewer", "reviser", "adversarial-reviewer"]
+        .iter()
+        .map(|role| format!(".claude/agents/{role}.md"))
+        .collect();
+    let mut files = vec![(".github/fabrial-sequence.toml", sequence)];
+    files.extend(roles.iter().map(|path| (path.as_str(), "role\n")));
+    fs::create_dir_all(fixture.repo().join(".github")).unwrap();
+    fs::create_dir_all(fixture.repo().join(".claude/agents")).unwrap();
+    fixture.commit(&files, "Add the sequence");
+    fixture.git(&["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    // The head drops the adversarial stages and changes code.
+    let cut = &sequence[..sequence.find("[[stage]]\nname = \"adversarial review\"").unwrap()];
+    let finish = &sequence[sequence.find("[finish]").unwrap()..];
+    fixture.commit(
+        &[
+            (".github/fabrial-sequence.toml", &format!("{cut}{finish}")),
+            ("main.rs", "fn main() {}\n"),
+        ],
+        "Skip the adversarial review",
+    );
+    let output = fixture.fab(&["sequence"], &[]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let out = stdout(&output);
+    assert!(out.starts_with("Depth: full"), "{out}");
+    assert!(out.contains("4. adversarial revise"), "{out}");
+}

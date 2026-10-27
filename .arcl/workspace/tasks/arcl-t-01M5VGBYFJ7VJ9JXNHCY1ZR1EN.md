@@ -5,7 +5,7 @@ title = "Define the delivery sequence once"
 status = "completed"
 priority = "normal"
 position = 0
-evidence = "Done in the pull request from `storm/arcl-t-01M5VGBYFJ7VJ9JXNHCY1ZR1EN`: `.github/fabrial-sequence.toml` holds the review stages, and `fab sequence` prints those a pull request's depth gives."
+evidence = "Done in #58: `.github/fabrial-sequence.toml` holds the review stages, and `fab sequence` prints, from the merge base, those a pull request's depth gives."
 +++
 
 The storm sequence (roles, stages, what each posts) lives in one file that `fab` reads, instead of prose spread across the storm, revise and implement skills and the agents, which drift apart.

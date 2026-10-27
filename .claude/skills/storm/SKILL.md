@@ -63,9 +63,12 @@ reporting them. Dispatch the `verifier` agent only when the driver asks for it.
 Fetch the branch, pin its head SHA and run `fab sequence --head <sha>` in the
 worktree. It prints the review depth with its reason, then the numbered stages
 that depth gives, each with its role, the condition it needs to run and what
-it posts, then the finish. Without `fab`, or when it fails, read the file and
-run every stage. The driver can ask for more stages than the depth gives,
-never fewer.
+it posts, then the finish. It reads the file and the roles from the merge
+base with `main`, so a pull request's change to them applies to later pull
+requests, not its own review. Without `fab`, or when it fails, run every stage
+in the file on `main`, or, when `main` has none, a standard review and its
+revise then an adversarial review and its revise. The driver can ask for more
+stages than the depth gives, never fewer.
 
 Run the stages in order, each in a fresh agent of its role, and post what each
 stage's line says:

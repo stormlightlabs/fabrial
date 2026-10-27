@@ -10,7 +10,7 @@ use clap::Args;
 use serde::Deserialize;
 
 use crate::depth::{self, Depth};
-use crate::run::Result;
+use crate::run::{self, Result};
 
 /// Where the sequence lives, relative to the repository root.
 pub const SEQUENCE_PATH: &str = ".github/fabrial-sequence.toml";
@@ -58,11 +58,15 @@ struct Finish {
 
 /// Prints the depth and the stages it gives, numbered, then the finish.
 pub fn run(options: Options) -> Result<()> {
-    let root = Path::new(".");
-    let text =
-        std::fs::read_to_string(root.join(SEQUENCE_PATH)).map_err(|e| format!("cannot read {SEQUENCE_PATH}: {e}"))?;
+    let here = Path::new(".");
+    // The file and the roles come from the merge base, as the gate comes
+    // from main: a pull request's change to them applies to later pull
+    // requests, never to its own review.
+    let base = run::git(here, &["merge-base", &options.diff.base, &options.diff.head])?;
+    let show = |path: &str| run::git(here, &["show", &format!("{base}:{path}")]);
+    let text = show(SEQUENCE_PATH).map_err(|e| format!("cannot read {SEQUENCE_PATH} at the base {base}: {e}"))?;
     let sequence = parse(&text, |role| {
-        root.join(".claude/agents").join(format!("{role}.md")).is_file()
+        run::git(here, &["cat-file", "-e", &format!("{base}:.claude/agents/{role}.md")]).is_ok()
     })?;
     let (depth, reason) = match options.depth {
         Some(depth) => (depth, "given with --depth".to_string()),
@@ -72,10 +76,15 @@ pub fn run(options: Options) -> Result<()> {
     Ok(())
 }
 
-/// Reads a sequence and checks that every stage names a role that exists.
+/// Reads a sequence and checks it: at least one stage, and every stage's
+/// role a plain name that exists.
 fn parse(text: &str, role_exists: impl Fn(&str) -> bool) -> Result<Sequence> {
     let sequence: Sequence = toml::from_str(text).map_err(|e| format!("{SEQUENCE_PATH}: {e}"))?;
-    if let Some(stage) = sequence.stage.iter().find(|s| !role_exists(&s.role)) {
+    if sequence.stage.is_empty() {
+        return Err(format!("{SEQUENCE_PATH} has no stages."));
+    }
+    let plain = |role: &str| !role.is_empty() && role.bytes().all(|b| b.is_ascii_lowercase() || b == b'-');
+    if let Some(stage) = sequence.stage.iter().find(|s| !plain(&s.role) || !role_exists(&s.role)) {
         return Err(format!(
             "{SEQUENCE_PATH}: stage `{}` names role `{}`, which has no file in .claude/agents/.",
             stage.name, stage.role
@@ -152,5 +161,13 @@ mod tests {
         assert!(err.contains("unknown field `model`"), "{err}");
         let bad_depth = FILE.replacen("depth = \"full\"", "depth = \"deep\"", 1);
         assert!(parse(&bad_depth, |_| true).is_err());
+        let outside = FILE.replacen("role = \"reviewer\"", "role = \"../skills/review/SKILL\"", 1);
+        assert!(parse(&outside, |_| true).unwrap_err().contains("../skills"));
+        let finish = &FILE[FILE.find("[finish]").unwrap()..];
+        assert!(
+            parse(&format!("stage = []\n{finish}"), |_| true)
+                .unwrap_err()
+                .contains("no stages")
+        );
     }
 }

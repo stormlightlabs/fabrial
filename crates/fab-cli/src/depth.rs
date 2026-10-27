@@ -62,10 +62,10 @@ impl Depth {
 pub struct Options {
     /// The base to diff from, through the merge base.
     #[arg(long, default_value = "origin/main")]
-    base: String,
+    pub base: String,
     /// The head to classify.
     #[arg(long, default_value = "HEAD")]
-    head: String,
+    pub head: String,
 }
 
 /// Prints the depth for the diff from the merge base of `base` and `head`

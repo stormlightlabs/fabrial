@@ -3,7 +3,9 @@
 # role is in .claude/agents/. `depth` is the lowest review depth that runs the
 # stage: `fab review-depth` gives none, standard or full. `when` is the
 # condition a stage needs to run, and `posts` what it leaves on the pull
-# request. `fab init` installs this file and `fab update` refreshes it.
+# request. `fab sequence` reads this file from the merge base with main, so a
+# change to it applies to the pull requests after the one that makes it.
+# `fab init` installs this file and `fab update` refreshes it.
 
 [[stage]]
 name = "standard review"
