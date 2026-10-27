@@ -2,9 +2,10 @@
 id = "arcl-t-01M5Z573CQF7XCPHTS2HW8KC6T"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
 title = "Review a fabrial update before main has its files"
-status = "in_progress"
+status = "completed"
 priority = "high"
 position = 4
+evidence = "Done in #74: fab sequence uses the sequence this release installs when the base has none, and the storm, review and revise skills fall back to plain comments when main's comment.yml lacks a mode's input."
 +++
 
 Reported from arclightning's update to 0.7.1 (its PR 12).
