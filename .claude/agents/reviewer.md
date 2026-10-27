@@ -20,8 +20,8 @@ the pull request title and body, and the branch's commit messages, judged
 against `writing-docs` and its tells catalogue.
 
 For a change to terminal UI, capture each affected state with
-`.github/storm/shot.sh <name> <cols> <rows> <command...>`, which needs tmux
-and freeze. Read the PNGs, and report each PNG's absolute path.
+`.github/storm/shot.sh <name> <cols> <rows> <command...>`, which needs tmux,
+freeze and perl. Read the PNGs, and report each PNG's absolute path.
 
 Return findings one per line, most severe first, under 200 words in total:
 
