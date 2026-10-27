@@ -5,7 +5,7 @@ title = "Render shot.sh captures without color bleed"
 status = "completed"
 priority = "normal"
 position = 0
-evidence = "Done in the pull request from `storm/arcl-t-01M5SXCRTEGV6VQJXYQ4YD7P9J`: shot.sh renders from a copy whose SGR sequences each reset and restate the attributes, and a capture of `printf '\\e[35mA\\e[39m B'` shows B in the default color."
+evidence = "Done in #65: shot.sh renders from a copy whose SGR sequences each reset and restate the attributes, and a capture of `printf '\\e[35mA\\e[39m B'` shows B in the default color."
 +++
 
 freeze 0.2.2 ignores SGR 39 and 49, which reset the foreground and background
