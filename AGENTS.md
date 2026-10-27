@@ -73,7 +73,7 @@ package.json      the Pi package manifest, at the root so git installs find it
 .claude/agents/   implementer, reviewer, adversarial-reviewer, verifier, reviser
 .github/          CODEOWNERS and the Check, Branch PR and Review gate workflows
 .github/actions/fab/  the action that puts `fab` on the PATH for workflows
-.github/storm/    shot.sh, which captures a terminal UI as a PNG
+.github/storm/    shot.sh, which captures a terminal UI as a PNG, and sgr.pl, its color filter
 .github/fabrial.toml  the owner, the squash trailer and the gate command
 .github/fabrial-sequence.toml  the review stages the storm skill runs
 docs/hosts.md     what each host reads, and where they differ

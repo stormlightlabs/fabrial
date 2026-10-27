@@ -63,6 +63,11 @@ const EMBEDDED: &[(&str, &str, bool)] = &[
         true,
     ),
     (
+        ".github/storm/sgr.pl",
+        include_str!("../../../.github/storm/sgr.pl"),
+        true,
+    ),
+    (
         ".claude/agents/adversarial-reviewer.md",
         include_str!("../../../.claude/agents/adversarial-reviewer.md"),
         false,
@@ -923,10 +928,9 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         init(dir.path(), &settings(), false).unwrap();
-        let mode = fs::metadata(dir.path().join(".github/storm/shot.sh"))
-            .unwrap()
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o111, 0o111);
+        for script in [".github/storm/shot.sh", ".github/storm/sgr.pl"] {
+            let mode = fs::metadata(dir.path().join(script)).unwrap().permissions().mode();
+            assert_eq!(mode & 0o111, 0o111, "{script}");
+        }
     }
 }
