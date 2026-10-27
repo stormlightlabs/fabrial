@@ -103,6 +103,12 @@ One line per finding:
 | `low`     | Works, but will cause a defect later.                                |
 | `nit`     | Style or naming inside the repository's conventions.                 |
 
+The place is the path from the repository root and a line in the changed
+file, or a range such as `src/a.rs:12-15`. A finding whose place falls in the
+diff is posted on that line, so name the line the problem is on. A finding
+about something with no line, such as the pull request body, names it in
+words instead and stays in the review's body.
+
 State what breaks and with what input. A finding that cannot name a failing
 case is speculation; drop it or mark it `nit`.
 

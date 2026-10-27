@@ -9,6 +9,7 @@ mod depth;
 mod dispatch;
 mod gate;
 mod release;
+mod review;
 mod run;
 mod sequence;
 mod squash;
@@ -97,6 +98,13 @@ enum Command {
     /// Set a section of the pull request's status comment; the Bot comment
     /// workflow runs it.
     PrStatus(status::Options),
+    /// Post a review pass's report as one review, its findings on the lines
+    /// they name; the Bot comment workflow runs it.
+    PrReview(review::ReviewOptions),
+    /// Post a revise pass's answers as replies on the findings' threads, in
+    /// one review, and resolve the threads they close; the Bot comment
+    /// workflow runs it.
+    PrAnswer(review::AnswerOptions),
     /// fabrial's own release steps, which its release workflows run.
     Release {
         #[command(subcommand)]
@@ -138,6 +146,8 @@ fn main() -> ExitCode {
         Command::ReviewDepth(options) => return in_workflow(depth::run(options)),
         Command::Sequence(options) => return in_workflow(sequence::run(options)),
         Command::PrStatus(options) => return in_workflow(status::run(options)),
+        Command::PrReview(options) => return in_workflow(review::review(options)),
+        Command::PrAnswer(options) => return in_workflow(review::answer(options)),
         #[cfg(unix)]
         Command::Dispatch(options) => return ExitCode::from(dispatch::run(options)),
         #[cfg(unix)]
