@@ -5,7 +5,7 @@ title = "Clean up and resync when a pull request merges"
 status = "completed"
 priority = "normal"
 position = 4
-evidence = "Done in the pull request from `storm/arcl-t-01M5S4SCPDWJAQW875NKV9BATQ`: `fab cleanup` removes merged, clean agent worktrees at the merged head with their branches, fast-forwards a clean primary main, lists open agent pull requests that conflict with main or are behind it for the resync skill, and reads only git and GitHub so it runs after a restart; tasks own no Nix roots outside their worktrees"
+evidence = "Done in #72: `fab cleanup` removes merged, clean agent worktrees at the merged head with their branches, fast-forwards a clean primary main, lists open agent pull requests that conflict with main or are behind it for the resync skill, and reads only git and GitHub so it runs after a restart; tasks own no Nix roots outside their worktrees"
 +++
 
 Worker-exit cleanup shipped with the asynchronous Pi workers in phase 6. This
