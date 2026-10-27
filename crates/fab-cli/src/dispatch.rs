@@ -399,7 +399,8 @@ fn now() -> u64 {
 
 /// Reads the issuer's machine credential from the host's secret store: the
 /// macOS Keychain through `security`, elsewhere the Secret Service through
-/// libsecret's `secret-tool`, which needs the session bus address. Workers
+/// libsecret's `secret-tool`, which finds the session bus through
+/// `DBUS_SESSION_BUS_ADDRESS` or `XDG_RUNTIME_DIR`. Workers
 /// cannot reach either: the sandbox denies the Keychain services on macOS
 /// and every AF_UNIX socket, the session bus included, on Linux.
 fn machine_credential(c: &Config) -> Result<String> {

@@ -58,7 +58,7 @@ impl Fixture {
         // the Secret Service over the session bus, so it must get the address.
         script(
             &bin.join("secret-tool"),
-            "test \"$*\" = 'lookup service local-service account local-account'\ntest \"$DBUS_SESSION_BUS_ADDRESS\" = 'unix:path=/run/test-bus'\nprintf 'machine-secret'",
+            "test \"$*\" = 'lookup service local-service account local-account'\ntest \"$DBUS_SESSION_BUS_ADDRESS\" = 'unix:path=/run/test-bus'\ntest \"$XDG_RUNTIME_DIR\" = '/run/test-runtime'\nprintf 'machine-secret'",
         );
         script(
             &bin.join("bws"),
@@ -203,7 +203,8 @@ printf '%s\n' '{{"type":"agent_settled","aborted":false}}'
             .env("GH_TOKEN", "owner-secret")
             .env("BWS_ACCESS_TOKEN", "owner-secret")
             .env("OWNER_SENTINEL", "must-not-inherit")
-            .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/test-bus");
+            .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/test-bus")
+            .env("XDG_RUNTIME_DIR", "/run/test-runtime");
         command
     }
 

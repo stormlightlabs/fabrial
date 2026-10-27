@@ -51,7 +51,8 @@ a paid plan, so rulesets on `main` are enforced.
   workflow. There is no shell-command parsing or general token broker. Worker
   sessions never hold the App's private key. Actions, the daemon, and the
   explicitly authorized local spike issuer may hold it. The local issuer
-  retrieves only configured BWS secrets through macOS Keychain and mints
+  retrieves only configured BWS secrets from the host's secret store, the
+  Keychain on macOS and the Secret Service on Linux, and mints
   repository-restricted App installation tokens; it never accepts an owner PAT.
 - **The bot is `stormlight-thunderbot`,** with its App ID and private key as
   org secrets shared with each repository that uses fabrial.
