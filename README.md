@@ -23,8 +23,9 @@ On another platform, build it:
 `cargo install --git https://github.com/stormlightlabs/fabrial --tag v<version> fab-cli`.
 
 It writes the Branch PR, Review gate and Bot comment workflows, the action
-that installs `fab` for them, `shot.sh`, `CODEOWNERS`, `.github/fabrial.toml`,
-the skills and agents, and a section of `AGENTS.md`. Branch PR and the Review
+that installs `fab` for them, the review stages in
+`.github/fabrial-sequence.toml`, `shot.sh`, `CODEOWNERS`,
+`.github/fabrial.toml`, the skills and agents, and a section of `AGENTS.md`. Branch PR and the Review
 gate install the `fab` release that `.github/fabrial.toml` names and run
 `fab branch-pr` and `fab gate`. Commit the result on a `claude/` branch and
 push it; the Branch PR workflow opens the pull request.

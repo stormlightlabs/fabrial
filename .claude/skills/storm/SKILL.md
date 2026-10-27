@@ -1,6 +1,6 @@
 ---
 name: storm
-description: Run one task (an arcl task, a GitHub issue or a description) or one open pull request through implement, a standard review and its revise, then an adversarial review and its revise, as many passes as `fab review-depth` gives, ending with `Review finished at <sha>`. Use for /storm, when asked to take a task to a reviewed pull request, or to review and finish a pull request this session opened.
+description: Run one task (an arcl task, a GitHub issue or a description) or one open pull request through implement, a standard review and its revise, then an adversarial review and its revise, as many stages as `fab sequence` gives, ending with `Review finished at <sha>`. Use for /storm, when asked to take a task to a reviewed pull request, or to review and finish a pull request this session opened.
 argument-hint: <task|pr-number>
 ---
 
@@ -56,39 +56,32 @@ in a cloud session.
 
 ## Review
 
-The sequence is one standard pass, its revise, one adversarial pass, its
-revise, cut short by the pull request's review depth. It runs once per pull
-request, never in a loop. Reviewers check their own findings before reporting
-them. Dispatch the `verifier` agent only when the driver asks for it.
+The stages live in `.github/fabrial-sequence.toml`: a standard review and its
+revise, then an adversarial review and its revise, each with its role, when it
+is skipped and what it posts. The sequence runs once per pull request, never
+in a loop. Reviewers check their own findings before reporting them. Dispatch
+the `verifier` agent only when the driver asks for it.
 
-Fetch the branch and run `fab review-depth --head <sha>` in the worktree. It
-prints the depth on its first line and the reason on standard error:
+Fetch the branch, pin its head SHA and run `fab sequence --head <sha>` in the
+worktree. It prints the review depth, `none`, `standard` or `full`, with its
+reason, then the numbered stages that depth gives and the finish. A version
+bump and its changelog take none; documentation, planning records and tests
+take the standard stages; anything else takes all four. Without `fab`, or when
+it fails, read the file and run every stage. The driver can ask for more
+stages than the depth gives, never fewer.
 
-| Depth      | Passes                                                         |
-| ---------- | -------------------------------------------------------------- |
-| `none`     | None: a version bump and its changelog. Go to **Finish**.      |
-| `standard` | Steps 1 to 3: documentation, planning records and tests only.  |
-| `full`     | Steps 1 to 5: anything else.                                   |
+Run the stages in order, each in a fresh agent of its role:
 
-Without `fab`, or when it fails, the depth is `full`. The driver can ask for
-more passes than the depth gives, never fewer.
-
-1. **Standard pass.** Fetch the branch and pin its head SHA. Dispatch the
-   `reviewer` agent with the pull request, the SHA and the task ID.
-2. **Post.** One comment with its findings, in the `review` skill's format,
-   most severe first, under 200 words. Open it with
-   `Standard pass on <short sha> · <model>`.
-3. **Revise.** When anything above `nit` was found, dispatch the `reviser`
-   agent with the pull request, the worktree and the findings. It fixes,
-   pushes and replies. Then run `fab review-depth` again on the new head: a
-   revise that touched code raises a `standard` pull request to `full`, and
-   the run goes on to step 4. The depth never drops.
-4. **Adversarial pass.** Pin the new head. Dispatch the `adversarial-reviewer`
-   agent with it, the standard pass's findings and the reviser's reply.
-5. **Revise** as in step 3, but tell the reviser to report back rather than
-   reply on the pull request. The findings and its report go in the Finish
-   comment, under `Adversarial pass on <short sha> · <model>`, so the run
-   posts one comment fewer.
+- A **reviewer** gets the pull request, the pinned head and the task ID. The
+  adversarial reviewer also gets the standard review's findings and the
+  reviser's reply. Post what the stage's `posts` line says.
+- A **reviser** runs only when its review found anything above `nit`. It gets
+  the pull request, the task worktree and the findings, fixes them and
+  pushes. The first replies on the pull request; the second reports back,
+  and its report goes in the finish comment.
+- After each revise, pin the new head and run `fab sequence` on it again. A
+  revise that touched code raises a `standard` pull request to `full`, and
+  the run goes on to the stages that adds. The depth never drops.
 
 Nits are left in the comments for the owner; they start no revise.
 
@@ -122,22 +115,19 @@ history is not a fresh reader.
 
 ## Finish
 
-After the last pass the depth gives and its revise, post one comment whose
-first line is exactly:
+After the last stage the depth gives, post the comment the finish line of
+`fab sequence` describes. Its first line is exactly:
 
 ```text
 Review finished at <full head sha>
 ```
 
-Below a blank line, the same comment names the depth and its reason, such as
-`Review depth: standard (documentation, planning records and tests only)`,
-then carries the adversarial pass's findings, when it ran, and what the
-revise did about them. Each comment is one Bot comment run.
+Each comment is one Bot comment run.
 
 For an arcl task, first complete it on the branch and push, as the
 `implement` skill's **Complete the task** says, so the checks below and the
-gate read the final head. Run `fab review-depth` again on that head; when the
-depth rose, run the passes it now adds before posting.
+gate read the final head. Run `fab sequence` again on that head; when the
+depth rose, run the stages it now adds before posting.
 
 Before posting it, check that the pull request still merges. The review
 passes read the diff, not the base, so they do not see a conflict. `gh pr
@@ -218,8 +208,7 @@ Any of these ends the run without `Review finished`. Report the reason.
 
 - Review, revise or verify in this session's own context.
 - Post `Review finished` before the sequence has run to its end.
-- Skip a pass the review depth gives, or pick a lower depth than `fab
-  review-depth` printed.
+- Skip a stage `fab sequence` gives, or pick a lower depth than it printed.
 - Start another review pass on your own. A second sequence needs
   `/storm:review`.
 - Approve or merge.

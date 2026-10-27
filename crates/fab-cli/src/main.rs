@@ -10,6 +10,7 @@ mod dispatch;
 mod gate;
 mod release;
 mod run;
+mod sequence;
 mod squash;
 
 use clap::{Args, Parser, Subcommand};
@@ -89,6 +90,9 @@ enum Command {
     BranchPr(branch_pr::Options),
     /// Print how many review passes the diff takes: none, standard or full.
     ReviewDepth(depth::Options),
+    /// Print the review stages the diff's depth gives, from
+    /// .github/fabrial-sequence.toml.
+    Sequence(sequence::Options),
     /// fabrial's own release steps, which its release workflows run.
     Release {
         #[command(subcommand)]
@@ -128,6 +132,7 @@ fn main() -> ExitCode {
         Command::BranchPr(options) => return in_workflow(branch_pr::run(options)),
         Command::Release { step } => return in_workflow(step.run()),
         Command::ReviewDepth(options) => return in_workflow(depth::run(options)),
+        Command::Sequence(options) => return in_workflow(sequence::run(options)),
         #[cfg(unix)]
         Command::Dispatch(options) => return ExitCode::from(dispatch::run(options)),
         #[cfg(unix)]
@@ -189,4 +194,16 @@ fn written(report: &Report, done: &str) -> ExitCode {
         report.unchanged.len()
     );
     ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+
+    use super::Cli;
+
+    #[test]
+    fn the_command_line_is_well_formed() {
+        Cli::command().debug_assert();
+    }
 }

@@ -11,7 +11,7 @@ Review a diff and report findings. Do not edit code during a review pass; the
 
 The `storm` skill runs a standard pass and then an adversarial pass, each in
 a fresh agent and each followed by a revise, as many of them as
-`fab review-depth` gives the pull request. A pass checks its own findings,
+`fab sequence` gives the pull request from `.github/fabrial-sequence.toml`. A pass checks its own findings,
 reports to whoever invoked it, and posts only when they ask.
 
 ## Pick the target and the pass

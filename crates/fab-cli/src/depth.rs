@@ -34,7 +34,8 @@ const DOC_DIRS: &[(&str, &[&str])] = &[
 const VERSION_FILES: &[&str] = &["Cargo.toml", "Cargo.lock", ".github/fabrial.toml"];
 
 /// How many review passes a pull request takes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Depth {
     /// No review pass.
     None,
@@ -45,7 +46,8 @@ pub enum Depth {
 }
 
 impl Depth {
-    fn name(self) -> &'static str {
+    /// The depth as `fab review-depth` prints it.
+    pub fn name(self) -> &'static str {
         match self {
             Depth::None => "none",
             Depth::Standard => "standard",
@@ -56,6 +58,7 @@ impl Depth {
 
 /// The diff to classify.
 #[derive(Args)]
+#[group(skip)]
 pub struct Options {
     /// The base to diff from, through the merge base.
     #[arg(long, default_value = "origin/main")]
@@ -68,6 +71,15 @@ pub struct Options {
 /// Prints the depth for the diff from the merge base of `base` and `head`
 /// to `head`, with the reason on standard error.
 pub fn run(options: Options) -> Result<()> {
+    let (depth, reason) = of_diff(&options)?;
+    println!("{}", depth.name());
+    eprintln!("{}: {reason}", depth.name());
+    Ok(())
+}
+
+/// The depth for the diff from the merge base of `base` and `head` to
+/// `head`, and why. An empty diff is an error.
+pub fn of_diff(options: &Options) -> Result<(Depth, String)> {
     let here = Path::new(".");
     let base = run::git(here, &["merge-base", &options.base, &options.head])?;
     let names = run::git(here, &["diff", "--name-only", "--no-renames", &base, &options.head])?;
@@ -88,10 +100,7 @@ pub fn run(options: Options) -> Result<()> {
             _ => false,
         }
     };
-    let (depth, reason) = classify(&paths, version_only);
-    println!("{}", depth.name());
-    eprintln!("{}: {reason}", depth.name());
-    Ok(())
+    Ok(classify(&paths, version_only))
 }
 
 /// The depth for a diff's paths, and why. `version_only` says whether a
