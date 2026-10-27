@@ -3,6 +3,8 @@ name = "fab-cli"
 version.workspace = true
 edition.workspace = true
 repository.workspace = true
+homepage.workspace = true
+description = "A software factory that takes tasks to reviewed pull requests"
 
 [[bin]]
 name = "fab"

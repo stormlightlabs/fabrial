@@ -1,0 +1,62 @@
+# Commits the fab formula dist builds to stormlightlabs/homebrew-tap, so
+# `brew install stormlightlabs/tap/fab` installs the release. dist's Release
+# workflow (release.yml) calls this as a publish job once the release is up,
+# with its plan; prereleases are skipped there.
+#
+# It follows dist's own Homebrew job, except for the token: it mints a
+# stormlight-thunderbot token for the tap alone instead of reading a stored
+# HOMEBREW_TAP_TOKEN, so the bot must be installed on homebrew-tap with
+# Contents write.
+name: Publish Homebrew formula
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  formula:
+    runs-on: ubuntu-22.04
+    env:
+      PLAN: ${{ inputs.plan }}
+    steps:
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.THUNDERBOT_APP_ID }}
+          private-key: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}
+          owner: stormlightlabs
+          repositories: homebrew-tap
+
+      - uses: actions/checkout@v5
+        with:
+          repository: stormlightlabs/homebrew-tap
+          token: ${{ steps.app.outputs.token }}
+
+      # The formula is one of the release's artifacts.
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: artifacts-*
+          path: Formula/
+          merge-multiple: true
+
+      - name: Commit the formula
+        run: |
+          git config user.name 'stormlight-thunderbot[bot]'
+          git config user.email '340296662+stormlight-thunderbot[bot]@users.noreply.github.com'
+          # The formula's file name can differ from the app's, so take it from
+          # the plan: each release with a .rb artifact.
+          for release in $(jq --compact-output '.releases[] | select([.artifacts[] | endswith(".rb")] | any)' <<<"$PLAN"); do
+            filename=$(jq --raw-output '.artifacts[] | select(endswith(".rb"))' <<<"$release")
+            version=$(jq --raw-output .app_version <<<"$release")
+            export PATH="/home/linuxbrew/.linuxbrew/bin:$PATH"
+            brew update
+            # Leave the description and homepage as dist wrote them.
+            brew style --except-cops FormulaAudit/Homepage,FormulaAudit/Desc,FormulaAuditStrict --fix "Formula/$filename" || true
+            git add "Formula/$filename"
+            git commit -m "${filename%.rb} $version"
+          done
+          # Only the formula goes in: the other artifacts stay untracked.
+          git push

@@ -16,8 +16,8 @@ fab init --owner <github-login> --trailer "Name <email>" --gates "<gate command>
 ```
 
 The installer fetches the prebuilt `fab` for Linux x86_64 or Apple Silicon
-into `~/.cargo/bin`. Releases after v0.4.0 carry it; until the first one, use
-the `cargo install` line below. `cargo binstall --git
+into `~/.cargo/bin`. With Homebrew, `brew install stormlightlabs/tap/fab`
+installs the same build, from releases after v0.7.0. `cargo binstall --git
 https://github.com/stormlightlabs/fabrial fab-cli` fetches the same archives.
 On another platform, build it:
 `cargo install --git https://github.com/stormlightlabs/fabrial --tag v<version> fab-cli`.
@@ -71,15 +71,18 @@ release branch, then accept it with `/storm:ready <sha>`, since it holds no
 code to review.
 When it merges, the Release tag workflow tags `v<version>` on the merge commit.
 The tag starts the Release workflow, which dist generates: it builds `fab` for
-each target and publishes a GitHub release with the archives, the installer
-and that section of the changelog. Change targets or installers in
-`dist-workspace.toml` and run `dist generate`; `dist plan` fails while the
+each target and publishes a GitHub release with the archives, the installer and
+that section of the changelog. Its publish job,
+`.github/workflows/publish-homebrew.yml`, then commits the `fab` formula to
+stormlightlabs/homebrew-tap with a bot token minted for that repository, so the
+bot must be installed there with Contents write. Change targets or installers
+in `dist-workspace.toml` and run `dist generate`; `dist plan` fails while the
 workflow is out of date. The Release PR and Release tag workflows need the bot
-to have Contents write access. If Release tag fails, fix the cause and
-run Release tag from the Actions tab with the merge commit. If the Release
-workflow fails after the tag exists, re-run that run; a new Release tag run
-sees the tag and does nothing. When the tagged commit itself is the cause,
-delete the tag, fix `main`, and release the next version.
+to have Contents write access. If Release tag fails, fix the cause and run
+Release tag from the Actions tab with the merge commit. If the Release workflow
+fails after the tag exists, re-run that run; a new Release tag run sees the tag
+and does nothing. When the tagged commit itself is the cause, delete the tag,
+fix `main`, and release the next version.
 
 Any `v*` tag pushed to the repository starts the Release workflow and
 publishes a release. A tag ruleset on `v*` with the owner and
