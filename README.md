@@ -46,7 +46,9 @@ changes one, and replaces the files with this build's. It refuses to install
 an older release over a newer one unless you pass `--force`. It leaves files
 that only older releases wrote, such as `.github/storm/gate.sh` and
 `.github/storm/squash-body.sh`; delete them. `CHANGELOG.md` says what each
-release changes.
+release changes. A repository moving to this release from one that named
+its tracker in the skills adds a **Tasks** section to its `AGENTS.md`;
+without it the skills stop and ask when given a task ID.
 
 `fab check` lists files that differ from this build's and an installed version
 that differs from it, and exits 1 when there is any drift.

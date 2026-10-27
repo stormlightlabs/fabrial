@@ -145,9 +145,9 @@ Review finished at <full head sha>
 
 Each comment is one Bot comment run.
 
-For a tracked task, first complete it on the branch and push, as the
-`implement` skill's **Complete the task** says, so the checks below and the
-gate read the final head. Run `fab sequence` again on that head; when the
+For a tracked task whose tracker keeps its tasks in the repository, first
+complete it on the branch and push, as the `implement` skill's **Complete the
+task** says, so the checks below and the gate read the final head. Run `fab sequence` again on that head; when the
 depth rose, run the stages it now adds before posting.
 
 Before posting it, check that the pull request still merges. The review

@@ -592,7 +592,10 @@ mod tests {
         // tracker from the repository's AGENTS.md.
         let files = EMBEDDED.iter().map(|(p, c, _)| (*p, *c));
         for (path, contents) in files.chain([("agents-section.md", AGENTS_SECTION)]) {
-            assert!(!contents.to_lowercase().contains("arcl"), "{path} names arcl");
+            let lower = contents.to_lowercase();
+            for name in ["arcl", "arc lightning"] {
+                assert!(!lower.contains(name), "{path} names {name}");
+            }
         }
     }
 
