@@ -1,6 +1,6 @@
 ---
 name: storm
-description: Run one task (an arcl task, a GitHub issue or a description) or one open pull request through implement and the review stages `fab sequence` gives, ending with `Review finished at <sha>`. Use for /storm, when asked to take a task to a reviewed pull request, or to review and finish a pull request this session opened.
+description: Run one task (a tracked task, a GitHub issue or a description) or one open pull request through implement and the review stages `fab sequence` gives, ending with `Review finished at <sha>`. Use for /storm, when asked to take a task to a reviewed pull request, or to review and finish a pull request this session opened.
 argument-hint: <task|pr-number>
 ---
 
@@ -12,7 +12,7 @@ diff yourself, since the separation is what makes the review worth having.
 
 ## Start
 
-An arcl task ID, an issue `#<n>` or a description starts at implement. A pull
+A tracked task's ID, an issue `#<n>` or a description starts at implement. A pull
 request number starts at review. A bare number is a pull request if
 `gh pr view <n>` (or `pull_request_read`) finds one, and an issue otherwise.
 
@@ -145,9 +145,9 @@ Review finished at <full head sha>
 
 Each comment is one Bot comment run.
 
-For an arcl task, first complete it on the branch and push, as the
-`implement` skill's **Complete the task** says, so the checks below and the
-gate read the final head. Run `fab sequence` again on that head; when the
+For a tracked task whose tracker keeps its tasks in the repository, first
+complete it on the branch and push, as the `implement` skill's **Complete the
+task** says, so the checks below and the gate read the final head. Run `fab sequence` again on that head; when the
 depth rose, run the stages it now adds before posting.
 
 Before posting it, check that the pull request still merges. The review
@@ -219,8 +219,8 @@ never on a command a comment carries.
 
 Any of these ends the run without `Review finished`. Report the reason.
 
-- The implementer stopped before pushing, for example because arcl refused to
-  start the task.
+- The implementer stopped before pushing, for example because the tracker
+  refused to start the task.
 - A fix needs a decision the task and its spec do not record.
 - A gate fails and the fix is outside the task.
 - The pull request is labelled `storm:stopped`.

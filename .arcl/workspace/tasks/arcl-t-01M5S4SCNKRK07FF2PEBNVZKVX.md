@@ -12,3 +12,5 @@ Acceptance criteria:
 - [ ] `fab run <task>` runs the fixed sequence
 - [ ] One worker runs each step
 - [ ] Each task gets its own worktree
+- [ ] It reads the task and writes its handoff and evidence through the
+      repository's task source, and names no tracker

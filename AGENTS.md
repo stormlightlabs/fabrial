@@ -1,9 +1,10 @@
 # fabrial
 
-A software factory that takes ready tasks from arclightning through implement,
-review, adversarial review and revise until a pull request is ready for a
-person to merge. The CLI is `fab`. [PLAN.md](PLAN.md) holds the decisions, and
-arcl holds the open work.
+A software factory that takes ready tasks through implement, review,
+adversarial review and revise until a pull request is ready for a person to
+merge. The CLI is `fab`. [PLAN.md](PLAN.md) holds the decisions. fabrial's own
+open work lives in arclightning's `arcl`, as **Tasks** below says; nothing
+fabrial ships depends on it.
 
 ## Delivery sequence
 
@@ -87,7 +88,7 @@ AGENTS.md         this file (CLAUDE.md links to it)
 
 ## Code
 
-Follow arclightning's conventions, since the two share crates:
+Follow these conventions, which arclightning keeps too:
 
 - Document exported and contextually important items with rustdoc.
 - Keep an `impl` next to its type, and avoid `unsafe`.
@@ -95,10 +96,37 @@ Follow arclightning's conventions, since the two share crates:
   before private.
 - Use at most one level of `super`.
 
+## Tasks
+
+The installed skills read this section for the tracker's commands. fabrial's
+tasks live in arcl, in tracked files under `.arcl/workspace`; `arcl.db` is a
+local cache. In a cloud session `.claude/hooks/session-start.sh` installs the
+pinned `arcl` and builds the cache in the session's checkout only. Elsewhere,
+install it as PLAN.md's **Work** says. Every task worktree, cloud sessions
+included, needs `arcl init` before its first `arcl` command.
+
+| Step              | Command                                                       |
+| ----------------- | ------------------------------------------------------------- |
+| Read a task       | `arcl task show <id>` and `arcl context <id>`                 |
+| Check readiness   | `arcl ready`, and `arcl task explain <id>` for one task       |
+| Start             | `arcl init`, then `arcl task start <id>`, in the task's worktree |
+| Complete          | `arcl task complete <id> --evidence "Done in #<n> at <sha>: <summary>"` |
+| Hand off          | `arcl task handoff <id> --note-file <file>`                   |
+| Pick up           | `arcl context <id>`, `arcl task unpark <id>`, `arcl task start <id>` |
+| Record new work   | `arcl task create --phase <id> "<title>"`, or `arcl capture create` |
+
+- Every change to a task is a file change: commit it on the branch it
+  describes, so the status reaches `main` with the merge. Record new tasks and
+  bugs found along the way on the branch in progress, never in a pull request
+  of their own.
+- `arcl task start` refuses a task that is not ready. Pass `--force` only when
+  the owner asks after seeing the reasons `arcl task explain` gives.
+- A handoff parks the task. Unpark only when `arcl task explain` gives parking
+  as the only reason it is not ready.
+- When a merge conflicts on a task file, keep the newer status.
+
 ## Plan
 
-- Open work lives in arcl, in `.arcl/workspace`; `PLAN.md` shows how to read
-  it. Put task status updates and new tasks in the PR they describe.
 - Leave `CHANGELOG.md` alone. The Release PR workflow writes each release's
   section from the squash subjects since the last tag, and the owner edits it
   in the release PR.

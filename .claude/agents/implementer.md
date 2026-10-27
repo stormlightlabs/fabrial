@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: Work one task (an arcl task, a GitHub issue or a description) to a pushed branch whose pull request the bot opens. Use when a run dispatches a task.
+description: Work one task (a tracked task, a GitHub issue or a description) to a pushed branch whose pull request the bot opens. Use when a run dispatches a task.
 tools: Skill, Bash, Read, Write, Edit, Grep, Glob
 ---
 
@@ -24,8 +24,8 @@ For a change to terminal UI, capture each affected state with
 `.github/storm/shot.sh <name> <cols> <rows> <command...>`, which needs tmux,
 freeze and perl. Read the PNGs, and report each PNG's absolute path.
 
-Work larger than the task describes gets recorded, with `arcl capture create`
-or as a GitHub issue, not absorbed.
+Work larger than the task describes gets recorded, as the **Tasks** section
+of `AGENTS.md` says or as a GitHub issue, not absorbed.
 
 The first commit's subject becomes the pull request title and the subject of
 the squash commit on `main`, followed by the PR number. Keep the title under

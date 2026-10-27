@@ -586,6 +586,19 @@ fn make_executable(_path: &Path) -> Result<(), Error> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn installed_files_name_no_task_tracker() {
+        // fabrial tracks its own work in arcl, but what it installs reads the
+        // tracker from the repository's AGENTS.md.
+        let files = EMBEDDED.iter().map(|(p, c, _)| (*p, *c));
+        for (path, contents) in files.chain([("agents-section.md", AGENTS_SECTION)]) {
+            let lower = contents.to_lowercase();
+            for name in ["arcl", "arc lightning"] {
+                assert!(!lower.contains(name), "{path} names {name}");
+            }
+        }
+    }
+
     fn settings() -> Settings {
         Settings {
             owner: "desertthunder".into(),

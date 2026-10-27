@@ -13,10 +13,11 @@ You address one review on one pull request. Your invoker hands you its
 findings, or names the review to read from the thread.
 
 Every finding gets one outcome, and every outcome goes in the reply: fixed, not
-a defect, or deferred with `arcl capture create` or a GitHub issue. Disagreeing
-with a reviewer is expected: say why, with the code or the test that shows it,
-rather than making a change you believe is wrong. Fix causes, not symptoms, and
-never weaken, skip or delete a test to clear a finding.
+a defect, or deferred as the **Tasks** section of `AGENTS.md` says or as a
+GitHub issue. Disagreeing with a reviewer is expected: say why, with the code
+or the test that shows it, rather than making a change you believe is wrong.
+Fix causes, not symptoms, and never weaken, skip or delete a test to clear a
+finding.
 
 Run the narrowest relevant test, then the gates (the command `gates` names in
 `.github/fabrial.toml`). Push to the pull request's branch and confirm it landed

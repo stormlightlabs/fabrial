@@ -58,7 +58,7 @@ Every finding gets one outcome, and every outcome goes in the reply:
 | ------------ | ------------------------------------------------------------------------ |
 | Fixed        | The finding is right. Fix the cause, not the symptom.                    |
 | Not a defect | The finding is wrong. Say why, with the code or test that shows it.      |
-| Deferred     | Real but outside the task. Record it with `arcl capture create`, or as a GitHub issue, and say so. |
+| Deferred     | Real but outside the task. Record it as the **Tasks** section of `AGENTS.md` says, or as a GitHub issue, and say so. |
 
 Disagreeing with a reviewer is expected. Say so plainly instead of making a
 change you believe is wrong.
