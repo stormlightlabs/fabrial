@@ -7,24 +7,18 @@ arcl holds the open work.
 
 ## Delivery sequence
 
-Run this sequence once per task:
-
-1. Implement the task, including integration checks and required gates.
-2. Review with one fresh standard reviewer.
-3. Implement the accepted review fixes.
-4. Review with one fresh adversarial reviewer.
-5. Implement the accepted adversarial fixes, then hand the PR to the driver.
+Run this sequence once per task: implement the task, including integration
+checks and required gates, then run the review stages `fab sequence` prints
+from `.github/fabrial-sequence.toml` for the pull request's review depth, then
+hand the PR to the driver.
 
 Check host tools, credentials, permissions, and isolation early. Run the smallest
 real end-to-end integration smoke during implementation, before review. Report
 missing prerequisites and host-only failures as soon as they appear.
 
-`fab review-depth` cuts the reviews by risk: a version bump takes none, and
-documentation, planning records and tests take only the standard review and
-its fixes. Skip a fix stage when there are no actionable findings. After the
-final fixes, run the required gates, post `Review finished at <head>`, and
-hand off. Do not start another review cycle or wait for the driver's
-approval.
+Skip a fix stage when there are no actionable findings. After the final
+fixes, run the required gates, post `Review finished at <head>`, and hand off.
+Do not start another review cycle or wait for the driver's approval.
 
 This sequence takes precedence over extra verifier stages or dispatch loops in
 skills. Reviewers must validate their own findings. Extra agents, review passes,
@@ -67,8 +61,8 @@ requires. Clippy warnings fail it whether or not your change caused them.
 ```text
 crates/fab-core   install and settings; later, the run operations
 crates/fab-cli    the `fab` binary, including what workflows and skills run:
-                  `fab gate`, `fab branch-pr`, `fab release` and
-                  `fab review-depth`
+                  `fab gate`, `fab branch-pr`, `fab release`,
+                  `fab review-depth` and `fab sequence`
 packages/pi/      the Pi package: extensions/ holds workers, PR status and the
                   status area, lib/ their shared code, and worker.ts the
                   extension `fab dispatch` gives each worker
@@ -80,6 +74,7 @@ package.json      the Pi package manifest, at the root so git installs find it
 .github/actions/fab/  the action that puts `fab` on the PATH for workflows
 .github/storm/    shot.sh, which captures a terminal UI as a PNG
 .github/fabrial.toml  the owner, the squash trailer and the gate command
+.github/fabrial-sequence.toml  the review stages the storm skill runs
 docs/hosts.md     what each host reads, and where they differ
 docs/pi.md        how to set up a host and run Pi workers
 docs/pi-design.md planned Pi ownership and PR status transport

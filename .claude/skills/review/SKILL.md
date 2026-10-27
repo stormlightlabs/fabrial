@@ -9,10 +9,9 @@ argument-hint: "[pr-number|branch] [standard|adversarial]"
 Review a diff and report findings. Do not edit code during a review pass; the
 `revise` skill owns changes.
 
-The `storm` skill runs a standard pass and then an adversarial pass, each in
-a fresh agent and each followed by a revise, as many of them as
-`fab review-depth` gives the pull request. A pass checks its own findings,
-reports to whoever invoked it, and posts only when they ask.
+The `storm` skill runs the review stages `fab sequence` gives the pull request
+from `.github/fabrial-sequence.toml`, each pass in a fresh agent. A pass checks
+its own findings, reports to whoever invoked it, and posts only when they ask.
 
 ## Pick the target and the pass
 

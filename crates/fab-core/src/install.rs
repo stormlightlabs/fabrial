@@ -33,6 +33,11 @@ const EMBEDDED: &[(&str, &str, bool)] = &[
         false,
     ),
     (
+        ".github/fabrial-sequence.toml",
+        include_str!("../../../.github/fabrial-sequence.toml"),
+        false,
+    ),
+    (
         ".github/workflows/branch-pr.yml",
         include_str!("../../../.github/workflows/branch-pr.yml"),
         false,
