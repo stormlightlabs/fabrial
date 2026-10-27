@@ -12,8 +12,9 @@ use serde_json::json;
 /// The fake `gh`. It answers a pull request list by head branch with
 /// `$TEST_PULLS/head-<branch with / as _>.json`, the paginated open list
 /// with `$TEST_PULLS/open.json`, and one pull request with
-/// `$TEST_PULLS/<n>.json`; a missing file is an empty list. It logs every
-/// call and fails on anything else.
+/// `$TEST_PULLS/<n>.json`, and a comparison with main by head with
+/// `$TEST_PULLS/compare-<head>.json`; a missing list is empty and a missing
+/// comparison is not behind. It logs every call and fails on anything else.
 const FAKE_GH: &str = r#"#!/bin/bash
 set -eu
 printf '%s\n' "$*" >> "$TEST_PULLS/calls"
@@ -24,6 +25,9 @@ case "$*" in
     answer "$TEST_PULLS/head-${head//\//_}.json" ;;
   "api --paginate repos/o/r/pulls?state=open"*) answer "$TEST_PULLS/open.json" ;;
   "api repos/o/r/pulls/"*) cat "$TEST_PULLS/${2##*/}.json" ;;
+  "api repos/o/r/compare/main..."*)
+    f="$TEST_PULLS/compare-${2##*...}.json"
+    if [[ -e $f ]]; then cat "$f"; else echo '{"behind_by":0}'; fi ;;
   *) exit 91 ;;
 esac
 "#;
@@ -113,17 +117,24 @@ impl Fixture {
         fs::write(self.path("pulls").join(name), list.to_string()).unwrap();
     }
 
-    /// Answers the open pull requests, each with its head and mergeable
-    /// state.
-    fn open(&self, pulls: &[(u64, &str, &str)]) {
+    /// Answers the open pull requests, each with its branch, mergeable
+    /// state and how many commits it is behind main.
+    fn open(&self, pulls: &[(u64, &str, &str, u64)]) {
         let list: Vec<_> = pulls
             .iter()
-            .map(|(n, branch, _)| json!({"number": n, "head": {"ref": branch, "repo": {"full_name": "o/r"}}}))
+            .map(|(n, branch, ..)| json!({"number": n, "head": {"ref": branch, "repo": {"full_name": "o/r"}}}))
             .collect();
         fs::write(self.path("pulls").join("open.json"), json!(list).to_string()).unwrap();
-        for (n, _, state) in pulls {
-            let one = json!({"number": n, "mergeable_state": state});
+        for (n, _, state, behind) in pulls {
+            let head = format!("head{n}");
+            let one = json!({"number": n, "mergeable_state": state, "base": {"ref": "main"}, "head": {"sha": head}});
             fs::write(self.path("pulls").join(format!("{n}.json")), one.to_string()).unwrap();
+            let compare = json!({"behind_by": behind});
+            fs::write(
+                self.path("pulls").join(format!("compare-{head}.json")),
+                compare.to_string(),
+            )
+            .unwrap();
         }
     }
 
@@ -183,9 +194,11 @@ fn scene(f: &Fixture) -> [PathBuf; 5] {
     f.pull("storm/open", 4, "open", false, &tip);
     let (person, _) = f.worktree("feature/mine");
     f.open(&[
-        (4, "storm/open", "dirty"),
-        (5, "storm/gone", "clean"),
-        (6, "feature/x", "dirty"),
+        (4, "storm/open", "dirty", 0),
+        (5, "storm/gone", "clean", 0),
+        (6, "feature/x", "dirty", 0),
+        (7, "claude/behind", "blocked", 2),
+        (8, "codex/new", "unknown", 0),
     ]);
     [merged, dirty, moved, open, person]
 }
@@ -227,7 +240,29 @@ fn cleanup_removes_only_merged_clean_worktrees_and_lists_resyncs() {
         out.contains("needs resync: #4 storm/open: conflicts with main"),
         "{out}"
     );
+    assert!(
+        out.contains("needs resync: #7 claude/behind: behind main by 2 commits"),
+        "{out}"
+    );
+    assert!(out.contains("unknown: #8 codex/new:"), "{out}");
+    assert!(!out.contains("needs resync: #8"), "{out}");
     assert!(!out.contains("#5") && !out.contains("#6"), "{out}");
+}
+
+#[test]
+fn a_worktree_whose_directory_is_gone_is_reported_not_failed() {
+    let f = Fixture::new();
+    let (gone, tip) = f.worktree("storm/gone");
+    f.pull("storm/gone", 1, "closed", true, &tip);
+    fs::remove_dir_all(&gone).unwrap();
+    let output = f.cleanup(&[]);
+    let out = stdout(&output);
+    assert_eq!(output.status.code(), Some(1), "{out}");
+    assert!(
+        out.contains("stale storm/gone at") && out.contains("run `git worktree prune`"),
+        "{out}"
+    );
+    assert!(f.has_branch("storm/gone"));
 }
 
 #[test]

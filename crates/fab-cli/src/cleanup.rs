@@ -53,6 +53,8 @@ struct Worktree {
     path: PathBuf,
     /// The branch it has checked out, without `refs/heads/`.
     branch: Option<String>,
+    /// Whether git marks it prunable: its directory is gone.
+    prunable: bool,
 }
 
 /// One pull request from the REST API's list of pulls for a head branch.
@@ -111,6 +113,14 @@ fn cleanup(options: &Options) -> Result<ExitCode> {
         let Some(branch) = worktree.branch.as_deref().filter(|b| is_agent(b)) else {
             continue;
         };
+        if worktree.prunable {
+            println!(
+                "stale {branch} at {}: the directory is gone; run `git worktree prune`",
+                worktree.path.display()
+            );
+            tally.kept = true;
+            continue;
+        }
         if let Err(e) = one_worktree(
             &repo,
             &primary_dir,
@@ -237,8 +247,10 @@ fn refresh_main(primary: &Worktree, dry_run: bool, tally: &mut Tally) -> Result<
     Ok(())
 }
 
-/// Lists the repository's open agent pull requests that conflict with main
-/// or are behind it.
+/// Lists the repository's open agent pull requests that conflict with
+/// their base or are behind it, and those whose mergeability GitHub has not
+/// worked out yet. GitHub reports `behind` only when the base requires
+/// up-to-date branches, so the compare API decides that instead.
 fn needs_resync(repo: &str, tally: &mut Tally) -> Result<()> {
     let list = run::gh(&[
         "api",
@@ -253,11 +265,25 @@ fn needs_resync(repo: &str, tally: &mut Tally) -> Result<()> {
         };
         let one: Value = serde_json::from_str(&run::gh(&["api", &format!("repos/{repo}/pulls/{number}")])?)
             .map_err(|e| format!("cannot read #{number}: {e}"))?;
+        let base = one["base"]["ref"].as_str().unwrap_or("main");
         let why = match one["mergeable_state"].as_str() {
-            Some("dirty") => "conflicts with main",
-            Some("behind") => "behind main",
-            Some("unknown") | None => "GitHub has not worked out whether it merges; run again",
-            Some(_) => continue,
+            Some("dirty") => format!("conflicts with {base}"),
+            Some("unknown") | None => {
+                println!("unknown: #{number} {branch}: GitHub has not worked out whether it merges; run again");
+                tally.kept = true;
+                continue;
+            }
+            Some(_) => {
+                let head = one["head"]["sha"].as_str().ok_or(format!("#{number} has no head"))?;
+                let path = format!("repos/{repo}/compare/{}...{head}", encode(base));
+                let compare: Value = serde_json::from_str(&run::gh(&["api", &path])?)
+                    .map_err(|e| format!("cannot compare #{number} with {base}: {e}"))?;
+                match compare["behind_by"].as_u64() {
+                    Some(0) => continue,
+                    Some(n) => format!("behind {base} by {}", commits(&n.to_string())),
+                    None => return Err(format!("cannot read how far #{number} is behind {base}")),
+                }
+            }
         };
         println!("needs resync: #{number} {branch}: {why}");
         tally.kept = true;
@@ -280,9 +306,11 @@ fn worktrees(porcelain: &str) -> Vec<Worktree> {
     let mut list: Vec<Worktree> = Vec::new();
     for line in porcelain.lines() {
         if let Some(path) = line.strip_prefix("worktree ") {
-            list.push(Worktree { path: PathBuf::from(path), branch: None });
+            list.push(Worktree { path: PathBuf::from(path), branch: None, prunable: false });
         } else if let (Some(branch), Some(last)) = (line.strip_prefix("branch refs/heads/"), list.last_mut()) {
             last.branch = Some(branch.to_string());
+        } else if let (true, Some(last)) = (line == "prunable" || line.starts_with("prunable "), list.last_mut()) {
+            last.prunable = true;
         }
     }
     list
@@ -383,6 +411,18 @@ mod tests {
             assert_eq!(repo_from_url(url).as_deref(), Some("o/r"), "{url}");
         }
         assert_eq!(repo_from_url("git@github.com:r"), None);
+    }
+
+    #[test]
+    fn a_prunable_worktree_is_marked() {
+        let list = worktrees(
+            "worktree /p\nHEAD a\nbranch refs/heads/main\n\n\
+             worktree /w\nHEAD b\nbranch refs/heads/storm/x\nprunable gitdir file points to non-existent location\n",
+        );
+        assert_eq!(list.len(), 2);
+        assert!(!list[0].prunable);
+        assert!(list[1].prunable);
+        assert_eq!(list[1].branch.as_deref(), Some("storm/x"));
     }
 
     #[test]

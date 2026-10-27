@@ -49,8 +49,8 @@ alone. If cleanup is blocked, name what remains and why in the handoff.
 `fab cleanup` does the merge steps from git and GitHub alone, so it works
 after a restart, and lists the open agent pull requests to resync. A task owns
 no Nix roots outside its worktree: the sandbox wrapper is built once from a
-trusted checkout and shared. A `result` link in a worktree goes with it, but
-as an untracked file it keeps the worktree until you delete it.
+trusted checkout and shared. An untracked `result` link in a worktree keeps
+the worktree until you delete it.
 
 ## Gates
 
