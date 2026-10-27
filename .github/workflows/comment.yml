@@ -8,7 +8,7 @@
 # or, through the GitHub MCP tools, actions_run_trigger with method
 # run_workflow, workflow_id comment.yml, ref main and the same inputs.
 #
-# With `section`, such as `-f section="Standard pass"`, the body becomes that
+# With `section`, such as `-f section="Squash message"`, the body becomes that
 # section of the bot's status comment on the pull request instead of a new
 # comment: `fab pr-status` posts the status comment once and edits it after,
 # and an edit sends the owner no notification.

@@ -20,6 +20,13 @@ const SEVERITIES: &[&str] = &["blocker", "high", "major", "medium", "minor", "lo
 /// The outcomes that close a thread. A finding declined as not a defect
 /// stays open for the owner to judge.
 const CLOSING: &[&str] = &["Fixed", "Deferred"];
+/// The pull request's pending reviews. GitHub shows a pending review only
+/// to its author, so these are the bot's own.
+const PENDING: &str = "query($owner: String!, $name: String!, $pr: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $pr) { reviews(states: [PENDING], first: 10) { nodes { id } } }
+  }
+}";
 const THREADS: &str = "query($owner: String!, $name: String!, $pr: Int!, $endCursor: String) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $pr) {
@@ -208,6 +215,25 @@ pub fn answer(options: AnswerOptions) -> Result<()> {
         eprintln!("DRY_RUN review body: {body:?}");
         return Ok(());
     }
+    // GitHub allows one pending review per author, so one a cancelled run
+    // left would block this one.
+    let pending = run::gh(&[
+        "api",
+        "graphql",
+        "-f",
+        &format!("query={PENDING}"),
+        "-f",
+        &format!("owner={owner}"),
+        "-f",
+        &format!("name={name}"),
+        "-F",
+        &format!("pr={}", options.pr),
+        "--jq",
+        ".data.repository.pullRequest.reviews.nodes[].id",
+    ])?;
+    for old in pending.lines().filter(|l| !l.trim().is_empty()) {
+        delete_review(old)?;
+    }
     let review = graphql(
         "mutation($pr: ID!) { addPullRequestReview(input: {pullRequestId: $pr}) { pullRequestReview { id } } }",
         &[("pr", pr_id)],
@@ -230,12 +256,11 @@ pub fn answer(options: AnswerOptions) -> Result<()> {
         )
     })();
     if let Err(e) = posted {
-        // A pending review left behind would block the bot's next one.
-        let _ = graphql(
-            "mutation($review: ID!) { deletePullRequestReview(input: {pullRequestReviewId: $review}) { clientMutationId } }",
-            &[("review", &review)],
-            ".data",
-        );
+        // The next run deletes a pending review left behind, so a failed
+        // delete here only needs saying.
+        if let Err(d) = delete_review(&review) {
+            eprintln!("warning: cannot delete the pending review {review}: {d}");
+        }
         return Err(e);
     }
     // The replies are posted, so a failed resolve is a warning: running
@@ -277,6 +302,15 @@ fn post(repo: &str, pr: &str, request: &Value, dry_run: bool) -> Result<bool> {
     }
     run::gh(&args)?;
     Ok(true)
+}
+
+/// Deletes a pending review.
+fn delete_review(id: &str) -> Result<String> {
+    graphql(
+        "mutation($review: ID!) { deletePullRequestReview(input: {pullRequestReviewId: $review}) { clientMutationId } }",
+        &[("review", id)],
+        ".data",
+    )
 }
 
 /// Runs one GraphQL request through `gh` and returns what `filter` picks,

@@ -12,7 +12,8 @@ const HEAD: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 /// The fake `gh`. It logs each call's arguments and the JSON of any
 /// `--input` file to `TEST_GH_LOG`. It answers the pull request's base
 /// branch, the compare with `TEST_COMPARE`, the review threads with
-/// `TEST_THREADS`, and each mutation with the id its filter reads. With
+/// `TEST_THREADS`, the bot's pending reviews with `TEST_PENDING`, and each
+/// mutation with the id its filter reads. With
 /// `TEST_FAIL` set to a mutation's name, that mutation fails.
 const FAKE_GH: &str = r#"#!/bin/bash
 set -u
@@ -34,7 +35,12 @@ if [[ $1 == api && $2 == graphql ]]; then
     submitPullRequestReview) reply '{"data": {"submitPullRequestReview": {"pullRequestReview": {"id": "PRR_1"}}}}' ;;
     resolveReviewThread) reply '{"data": {"resolveReviewThread": {"thread": {"id": "T"}}}}' ;;
     deletePullRequestReview) reply '{"data": {"deletePullRequestReview": {"clientMutationId": null}}}' ;;
-    *) reply "$TEST_THREADS" ;;
+    *)
+      if [[ $query == *PENDING* ]]; then
+        reply "{\"data\": {\"repository\": {\"pullRequest\": {\"reviews\": {\"nodes\": ${TEST_PENDING:-[]}}}}}}"
+      else
+        reply "$TEST_THREADS"
+      fi ;;
   esac
   exit 0
 fi
@@ -137,7 +143,7 @@ fn threads() -> String {
 
 #[test]
 fn a_review_puts_findings_on_the_diff_and_the_rest_in_its_body() {
-    let report = "Standard pass on bbbbbbb · m\n\n- medium · src/a.rs:2 — on the diff\n- low · src/a.rs:40 — off it\n- nit · big.bin:1 — no patch";
+    let report = "Standard pass on bbbbbbb · m\n\n- medium · src/a.rs:2 — on the diff\n- low · src/a.rs:40 — off it\n- nit · big.bin:1 — no patch\n- low · src/a.rs:3-5 — a range";
     let compare = compare();
     let run = fab("pr-review", report, &[("HEAD_SHA", HEAD), ("TEST_COMPARE", &compare)]);
     assert_eq!(run.code, Some(0), "{}", run.stderr);
@@ -149,7 +155,10 @@ fn a_review_puts_findings_on_the_diff_and_the_rest_in_its_body() {
     assert_eq!(review["event"], "COMMENT");
     assert_eq!(
         review["comments"],
-        json!([{"path": "src/a.rs", "line": 2, "side": "RIGHT", "body": "medium — on the diff"}])
+        json!([
+            {"path": "src/a.rs", "line": 2, "side": "RIGHT", "body": "medium — on the diff"},
+            {"path": "src/a.rs", "line": 5, "side": "RIGHT", "start_line": 3, "start_side": "RIGHT", "body": "low — a range"}
+        ])
     );
     assert_eq!(
         review["body"],
@@ -265,4 +274,24 @@ fn a_failed_resolve_still_counts_the_answers_as_posted() {
     );
     assert_eq!(run.code, Some(0), "{}", run.stderr);
     assert!(run.stderr.contains("cannot resolve thread T_1"), "{}", run.stderr);
+}
+
+#[test]
+fn a_pending_review_a_cancelled_run_left_is_deleted_first() {
+    let threads = threads();
+    let run = fab(
+        "pr-answer",
+        "- 1001 · Fixed.",
+        &[("TEST_THREADS", &threads), ("TEST_PENDING", r#"[{"id": "PRR_old"}]"#)],
+    );
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    let mutations = run.mutations();
+    assert_eq!(
+        mutations[0],
+        (
+            "deletePullRequestReview".to_string(),
+            vec!["review=PRR_old".to_string()]
+        )
+    );
+    assert_eq!(mutations[1].0, "addPullRequestReview");
 }

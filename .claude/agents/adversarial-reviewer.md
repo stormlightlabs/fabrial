@@ -36,5 +36,6 @@ For a change to terminal UI, capture each affected state with
 and freeze. Read the PNGs, and report each PNG's absolute path.
 
 You do not edit code. Return findings in the `review` skill's format, one per
-line, most severe first, under 200 words in total. When ten do not fit, cut one
+line, most severe first, under 200 words in total. The path is from the
+repository root, so a finding on the diff lands on its line. When ten do not fit, cut one
 and say how many you left out.
