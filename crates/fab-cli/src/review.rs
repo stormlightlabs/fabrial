@@ -14,8 +14,8 @@ use serde_json::{Value, json};
 
 use crate::run::{self, Result};
 
-/// The severities a finding line opens with, as the `review` skill lists
-/// them, plus the two the adversarial reviewer also uses.
+/// The severities a finding line opens with: the `review` skill's five,
+/// plus `major` and `minor`, which reviewers also write.
 const SEVERITIES: &[&str] = &["blocker", "high", "major", "medium", "minor", "low", "nit"];
 /// The outcomes that close a thread. A finding declined as not a defect
 /// stays open for the owner to judge.
@@ -26,7 +26,7 @@ const THREADS: &str = "query($owner: String!, $name: String!, $pr: Int!, $endCur
       id
       reviewThreads(first: 100, after: $endCursor) {
         pageInfo { hasNextPage endCursor }
-        nodes { id isResolved comments(first: 1) { nodes { fullDatabaseId } } }
+        nodes { id comments(first: 1) { nodes { fullDatabaseId } } }
       }
     }
   }
@@ -130,25 +130,9 @@ pub fn review(options: ReviewOptions) -> Result<()> {
         })
         .collect();
     let request = json!({"commit_id": options.head, "event": "COMMENT", "body": body, "comments": comments});
-    let scratch = tempfile::tempdir().map_err(|e| format!("cannot make a scratch directory: {e}"))?;
-    let file = scratch.path().join("review.json");
-    std::fs::write(&file, request.to_string()).map_err(|e| format!("cannot write the review: {e}"))?;
-    let path = format!("repos/{}/pulls/{}/reviews", options.repo, options.pr);
-    let args = [
-        "api",
-        "-X",
-        "POST",
-        &path,
-        "--input",
-        file.to_str().ok_or("invalid scratch path")?,
-    ];
-    if options.dry_run {
-        run::print_write(&args);
-        eprintln!("DRY_RUN review: {request}");
-        return Ok(());
+    if post(&options.repo, &options.pr, &request, options.dry_run)? {
+        println!("Posted the review with {} of its findings on the diff.", placed.len());
     }
-    run::gh(&args)?;
-    println!("Posted the review with {} of its findings on the diff.", placed.len());
     Ok(())
 }
 
@@ -158,14 +142,26 @@ pub fn answer(options: AnswerOptions) -> Result<()> {
     let text = read(&options.body_file)?;
     let (answers, body) = answers(&text);
     if answers.is_empty() {
-        return Err("the answers name no review comment: write a line `<comment id> · <outcome>` per finding.".into());
+        // Every finding was in the review's body, so the answers are too.
+        if body.is_empty() {
+            return Err("the answers are empty.".into());
+        }
+        if post(
+            &options.repo,
+            &options.pr,
+            &json!({"event": "COMMENT", "body": body}),
+            options.dry_run,
+        )? {
+            println!("Posted the answers as a review, with no thread to reply on.");
+        }
+        return Ok(());
     }
     let (owner, name) = options
         .repo
         .split_once('/')
         .ok_or_else(|| format!("`{}` is not owner/name.", options.repo))?;
     let filter = ".data.repository.pullRequest | .id as $pr | .reviewThreads.nodes[] \
-                  | \"\\($pr) \\(.id) \\(.comments.nodes[0].fullDatabaseId) \\(.isResolved)\"";
+                  | \"\\($pr) \\(.id) \\(.comments.nodes[0].fullDatabaseId)\"";
     let found = run::gh(&[
         "api",
         "graphql",
@@ -184,7 +180,7 @@ pub fn answer(options: AnswerOptions) -> Result<()> {
     let threads: Vec<Vec<&str>> = found
         .lines()
         .map(|l| l.split(' ').collect())
-        .filter(|t: &Vec<_>| t.len() == 4)
+        .filter(|t: &Vec<_>| t.len() == 3)
         .collect();
     let pr_id = threads
         .first()
@@ -242,17 +238,45 @@ pub fn answer(options: AnswerOptions) -> Result<()> {
         );
         return Err(e);
     }
+    // The replies are posted, so a failed resolve is a warning: running
+    // again would post them twice.
     let mut resolved = 0;
     for (thread, _) in targets.iter().filter(|(_, a)| closes(&a.text)) {
-        graphql(
+        match graphql(
             "mutation($thread: ID!) { resolveReviewThread(input: {threadId: $thread}) { thread { id } } }",
             &[("thread", thread)],
             ".data.resolveReviewThread.thread.id",
-        )?;
-        resolved += 1;
+        ) {
+            Ok(_) => resolved += 1,
+            Err(e) => eprintln!("warning: cannot resolve thread {thread}; resolve it by hand: {e}"),
+        }
     }
     println!("Answered {} findings and resolved {resolved} threads.", targets.len());
     Ok(())
+}
+
+/// Posts a review through the REST API, or prints it with `dry_run`.
+/// Returns whether it posted.
+fn post(repo: &str, pr: &str, request: &Value, dry_run: bool) -> Result<bool> {
+    let scratch = tempfile::tempdir().map_err(|e| format!("cannot make a scratch directory: {e}"))?;
+    let file = scratch.path().join("review.json");
+    std::fs::write(&file, request.to_string()).map_err(|e| format!("cannot write the review: {e}"))?;
+    let path = format!("repos/{repo}/pulls/{pr}/reviews");
+    let args = [
+        "api",
+        "-X",
+        "POST",
+        &path,
+        "--input",
+        file.to_str().ok_or("invalid scratch path")?,
+    ];
+    if dry_run {
+        run::print_write(&args);
+        eprintln!("DRY_RUN review: {request}");
+        return Ok(false);
+    }
+    run::gh(&args)?;
+    Ok(true)
 }
 
 /// Runs one GraphQL request through `gh` and returns what `filter` picks,

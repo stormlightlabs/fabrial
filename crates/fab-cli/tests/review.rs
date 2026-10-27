@@ -129,8 +129,8 @@ fn threads() -> String {
     json!({"data": {"repository": {"pullRequest": {"id": "PR_7", "reviewThreads": {
     "pageInfo": {"hasNextPage": false, "endCursor": null},
     "nodes": [
-        {"id": "T_1", "isResolved": false, "comments": {"nodes": [{"fullDatabaseId": "1001"}]}},
-        {"id": "T_2", "isResolved": false, "comments": {"nodes": [{"fullDatabaseId": "1002"}]}}
+        {"id": "T_1", "comments": {"nodes": [{"fullDatabaseId": "1001"}]}},
+        {"id": "T_2", "comments": {"nodes": [{"fullDatabaseId": "1002"}]}}
     ]}}}}})
     .to_string()
 }
@@ -242,4 +242,27 @@ fn a_failed_answer_deletes_its_pending_review() {
     let names: Vec<String> = run.mutations().into_iter().map(|(n, _)| n).collect();
     assert_eq!(names.last().map(String::as_str), Some("deletePullRequestReview"));
     assert!(!names.contains(&"resolveReviewThread".to_string()));
+}
+
+#[test]
+fn answers_with_no_thread_post_as_a_plain_review() {
+    let body = "Answering the review at bbbbbbb · m\n\n- The PR body names one variable: fixed in ccccccc.";
+    let run = fab("pr-answer", body, &[]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(run.mutations().is_empty());
+    let posts: Vec<&Value> = run.calls.iter().filter(|c| c["args"][1] == "-X").collect();
+    assert_eq!(posts.len(), 1);
+    assert_eq!(posts[0]["input"], json!({"event": "COMMENT", "body": body}));
+}
+
+#[test]
+fn a_failed_resolve_still_counts_the_answers_as_posted() {
+    let threads = threads();
+    let run = fab(
+        "pr-answer",
+        "- 1001 · Fixed.",
+        &[("TEST_THREADS", &threads), ("TEST_FAIL", "resolveReviewThread")],
+    );
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(run.stderr.contains("cannot resolve thread T_1"), "{}", run.stderr);
 }

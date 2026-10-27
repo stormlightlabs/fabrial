@@ -36,8 +36,8 @@ scratch directory, never inside the repository. The comment appears once the
 run finishes, after about ten seconds.
 
 A stage whose `posts` line names a section of the status comment adds
-`section`, such as `-f section="Standard pass"` or `"section": "Standard
-pass"` in `inputs`. That section of the bot's one status comment is set
+`section` with the section's name, as `-f section="<name>"` or `"section":
+"<name>"` in `inputs`. That section of the bot's one status comment is set
 instead of a new comment, and an edit sends the owner no notification. The
 gate sets the `Squash message` section the same way. `Review finished` and
 the gate's requests to post a command again stay separate comments, since
@@ -55,7 +55,7 @@ as replies on the findings' threads in one review, and each thread whose
 outcome starts with `Fixed` or `Deferred` is resolved. One review is one
 notification, whatever it holds. Both install `fab` as a section does.
 
-Both return once the run is queued, before it is listed, so a run that fails on
+Either call returns once the run is queued, before it is listed, so a run that fails on
 a bad `pr` or a missing secret goes unseen, and the newest listed run may be an
 earlier one. Confirm each post by its result: within about a minute, or for a
 section once its `comment.yml` run has finished, `gh pr view <n> --comments`,
