@@ -44,8 +44,9 @@ that differs from it, and exits 1 when there is any drift.
 
 Before the first pull request there, install stormlight-thunderbot on the
 repository and share its `THUNDERBOT_APP_ID` and `THUNDERBOT_PRIVATE_KEY`
-secrets with it. The gate posts each reviewed PR's squash message, and you
-merge it by hand or with auto-merge, if the repository allows it. The gate
+secrets with it. The gate sets each reviewed PR's squash message in one bot
+status comment, and you merge it by hand or with auto-merge, if the
+repository allows it. The gate
 runs from `main`, so on the install pull request it does nothing: mark that
 draft ready yourself, and require `storm/review` on `main` only after it
 merges.

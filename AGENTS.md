@@ -62,7 +62,7 @@ requires. Clippy warnings fail it whether or not your change caused them.
 crates/fab-core   install and settings; later, the run operations
 crates/fab-cli    the `fab` binary, including what workflows and skills run:
                   `fab gate`, `fab branch-pr`, `fab release`,
-                  `fab review-depth` and `fab sequence`
+                  `fab review-depth`, `fab sequence` and `fab pr-status`
 packages/pi/      the Pi package: extensions/ holds workers, PR status and the
                   status area, lib/ their shared code, and worker.ts the
                   extension `fab dispatch` gives each worker
@@ -129,11 +129,11 @@ drifted.
   access.
 - The agent that opens a PR reviews it with the `storm` skill and ends with a
   `Review finished at <sha>` comment. That turns `storm/review` green for that
-  head, marks the draft ready and posts the squash message in a comment. The
-  owner merges, by hand or with auto-merge they turn on; agents and the gate
-  never turn it on. `/storm:ready <sha>` from the owner, a member or a
-  collaborator accepts that head as it is, and `/storm:stop` turns auto-merge
-  off.
+  head, marks the draft ready and sets the squash message in the bot's status
+  comment, which it edits rather than posting anew. The owner merges, by hand
+  or with auto-merge they turn on; agents and the gate never turn it on.
+  `/storm:ready <sha>` from the owner, a member or a collaborator accepts
+  that head as it is, and `/storm:stop` turns auto-merge off.
 
 ## Writing
 

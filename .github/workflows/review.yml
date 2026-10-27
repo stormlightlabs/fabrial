@@ -4,7 +4,7 @@
 # Bot comment workflow (or by the owner, a member or a collaborator). It runs
 # no model: `fab gate` marks each new head pending, turns the check green on
 # that comment or on `/storm:ready <sha>`, and answers `/storm:stop`. An edit
-# to the title or body posts the squash message again.
+# to the title or body sets the squash message again, in the status comment.
 #
 # pull_request_target runs this file from main, and `fab` is the release
 # .github/fabrial.toml names (in fabrial itself, built from main), so a change

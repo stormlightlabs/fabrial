@@ -9,11 +9,12 @@
 //!   own latest run is a success, else pending.
 //! - `comment`: `BODY` from `AUTHOR`. `Review finished at <sha>` or
 //!   `/storm:ready <sha>` naming the head sets it to success, marks a draft
-//!   ready and posts the squash message; the owner merges, by hand or with
+//!   ready and sets the squash message in the status comment (see
+//!   `status.rs`); the owner merges, by hand or with
 //!   auto-merge. `/storm:stop` labels the pull request and turns off
 //!   auto-merge.
 //! - `edit`: `SENDER` changed the title or body. On a ready pull request whose
-//!   head passed review, it posts the new squash message. Edits from anyone
+//!   head passed review, it sets the new squash message. Edits from anyone
 //!   without write access are ignored.
 //!
 //! A command word ends at whitespace or the end of the line, so
@@ -34,6 +35,7 @@ use sha2::{Digest, Sha256};
 
 use crate::run::{self, Result};
 use crate::squash;
+use crate::status::Status;
 
 const CHECK_NAME: &str = "storm/review";
 const BOT_SLUG: &str = "stormlight-thunderbot";
@@ -42,6 +44,8 @@ const INTRO: &str = "When you merge, by hand or with auto-merge, squash with thi
 const AUTO_MERGE_NOTE: &str = "Auto-merge is on and squashes with the message it was turned on with. \
                                To use this one, turn auto-merge off and on again with it.";
 const MARKER: &str = "<!-- storm-review diff=";
+/// The status comment section that holds the squash message.
+const SQUASH_SECTION: &str = "Squash message";
 
 /// The pull request event the gate answers.
 #[derive(Clone, Copy, PartialEq, ValueEnum)]
@@ -218,7 +222,8 @@ impl Gate {
         Ok(())
     }
 
-    /// Posts the squash message Branch PR's flow builds, for the owner. Runs
+    /// Sets the squash message Branch PR's flow builds, for the owner, in the
+    /// status comment. Runs
     /// can overlap, such as an edit and a `Review finished`, and each reads
     /// the text when it starts. A run reads again after each post until a
     /// read finds nothing new, reading at most six times, so the run that
@@ -233,12 +238,12 @@ impl Gate {
         Ok(())
     }
 
-    /// Posts the squash message built from the pull request as it is now,
-    /// and says whether it posted. Posts nothing when the pull request is
-    /// closed or stopped, or when the bot's newest squash message already
-    /// says the same.
+    /// Sets the squash message built from the pull request as it is now in
+    /// the status comment's `Squash message` section, and says whether it
+    /// wrote. Writes nothing when the pull request is closed or stopped, or
+    /// when the section already says the same.
     fn squash_message(&self) -> Result<bool> {
-        let info = self.view("state,title,body,headRefName,labels,autoMergeRequest,comments")?;
+        let info = self.view("state,title,body,headRefName,labels,autoMergeRequest")?;
         if info["state"] != "OPEN" || stopped(&info) {
             return Ok(false);
         }
@@ -260,22 +265,10 @@ impl Gate {
         if !info["autoMergeRequest"].is_null() {
             text = format!("{text}\n\n{AUTO_MERGE_NOTE}");
         }
-        let newest = info["comments"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|c| is_bot(c["author"]["login"].as_str().unwrap_or_default()))
-            .filter_map(|c| c["body"].as_str())
-            .rfind(|b| b.starts_with(INTRO))
-            .unwrap_or_default();
-        if newest == text {
-            return Ok(false);
-        }
-        let file = self.scratch.path().join("comment");
-        std::fs::write(&file, &text).map_err(|e| format!("cannot write the comment: {e}"))?;
-        let file = file.to_string_lossy();
-        self.gh_write(&["pr", "comment", &self.pr, "--repo", &self.repo, "--body-file", &file])?;
-        Ok(true)
+        // A section of the status comment, which an edit changes without a
+        // notification, so a run that changes nothing posts nothing.
+        let mut status = Status::read(&self.repo, &self.pr)?;
+        status.set(SQUASH_SECTION, &text, self.scratch.path(), self.dry_run)
     }
 
     /// Asks for a command again when the SHA it names is not the head.
@@ -436,12 +429,6 @@ fn stopped(info: &Value) -> bool {
         .any(|l| l["name"] == STOP_LABEL)
 }
 
-/// Whether a comment author is the bot, as `gh` or the API names it.
-fn is_bot(login: &str) -> bool {
-    let login = login.strip_prefix("app/").unwrap_or(login);
-    login.strip_suffix("[bot]").unwrap_or(login) == BOT_SLUG
-}
-
 /// Whether a line is a command word, alone or followed by whitespace.
 fn is_command(line: &str, word: &str) -> bool {
     line.strip_prefix(word)
@@ -537,19 +524,6 @@ mod tests {
     fn named_sha_drops_backticks_and_full_stops() {
         assert_eq!(named_sha("Review finished at `abc1234`.", 4), "abc1234");
         assert_eq!(named_sha("/storm:ready", 2), "");
-    }
-
-    #[test]
-    fn the_bot_is_known_by_every_login_form() {
-        for login in [
-            "stormlight-thunderbot",
-            "stormlight-thunderbot[bot]",
-            "app/stormlight-thunderbot",
-        ] {
-            assert!(is_bot(login), "{login}");
-        }
-        assert!(!is_bot("eve"));
-        assert!(!is_bot("stormlight-thunderbot-impostor"));
     }
 
     #[test]

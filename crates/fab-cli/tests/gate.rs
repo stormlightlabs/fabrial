@@ -12,39 +12,60 @@ use serde_json::{Value, json};
 const HEAD: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const BOT: &str = "stormlight-thunderbot[bot]";
 
-/// The fake `gh`. It fails `pr <TEST_FAIL>`; answers `pr view` with
-/// `TEST_PR`, or `TEST_PR_LATER` once the run has posted a comment, plus the
-/// comments posted so far; answers a collaborator's permission with
-/// `TEST_PERMISSION` and a commit's check runs with `TEST_CHECK_RUNS`,
-/// applying `--jq` as gh does; and accepts the writes the gate makes.
+/// The fake `gh`. It fails `pr <TEST_FAIL>`, and with `TEST_FAIL=comment`
+/// also a write to a comment. It keeps the pull request's comments, in the
+/// REST API's shape, in the file `TEST_COMMENTS`: a POST adds a comment from
+/// the bot, a PATCH edits one, and a read lists them. It answers `pr view`
+/// with `TEST_PR`, or `TEST_PR_LATER` once the run has written a comment; a
+/// collaborator's permission with `TEST_PERMISSION`; and a commit's check
+/// runs with `TEST_CHECK_RUNS`. It applies `--jq` as gh does and accepts the
+/// other writes the gate makes.
 const FAKE_GH: &str = r#"#!/bin/bash
 set -u
-body=
+body= filter=
 for ((i = 1; i < $#; i++)); do
+  j=$((i + 1))
   # The x keeps trailing newlines, which command substitution strips.
-  if [[ ${!i} == --body-file ]]; then j=$((i + 1)); body=$(cat "${!j}"; echo x); body=${body%x}; fi
+  if [[ ${!i} == --body-file ]]; then body=$(cat "${!j}"; echo x); body=${body%x}; fi
+  if [[ ${!i} == -F && ${!j} == body=@* ]]; then f=${!j#body=@}; body=$(cat "$f"; echo x); body=${body%x}; fi
+  if [[ ${!i} == --jq ]]; then filter=${!j}; fi
 done
 printf '%s\0' "$@" | jq -Rsc --arg body "$body" '{args: split("\u0000")[:-1], body: $body}' >> "$TEST_GH_LOG"
+reply() { if [[ -n $filter ]]; then jq -r "$filter" <<<"$1"; else printf '%s\n' "$1"; fi; }
 if [[ $1 == pr && ${2:-} == "${TEST_FAIL:-}" ]]; then exit 1; fi
+if [[ $1 == api && ${2:-} == -X && ${4:-} == */comments* && ${TEST_FAIL:-} == comment ]]; then exit 1; fi
 case "$1 ${2:-}" in
   "pr view")
-    posted=$(jq -sc '[.[] | select(.args[0] == "pr" and .args[1] == "comment")
-      | {author: {login: "stormlight-thunderbot"}, body}]' "$TEST_GH_LOG")
     view=$TEST_PR
-    if [[ $posted != "[]" && -n ${TEST_PR_LATER:-} ]]; then view=$TEST_PR_LATER; fi
-    jq -c --argjson posted "$posted" '.comments += $posted' <<<"$view" ;;
-  "api -X") echo '{}' ;;
+    wrote=$(jq -s 'any(.[]; .args[0] == "api" and .args[1] == "-X" and (.args[3] | test("/comments")))' "$TEST_GH_LOG")
+    if [[ $wrote == true && -n ${TEST_PR_LATER:-} ]]; then view=$TEST_PR_LATER; fi
+    printf '%s\n' "$view" ;;
+  "api -X")
+    case "$4" in
+      */issues/*/comments)
+        id=$((100 + $(jq length "$TEST_COMMENTS")))
+        jq -c --arg body "$body" --argjson id "$id" \
+          '. + [{id: $id, user: {login: "stormlight-thunderbot[bot]"}, body: $body}]' "$TEST_COMMENTS" > "$TEST_COMMENTS.new"
+        mv "$TEST_COMMENTS.new" "$TEST_COMMENTS"
+        reply "{\"id\": $id}" ;;
+      */issues/comments/*)
+        id=${4##*/}
+        jq -c --arg body "$body" --argjson id "$id" 'map(if .id == $id then .body = $body else . end)' \
+          "$TEST_COMMENTS" > "$TEST_COMMENTS.new"
+        mv "$TEST_COMMENTS.new" "$TEST_COMMENTS"
+        reply "{\"id\": $id}" ;;
+      *) echo '{}' ;;
+    esac ;;
   "api "*)
-    case "$2" in
+    path=$2
+    if [[ $path == --paginate ]]; then path=$3; fi
+    case "$path" in
+      */issues/*/comments*) out=$(cat "$TEST_COMMENTS") ;;
       */collaborators/*/permission) out="{\"permission\": \"${TEST_PERMISSION:-none}\"}" ;;
       */check-runs\?*) out=${TEST_CHECK_RUNS:-"{\"check_runs\": []}"} ;;
       *) exit 92 ;;
     esac
-    filter=
-    for ((i = 1; i < $#; i++)); do
-      if [[ ${!i} == --jq ]]; then j=$((i + 1)); filter=${!j}; fi
-    done
-    if [[ -n $filter ]]; then jq -r "$filter" <<<"$out"; else printf '%s\n' "$out"; fi ;;
+    reply "$out" ;;
   "label "* | "pr comment" | "pr ready" | "pr edit" | "pr merge") echo '{}' ;;
   *) exit 91 ;;
 esac
@@ -75,13 +96,15 @@ struct Run {
 }
 
 impl Run {
-    /// The bodies of the comments the run posted.
+    /// The bodies the run wrote to the status comment, by a POST or a PATCH.
     fn posts(&self) -> Vec<&str> {
+        self.status_writes().map(|c| c.body.as_str()).collect()
+    }
+
+    fn status_writes(&self) -> impl Iterator<Item = &Call> {
         self.calls
             .iter()
-            .filter(|c| c.is("pr", "comment"))
-            .map(|c| c.body.as_str())
-            .collect()
+            .filter(|c| c.is("api", "-X") && c.args.get(3).is_some_and(|p| p.contains("/comments")))
     }
 
     fn succeeded_check(&self) -> bool {
@@ -107,8 +130,12 @@ fn gate(env: &[(&str, &str)], pr: Value, later: Option<Value>) -> Run {
     fs::write(&gh, FAKE_GH).unwrap();
     fs::set_permissions(&gh, fs::Permissions::from_mode(0o700)).unwrap();
     let mut view = json!({"state": "OPEN", "isDraft": true, "title": "Test change", "body": "A change.",
-                          "headRefName": "storm/test", "labels": [], "comments": []});
+                          "headRefName": "storm/test", "labels": []});
     merge(&mut view, &pr);
+    // The comments live in their own file, in the REST API's shape.
+    let comments = temp.path().join("comments.json");
+    let existing = view.as_object_mut().unwrap().remove("comments").unwrap_or(json!([]));
+    fs::write(&comments, existing.to_string()).unwrap();
     let later = later.map(|l| {
         let mut v = view.clone();
         merge(&mut v, &l);
@@ -125,6 +152,7 @@ fn gate(env: &[(&str, &str)], pr: Value, later: Option<Value>) -> Run {
         .envs([("REPO", "owner/repo"), ("PR", "1"), ("HEAD_SHA", HEAD)])
         .env("HEAD_DIR", temp.path().join("absent"))
         .env("TEST_GH_LOG", &log)
+        .env("TEST_COMMENTS", &comments)
         .env("TEST_PR", view.to_string())
         .env("TEST_PR_LATER", later.unwrap_or_default())
         .envs(env.iter().copied())
@@ -177,8 +205,9 @@ fn posted(title: &str) -> String {
     gate(&with(&finished(), &[]), json!({"title": title}), None).posts()[0].to_string()
 }
 
-fn bot_comment(body: &str) -> Value {
-    json!({"author": {"login": "stormlight-thunderbot"}, "body": body})
+/// The bot's comment as the REST API lists it.
+fn bot_comment(id: u64, body: &str) -> Value {
+    json!({"id": id, "user": {"login": "stormlight-thunderbot[bot]"}, "body": body})
 }
 
 /// A commit's check runs as the API lists them: one completed run per
@@ -236,7 +265,7 @@ fn review_finished_marks_the_draft_ready_and_posts_the_squash_message() {
 
 #[test]
 fn a_repeated_review_finished_posts_the_same_squash_message_once() {
-    let comments = json!([bot_comment(&posted("Test change"))]);
+    let comments = json!([bot_comment(5, &posted("Test change"))]);
     let run = gate(
         &with(&finished(), &[]),
         json!({"isDraft": false, "comments": comments}),
@@ -247,19 +276,22 @@ fn a_repeated_review_finished_posts_the_same_squash_message_once() {
 }
 
 #[test]
-fn a_title_changed_back_posts_again_since_the_newest_message_differs() {
-    let comments = json!([bot_comment(&posted("Test change")), bot_comment(&posted("Other"))]);
+fn a_changed_message_edits_the_status_comment_in_place() {
+    let comments = json!([bot_comment(5, &posted("Other"))]);
     let run = gate(
         &with(&finished(), &[]),
         json!({"isDraft": false, "comments": comments}),
         None,
     );
     assert_eq!(run.posts().len(), 1);
+    let write = run.status_writes().next().unwrap();
+    assert!(write.is("api", "-X") && write.has("PATCH") && write.has("repos/owner/repo/issues/comments/5"));
+    assert!(write.body.contains("Test change (#1)\n") && !write.body.contains("Other"));
 }
 
 #[test]
 fn a_copy_of_the_message_from_someone_else_does_not_stop_the_bots() {
-    let comments = json!([{"author": {"login": "eve"}, "body": posted("Test change")}]);
+    let comments = json!([{"id": 6, "user": {"login": "eve"}, "body": posted("Test change")}]);
     let run = gate(
         &with(&finished(), &[]),
         json!({"isDraft": false, "comments": comments}),
@@ -277,11 +309,10 @@ fn a_stopped_pull_request_gets_the_success_and_no_merge_settings() {
     );
     assert_eq!(run.code, Some(0));
     assert!(run.succeeded_check());
-    assert!(
-        !run.calls
-            .iter()
-            .any(|c| c.is("pr", "ready") || c.is("pr", "merge") || c.is("pr", "comment"))
-    );
+    assert!(!run.calls.iter().any(|c| c.is("pr", "ready")
+        || c.is("pr", "merge")
+        || c.is("pr", "comment")
+        || c.is("api", "-X") && c.has("PATCH")));
 }
 
 #[test]
@@ -404,7 +435,12 @@ fn a_failed_squash_message_fails_the_run() {
 fn dry_run_reads_but_writes_nothing() {
     let run = gate(&with(&finished(), &[("DRY_RUN", "1")]), json!({}), None);
     assert_eq!(run.code, Some(0), "{}", run.stderr);
-    assert!(run.calls.iter().all(|c| c.is("pr", "view")));
+    // Reads only: the pull request and its comments.
+    assert!(
+        run.calls
+            .iter()
+            .all(|c| c.is("pr", "view") || c.is("api", "--paginate"))
+    );
     assert!(run.stderr.contains(r#"DRY_RUN gh "pr" "ready""#), "{}", run.stderr);
 }
 
@@ -605,5 +641,56 @@ fn storm_stop_labels_the_pull_request() {
         run.calls
             .iter()
             .any(|c| c.is("pr", "edit") && c.has("--add-label") && c.has("storm:stopped"))
+    );
+}
+
+#[test]
+fn pr_status_keeps_one_comment_and_edits_its_sections() {
+    let target = root().join("target");
+    let temp = tempfile::tempdir_in(target).unwrap();
+    fs::write(temp.path().join("gh"), FAKE_GH).unwrap();
+    fs::set_permissions(temp.path().join("gh"), fs::Permissions::from_mode(0o700)).unwrap();
+    let comments = temp.path().join("comments.json");
+    fs::write(
+        &comments,
+        json!([{"id": 6, "user": {"login": "eve"}, "body": "<!-- fabrial:status -->"}]).to_string(),
+    )
+    .unwrap();
+    let path = format!("{}:{}", temp.path().display(), std::env::var("PATH").unwrap());
+    let set = |section: &str, text: &str| {
+        let file = temp.path().join("section.md");
+        fs::write(&file, text).unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_fab"))
+            .args(["pr-status", "--section", section, "--body-file"])
+            .arg(&file)
+            .env_clear()
+            .env("PATH", &path)
+            .env("HOME", temp.path())
+            .envs([("REPO", "owner/repo"), ("PR", "1")])
+            .env("TEST_GH_LOG", temp.path().join("calls.jsonl"))
+            .env("TEST_COMMENTS", &comments)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    };
+    set("Standard pass", "Standard pass on abc · m\n\nNo findings\n");
+    set("Squash message", "When you merge, squash with this message:");
+    set("Standard pass", "Standard pass on def · m\n\n- low · a.rs:1\n");
+    let comments: Value = serde_json::from_str(&fs::read_to_string(&comments).unwrap()).unwrap();
+    let ours: Vec<&Value> = comments
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c["user"]["login"] == "stormlight-thunderbot[bot]")
+        .collect();
+    assert_eq!(ours.len(), 1, "{comments}");
+    let body = ours[0]["body"].as_str().unwrap();
+    assert!(
+        body.starts_with("<!-- fabrial:status -->\n<!-- fabrial:section Standard pass -->\nStandard pass on def"),
+        "{body}"
+    );
+    assert!(
+        body.contains("<!-- fabrial:section Squash message -->\nWhen you merge") && !body.contains("abc"),
+        "{body}"
     );
 }
