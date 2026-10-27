@@ -88,7 +88,21 @@ a paid plan, so rulesets on `main` are enforced.
   whether Claude Code, Codex and Pi read the same `SKILL.md` layout. Port
   per-host differences only where thunderstorm's `docs/internal/hosts.md` shows
   they are needed.
-- **Dashboard** per machine, showing every run from the claims ref.
+- **Hosting.** An OVH VPS runs the control plane: `fab daemon`, the
+  scheduler, the token issuer and `fab serve`, which offers the run operations
+  over HTTP and WebSocket. Workers run through one runner interface with three
+  backends: tmux on the host, a k3s Job on OVH or a home machine, and an
+  exe.dev VM for disposable work. A worker connects only outward, to report
+  events to the control plane, push its branch and upload artifacts to R2
+  through presigned URLs. Run state lives in git and on the VPS; workers,
+  Cloudflare and R2 hold none.
+- **Web UI.** The dashboard is fabrial's web frontend to Pi, written in GPUI.
+  A Cloudflare Worker serves it and holds only the GitHub sign-in session; it
+  reaches the VPS through a Cloudflare Tunnel, so the VPS opens no public
+  port. It shows every run from the claims ref, and renders the same PR
+  status state as Pi's status area. GPUI's browser target is not yet
+  supported upstream, so a spike decides whether it ships in the browser
+  ([Pi design](docs/pi-design.md#web-ui)).
 - **Releases:** a workflow run opens a release pull request whose changelog
   section lists the squash subjects since the last tag, which the owner
   edits there; pull requests do not edit `CHANGELOG.md`. The tag lands on its
@@ -96,14 +110,6 @@ a paid plan, so rulesets on `main` are enforced.
   release. The tag starts dist's workflow, which publishes prebuilt `fab`
   binaries and an installer with the release. Repositories install a tagged
   `fab` and refresh with `fab update`.
-
-## Open questions
-
-- Which VPS: Hetzner CX33, Hostinger KVM 2 or Linode, decided at deploy time
-  from the providers' live pricing pages. Aim for 8 GB and 4 vCPU.
-- Isolation on the VPS: the local spike wraps whole Pi workers with pinned
-  agent-sandbox.nix, but the deployment setup is still open.
-- Whether the dashboard is reachable only over Tailscale.
 
 ## Work
 
