@@ -224,7 +224,7 @@ fn role_config(root: &Path, role: &str) -> Result<(String, String)> {
 fn load_config(path: &Path) -> Result<Config> {
     let mut c: Config = toml::from_str(&read(path)?).map_err(|_| "missing or invalid local configuration")?;
     if c.keychain_service.is_empty() || c.keychain_account.is_empty() {
-        return Err("missing Keychain configuration".into());
+        return Err("missing secret store configuration".into());
     }
     let repo: Vec<_> = c.repository.split('/').collect();
     if repo.len() != 2
@@ -397,20 +397,46 @@ fn now() -> u64 {
         .as_secs()
 }
 
+/// Reads the issuer's machine credential from the host's secret store: the
+/// macOS Keychain through `security`, elsewhere the Secret Service through
+/// libsecret's `secret-tool`, which needs the session bus address. Workers
+/// cannot reach either: the sandbox denies the Keychain services on macOS
+/// and every AF_UNIX socket, the session bus included, on Linux.
+fn machine_credential(c: &Config) -> Result<String> {
+    let macos = cfg!(target_os = "macos");
+    let (name, args) = credential_lookup(macos, &c.keychain_service, &c.keychain_account);
+    let mut cmd = host_command(name)?;
+    cmd.args(&args);
+    if !macos {
+        for var in ["DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"] {
+            if let Some(value) = std::env::var_os(var) {
+                cmd.env(var, value);
+            }
+        }
+    }
+    let bytes = execute(cmd, None, Duration::from_secs(30)).map_err(|_| "cannot read the issuer credential")?;
+    let machine = String::from_utf8(bytes).map_err(|_| "invalid issuer credential")?;
+    if machine.trim().is_empty() {
+        return Err("empty issuer credential".into());
+    }
+    Ok(machine)
+}
+
+/// The command and arguments that print a secret store entry named by
+/// service and account.
+fn credential_lookup<'a>(macos: bool, service: &'a str, account: &'a str) -> (&'static str, Vec<&'a str>) {
+    if macos {
+        (
+            "security",
+            vec!["find-generic-password", "-s", service, "-a", account, "-w"],
+        )
+    } else {
+        ("secret-tool", vec!["lookup", "service", service, "account", account])
+    }
+}
+
 fn issue(c: &Config, private: &Path, role: &str) -> Result<String> {
-    let machine = tool(
-        "security",
-        &[
-            "find-generic-password",
-            "-s",
-            &c.keychain_service,
-            "-a",
-            &c.keychain_account,
-            "-w",
-        ],
-        None,
-    )?;
-    let machine = String::from_utf8(machine).map_err(|_| "invalid issuer credential")?;
+    let machine = machine_credential(c)?;
     let mut values = Vec::new();
     for id in [&c.app_id_secret, &c.installation_id_secret, &c.pem_secret] {
         let mut cmd = host_command("bws")?;

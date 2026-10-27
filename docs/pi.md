@@ -10,10 +10,12 @@ roadmap phase 6 tracks delivery ([PLAN.md](../PLAN.md#work)).
 
 ## Host setup
 
-Run dispatch on the trusted host, outside a worker sandbox. You need Nix with
-flakes enabled, tmux, GitHub CLI, curl with `--header @-` support, OpenSSL,
-BWS CLI, and macOS `security`. The sandbox wrapper supports Linux, but the
-token issuer reads macOS Keychain and has no other backend.
+Run dispatch on the trusted host, outside a worker sandbox, on macOS or
+Linux. You need Nix with flakes enabled, tmux, GitHub CLI, curl with
+`--header @-` support, OpenSSL and BWS CLI. The token issuer reads its BWS
+machine token from the host's secret store: the Keychain through `security`
+on macOS, and on Linux the Secret Service through libsecret's `secret-tool`,
+with a keyring such as GNOME Keyring or KeePassXC unlocked in your session.
 
 Build `fab` and the sandbox wrapper from a trusted checkout kept apart from
 every PR worktree, never from a PR branch:
@@ -25,7 +27,10 @@ nix-build conf/sandbox/worker.nix
 
 The wrapper pins agent-sandbox.nix v5.6.3 and its nixpkgs, and applies
 [`deny-owner-keychain.patch`](../conf/sandbox/deny-owner-keychain.patch) to
-block the owner's Keychain. Plain `nix develop` or direnv is not isolation.
+block the owner's Keychain on macOS. On Linux it keeps `allowUnixSockets =
+false`, whose seccomp filter denies every AF_UNIX socket, so a worker cannot
+reach the session bus and the Secret Service behind it. Plain `nix develop`
+or direnv is not isolation.
 
 The wrapper used to live in `nix/`. The move left its store path unchanged,
 so an existing `sandbox` value still works. Build it with the command above
@@ -42,7 +47,9 @@ minute, so refresh it before dispatch if needed.
 
 Create a state directory with mode `0700` outside every worktree and Git
 metadata directory, and keep the config file outside PR worktrees too. Every
-path must be absolute. There are no default Keychain names or secret IDs:
+path must be absolute. There are no default secret store names or secret
+IDs; `keychain_service` and `keychain_account` name the entry on both
+platforms:
 
 ```toml
 sandbox = "/nix/store/<build>/bin/fab-pi-sandboxed"   # from nix-build
@@ -57,9 +64,20 @@ installation_id_secret = "<BWS secret UUID>"
 pem_secret = "<BWS secret UUID>"
 ```
 
-Store the BWS machine-account token in the named Keychain entry yourself.
-Run dispatch with a trusted PATH for tmux, gh, curl, security, BWS, OpenSSL
-and Git, with no PR directories on it.
+Store the BWS machine-account token in the named entry yourself. On macOS:
+
+```sh
+security add-generic-password -s your-local-issuer-service -a your-local-issuer-account -w
+```
+
+On Linux:
+
+```sh
+secret-tool store --label "fabrial issuer" service your-local-issuer-service account your-local-issuer-account
+```
+
+Run dispatch with a trusted PATH for tmux, gh, curl, `security` or
+`secret-tool`, BWS, OpenSSL and Git, with no PR directories on it.
 
 ### GitHub App
 

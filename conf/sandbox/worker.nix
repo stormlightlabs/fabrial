@@ -36,6 +36,8 @@ in sandbox.mkSandbox {
   roDirs = [ "$FAB_INPUT" "$FAB_PI_RUNTIME" ];
   rwDirs = [ "$FAB_STATE" ];
   allowNix = false;
+  # On Linux this installs a seccomp filter that denies every AF_UNIX socket,
+  # which keeps workers off the session bus and the owner's Secret Service.
   allowUnixSockets = false;
   allowedHostPorts = [ ];
   publishedPorts = [ ];

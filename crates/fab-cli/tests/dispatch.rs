@@ -54,6 +54,12 @@ impl Fixture {
             &bin.join("security"),
             "test \"$*\" = 'find-generic-password -s local-service -a local-account -w'\nprintf 'machine-secret\\n'",
         );
+        // libsecret's lookup, which a host other than macOS uses; it reaches
+        // the Secret Service over the session bus, so it must get the address.
+        script(
+            &bin.join("secret-tool"),
+            "test \"$*\" = 'lookup service local-service account local-account'\ntest \"$DBUS_SESSION_BUS_ADDRESS\" = 'unix:path=/run/test-bus'\nprintf 'machine-secret'",
+        );
         script(
             &bin.join("bws"),
             &format!(
@@ -157,6 +163,7 @@ esac
 touch {}
 test -z "${{BWS_ACCESS_TOKEN+x}}"
 test -z "${{OWNER_SENTINEL+x}}"
+test -z "${{DBUS_SESSION_BUS_ADDRESS+x}}"
 test "$GH_TOKEN" = t-secret
 test "$GH_REPO" = org/repo
 test "$XDG_STATE_HOME" = "${{FAB_STATE%/state}}/sandbox-logs"
@@ -195,7 +202,8 @@ printf '%s\n' '{{"type":"agent_settled","aborted":false}}'
             .env("HOME", self.temp.path())
             .env("GH_TOKEN", "owner-secret")
             .env("BWS_ACCESS_TOKEN", "owner-secret")
-            .env("OWNER_SENTINEL", "must-not-inherit");
+            .env("OWNER_SENTINEL", "must-not-inherit")
+            .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/test-bus");
         command
     }
 

@@ -233,3 +233,26 @@ fn caller_drop_never_removes_launched_supervisor_state() {
         assert_eq!(path.exists(), started);
     }
 }
+
+#[test]
+fn the_issuer_credential_comes_from_the_platform_secret_store() {
+    assert_eq!(
+        credential_lookup(true, "svc", "acct"),
+        (
+            "security",
+            vec!["find-generic-password", "-s", "svc", "-a", "acct", "-w"]
+        )
+    );
+    assert_eq!(
+        credential_lookup(false, "svc", "acct"),
+        ("secret-tool", vec!["lookup", "service", "svc", "account", "acct"])
+    );
+}
+
+#[test]
+fn the_linux_worker_sandbox_denies_unix_sockets() {
+    // The seccomp filter that allowUnixSockets = false installs is what keeps
+    // a worker off the session bus, and so off the owner's Secret Service.
+    let worker = include_str!("../../../../conf/sandbox/worker.nix");
+    assert!(worker.lines().any(|l| l.trim() == "allowUnixSockets = false;"));
+}
