@@ -18,5 +18,5 @@ Acceptance criteria:
       a repository only after its `fab init` pull request merges, because the
       gate runs from the repository's `main`
 - [ ] A tag ruleset protects `v*` tags, with the owner and the bot on its
-      bypass list, so only the Release tag workflow creates one
-      (thunderstorm #77)
+      bypass list: the Release tag workflow creates them, and the owner
+      bypasses only for recovery (thunderstorm #77)

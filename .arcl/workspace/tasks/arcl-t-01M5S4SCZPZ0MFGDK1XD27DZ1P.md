@@ -5,7 +5,7 @@ title = "Move thunderstorm's open issues into arcl"
 status = "completed"
 priority = "normal"
 position = 1
-evidence = "Done in the pull request from `storm/arcl-t-01M5S4SCZPZ0MFGDK1XD27DZ1P`: the body records where each open thunderstorm issue went."
+evidence = "Done in the pull request from `storm/arcl-t-01M5S4SCZPZ0MFGDK1XD27DZ1P`: this task's body records where each open thunderstorm issue went."
 +++
 
 Each open issue in `stormlightlabs/thunderstorm` either became arcl work here
@@ -25,8 +25,8 @@ Moved, combined where they share a change:
 
 Already done here: #6, #19, #45, #78, #82, #122 and #144.
 
-Specific to thunderstorm's Go tool, payloads, site or board: #13, #20, #21,
-#29, #30, #33, #39, #40, #41, #75, #107, #112, #119, #120, #140, #141 and
+Specific to thunderstorm's Go tool, payloads, site or board: #13, #18, #20,
+#21, #29, #30, #33, #39, #40, #41, #75, #107, #112, #119, #120, #140, #141 and
 #147. The board, shell-command parsing and hook gates are replaced by arcl and
 by PLAN.md's server-side enforcement.
 
