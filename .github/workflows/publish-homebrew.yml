@@ -57,7 +57,17 @@ jobs:
             # Leave the description and homepage as dist wrote them.
             brew style --except-cops FormulaAudit/Homepage,FormulaAudit/Desc,FormulaAuditStrict --fix "Formula/$filename" || true
             git add "Formula/$filename"
+            # A re-run finds the same formula already in the tap.
+            if git diff --cached --quiet; then
+              echo "Formula/$filename already holds $version."
+              continue
+            fi
             git commit -m "${filename%.rb} $version"
           done
-          # Only the formula goes in: the other artifacts stay untracked.
-          git push
+          # Only the formula goes in: the other artifacts stay untracked. A
+          # push another release beat to the tap rebases and tries again.
+          for attempt in 1 2 3; do
+            git push && exit 0
+            git pull --rebase
+          done
+          exit 1
