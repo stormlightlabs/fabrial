@@ -47,12 +47,17 @@ pub struct Options {
 pub struct Status {
     repo: String,
     pr: String,
+    /// The first status comment, which the writes edit.
     id: Option<u64>,
+    /// Status comments a racing writer posted after the first.
+    extras: Vec<u64>,
     sections: Vec<(String, String)>,
 }
 
 impl Status {
-    /// Reads the bot's status comment on a pull request. A pull request
+    /// Reads the bot's status comments on a pull request. The first is the
+    /// status comment; sections only a later one holds, which two writers
+    /// posting at once leave behind, are read as its own. A pull request
     /// with none has no sections.
     pub fn read(repo: &str, pr: &str) -> Result<Status> {
         let path = format!("repos/{repo}/issues/{pr}/comments?per_page=100");
@@ -63,16 +68,24 @@ impl Status {
              | \"\\(.id) \\(.body | tojson)\""
         );
         let found = run::gh(&["api", "--paginate", &path, "--jq", &filter])?;
-        let (id, body) = match found.lines().find(|l| !l.trim().is_empty()) {
-            Some(line) => {
-                let bad = || format!("cannot read the status comment from `{line}`");
-                let (id, body) = line.split_once(' ').ok_or_else(bad)?;
-                let body: String = serde_json::from_str(body).map_err(|_| bad())?;
-                (Some(id.parse::<u64>().map_err(|_| bad())?), body)
+        let mut status =
+            Status { repo: repo.into(), pr: pr.into(), id: None, extras: Vec::new(), sections: Vec::new() };
+        for line in found.lines().filter(|l| !l.trim().is_empty()) {
+            let bad = || format!("cannot read the status comment from `{line}`");
+            let (id, body) = line.split_once(' ').ok_or_else(bad)?;
+            let id = id.parse::<u64>().map_err(|_| bad())?;
+            let body: String = serde_json::from_str(body).map_err(|_| bad())?;
+            match status.id {
+                None => status.id = Some(id),
+                Some(_) => status.extras.push(id),
             }
-            None => (None, String::new()),
-        };
-        Ok(Status { repo: repo.into(), pr: pr.into(), id, sections: parse(&body) })
+            for (name, text) in parse(&body) {
+                if status.section(&name).is_none() {
+                    status.sections.push((name, text));
+                }
+            }
+        }
+        Ok(status)
     }
 
     /// A section's text, if the comment has it.
@@ -81,14 +94,34 @@ impl Status {
     }
 
     /// Sets a section and writes the comment: an edit when it exists, else a
-    /// new comment. Writes nothing and returns false when the section
-    /// already says the same. With `dry_run`, prints the write instead.
+    /// new comment, deleting any later status comment once its sections are
+    /// in the first. It reads the comment back after each write and writes
+    /// again, up to six times, when a writer racing it dropped the section.
+    /// Returns false, writing nothing, when the section already says the
+    /// same. With `dry_run`, prints the first write instead.
     pub fn set(&mut self, name: &str, text: &str, scratch: &Path, dry_run: bool) -> Result<bool> {
         let text = escape(text);
         let text = text.trim_matches('\n');
-        if self.section(name) == Some(text) {
-            return Ok(false);
+        let mut wrote = false;
+        for _ in 0..6 {
+            if self.section(name) == Some(text) && self.extras.is_empty() {
+                return Ok(wrote);
+            }
+            self.write(name, text, scratch, dry_run)?;
+            wrote = true;
+            if dry_run {
+                return Ok(true);
+            }
+            *self = Status::read(&self.repo, &self.pr)?;
         }
+        Err(format!(
+            "the status comment's {name} section kept changing under this write."
+        ))
+    }
+
+    /// Writes the comment once with the section set, then deletes the
+    /// later status comments.
+    fn write(&mut self, name: &str, text: &str, scratch: &Path, dry_run: bool) -> Result<()> {
         match self.sections.iter_mut().find(|(n, _)| n == name) {
             Some((_, old)) => *old = text.to_string(),
             None => self.sections.push((name.to_string(), text.to_string())),
@@ -105,11 +138,18 @@ impl Status {
         if dry_run {
             run::print_write(&args);
             eprintln!("DRY_RUN body: {:?}", render(&self.sections));
-            return Ok(true);
+            return Ok(());
         }
-        let posted = run::gh(&[&args[..], &["--jq", ".id"]].concat())?;
-        self.id = self.id.or_else(|| posted.trim().parse().ok());
-        Ok(true)
+        run::gh(&args)?;
+        for extra in std::mem::take(&mut self.extras) {
+            run::gh(&[
+                "api",
+                "-X",
+                "DELETE",
+                &format!("repos/{}/issues/comments/{extra}", self.repo),
+            ])?;
+        }
+        Ok(())
     }
 }
 

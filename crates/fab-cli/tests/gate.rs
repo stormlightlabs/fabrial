@@ -41,6 +41,11 @@ case "$1 ${2:-}" in
     if [[ $wrote == true && -n ${TEST_PR_LATER:-} ]]; then view=$TEST_PR_LATER; fi
     printf '%s\n' "$view" ;;
   "api -X")
+    # TEST_LOSE_WRITE loses the first write to a comment, as a writer racing
+    # this one would.
+    if [[ -n ${TEST_LOSE_WRITE:-} && $4 == */comments* && ! -e $TEST_COMMENTS.lost ]]; then
+      touch "$TEST_COMMENTS.lost"; reply '{"id": 0}'; exit 0
+    fi
     case "$4" in
       */issues/*/comments)
         id=$((100 + $(jq length "$TEST_COMMENTS")))
@@ -50,8 +55,8 @@ case "$1 ${2:-}" in
         reply "{\"id\": $id}" ;;
       */issues/comments/*)
         id=${4##*/}
-        jq -c --arg body "$body" --argjson id "$id" 'map(if .id == $id then .body = $body else . end)' \
-          "$TEST_COMMENTS" > "$TEST_COMMENTS.new"
+        if [[ $3 == DELETE ]]; then edit='map(select(.id != $id))'; else edit='map(if .id == $id then .body = $body else . end)'; fi
+        jq -c --arg body "$body" --argjson id "$id" "$edit" "$TEST_COMMENTS" > "$TEST_COMMENTS.new"
         mv "$TEST_COMMENTS.new" "$TEST_COMMENTS"
         reply "{\"id\": $id}" ;;
       *) echo '{}' ;;
@@ -693,4 +698,35 @@ fn pr_status_keeps_one_comment_and_edits_its_sections() {
         body.contains("<!-- fabrial:section Squash message -->\nWhen you merge") && !body.contains("abc"),
         "{body}"
     );
+}
+
+#[test]
+fn a_second_status_comment_is_folded_into_the_first() {
+    let first = "<!-- fabrial:status -->\n<!-- fabrial:section Standard pass -->\nStandard pass on abc";
+    let second = "<!-- fabrial:status -->\n<!-- fabrial:section Other -->\nkept";
+    let comments = json!([bot_comment(5, first), bot_comment(7, second)]);
+    let run = gate(&with(&finished(), &[]), json!({"comments": comments}), None);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(
+        run.calls
+            .iter()
+            .any(|c| c.has("DELETE") && c.has("repos/owner/repo/issues/comments/7"))
+    );
+    let write = run.status_writes().find(|c| c.has("PATCH")).unwrap();
+    assert!(write.has("repos/owner/repo/issues/comments/5"));
+    for section in ["Standard pass on abc", "kept", "Test change (#1)"] {
+        assert!(write.body.contains(section), "{section}: {}", write.body);
+    }
+}
+
+#[test]
+fn a_write_another_writer_overwrote_is_made_again() {
+    let comments = json!([bot_comment(5, "<!-- fabrial:status -->")]);
+    let run = gate(
+        &with(&finished(), &[("TEST_LOSE_WRITE", "1")]),
+        json!({"comments": comments}),
+        None,
+    );
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert_eq!(run.status_writes().filter(|c| c.has("PATCH")).count(), 2);
 }

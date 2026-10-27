@@ -41,17 +41,19 @@ pass"` in `inputs`. That section of the bot's one status comment is set
 instead of a new comment, and an edit sends the owner no notification. The
 gate sets the `Squash message` section the same way. `Review finished` and
 the gate's requests to post a command again stay separate comments, since
-they need the owner or start the gate.
+they need the owner or start the gate. A section post installs `fab` first,
+which in fabrial builds it and can take several minutes, so it lands later
+than a comment.
 
-Both return once the run is queued, before it is listed, so a run that fails
-on a bad `pr` or a missing secret goes unseen, and the newest listed run may be
-an earlier one. Confirm each post by its result: within about a minute,
-`gh pr view <n> --comments`, or `pull_request_read` method `get_comments` in a
-cloud session, should show a comment from `stormlight-thunderbot[bot]`, created
-after you dispatched, whose first line matches yours, or for a section, the
-status comment holding your text. If none appears, look for
-a failure among the newest `comment.yml` runs and report it. Do not retry in a
-loop.
+Both return once the run is queued, before it is listed, so a run that fails on
+a bad `pr` or a missing secret goes unseen, and the newest listed run may be an
+earlier one. Confirm each post by its result: within about a minute, or for a
+section once its `comment.yml` run has finished, `gh pr view <n> --comments`,
+or `pull_request_read` method `get_comments` in a cloud session, should show a
+comment from `stormlight-thunderbot[bot]`, created after you dispatched, whose
+first line matches yours, or for a section, the status comment holding your
+text. If none appears, look for a failure among the newest `comment.yml` runs
+and report it. Do not retry in a loop.
 
 ## Implement
 

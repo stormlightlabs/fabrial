@@ -223,12 +223,11 @@ impl Gate {
     }
 
     /// Sets the squash message Branch PR's flow builds, for the owner, in the
-    /// status comment. Runs
-    /// can overlap, such as an edit and a `Review finished`, and each reads
-    /// the text when it starts. A run reads again after each post until a
-    /// read finds nothing new, reading at most six times, so the run that
-    /// posts last also posts the pull request's current text unless edits
-    /// keep landing. Two runs that read the same text can both post it.
+    /// status comment. Runs can overlap, such as an edit and a `Review
+    /// finished`, and each reads the pull request when it starts. A run reads
+    /// again after each write until a read finds nothing new, reading at most
+    /// six times, so the run that writes last also writes the pull request's
+    /// current text unless edits keep landing.
     fn post_squash_message(&self) -> Result<()> {
         for _ in 0..6 {
             if !self.squash_message()? || self.dry_run {
