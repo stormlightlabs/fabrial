@@ -57,10 +57,15 @@ notification, whatever it holds. Both install `fab` as a section does.
 
 `comment.yml` runs from `main`, so a pull request that updates fabrial posts
 with the older release's inputs until it merges. Before a `section`, `review`
-or `answers` post, check that `main`'s `.github/workflows/comment.yml` has
-that input. When it has not, post the same body as a plain comment. Findings
-posted that way have no review comment ids, so their answers go in a plain
-comment too, with lines that name no id.
+or `answers` post, check that `main`'s workflow has that input:
+
+```sh
+git fetch origin main && git show origin/main:.github/workflows/comment.yml
+```
+
+When it has not, post the same body as a plain comment, and confirm it as a
+comment, not a review. Findings posted that way have no review comment ids,
+so their answers go in a plain comment too, with lines that name no id.
 
 Either call returns once the run is queued, before it is listed, so a run that fails on
 a bad `pr` or a missing secret goes unseen, and the newest listed run may be an
@@ -98,8 +103,8 @@ base with `main`, so a pull request's change to them applies to later pull
 requests, not its own review. When the base has no file, it prints the
 sequence its own release installs and says so. Without `fab`, or when it
 fails, run every stage in the file on `main`, or, when `main` has none, a
-standard review and its revise then an adversarial review and its revise. The driver can ask for more
-stages than the depth gives, never fewer.
+standard review and its revise then an adversarial review and its revise.
+The driver can ask for more stages than the depth gives, never fewer.
 
 Run the stages in order, each in a fresh agent of its role, and post what each
 stage's line says:
