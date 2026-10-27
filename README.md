@@ -25,7 +25,7 @@ On another platform, build it:
 
 It writes the Branch PR, Review gate and Bot comment workflows, the action
 that installs `fab` for them, the review stages in
-`.github/fabrial-sequence.toml`, `shot.sh`, `CODEOWNERS`,
+`.github/fabrial-sequence.toml`, `shot.sh` and its `sgr.pl`, `CODEOWNERS`,
 `.github/fabrial.toml`, the skills and agents, and a section of `AGENTS.md`.
 Branch PR and the Review gate install the `fab` release that
 `.github/fabrial.toml` names and run `fab branch-pr` and `fab gate`. Commit

@@ -21,8 +21,8 @@ narrowest relevant test, then the gates (the command `gates` names in
 pass.
 
 For a change to terminal UI, capture each affected state with
-`.github/storm/shot.sh <name> <cols> <rows> <command...>`, which needs tmux
-and freeze. Read the PNGs, and report each PNG's absolute path.
+`.github/storm/shot.sh <name> <cols> <rows> <command...>`, which needs tmux,
+freeze and perl. Read the PNGs, and report each PNG's absolute path.
 
 Work larger than the task describes gets recorded, with `arcl capture create`
 or as a GitHub issue, not absorbed.
