@@ -5,7 +5,7 @@ title = "Move thunderstorm's open issues into arcl"
 status = "completed"
 priority = "normal"
 position = 1
-evidence = "Done in the pull request from `storm/arcl-t-01M5S4SCZPZ0MFGDK1XD27DZ1P`: this task's body records where each open thunderstorm issue went."
+evidence = "Done in #66: this task's body records where each open thunderstorm issue went."
 +++
 
 Each open issue in `stormlightlabs/thunderstorm` either became arcl work here
