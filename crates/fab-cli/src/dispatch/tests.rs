@@ -255,4 +255,24 @@ fn the_linux_worker_sandbox_denies_unix_sockets() {
     // a worker off the session bus, and so off the owner's Secret Service.
     let worker = include_str!("../../../../conf/sandbox/worker.nix");
     assert!(worker.lines().any(|l| l.trim() == "allowUnixSockets = false;"));
+    // agent-sandbox.nix v5.6.3, whose seccomp filter was checked for this.
+    // Moving the pin means checking the filter again.
+    assert!(worker.contains("rev = \"bda0de5679017097f3a46f32b9d6b35dfd9b6327\";"));
+}
+
+#[test]
+fn dispatch_hands_the_session_bus_to_the_recorder() {
+    let env = |name: &str| match name {
+        "DBUS_SESSION_BUS_ADDRESS" => Some("unix:path=/run/bus".to_string()),
+        "XDG_RUNTIME_DIR" => Some("/run/user/1000".to_string()),
+        _ => Some("other".to_string()),
+    };
+    assert_eq!(
+        session_bus(env),
+        [
+            ("DBUS_SESSION_BUS_ADDRESS".to_string(), "unix:path=/run/bus".to_string()),
+            ("XDG_RUNTIME_DIR".to_string(), "/run/user/1000".to_string()),
+        ]
+    );
+    assert!(session_bus(|_| None).is_empty());
 }

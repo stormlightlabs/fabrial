@@ -30,6 +30,8 @@ use state::WorkerRecord;
 const ROLES: &[&str] = &["reviewer", "verifier", "adversarial-reviewer", "reviser"];
 const GRACE: Duration = Duration::from_secs(120);
 const RECORD_LIMIT: usize = 4 * 1024 * 1024;
+/// What libsecret needs to find the session bus on Linux.
+const SESSION_BUS: &[&str] = &["DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"];
 type Result<T> = std::result::Result<T, String>;
 
 /// Explicit operator-selected dispatch inputs. No model or credential fallback.
@@ -77,6 +79,10 @@ struct Request {
     thinking: String,
     tools: Vec<String>,
     skills: Vec<String>,
+    /// The caller's session bus variables. The recorder runs in a tmux pane,
+    /// which takes the tmux server's environment rather than the caller's.
+    #[serde(default)]
+    session_bus: Vec<(String, String)>,
 }
 
 /// Owns a subprocess group; even a normally exited leader may leave children.
@@ -400,19 +406,18 @@ fn now() -> u64 {
 /// Reads the issuer's machine credential from the host's secret store: the
 /// macOS Keychain through `security`, elsewhere the Secret Service through
 /// libsecret's `secret-tool`, which finds the session bus through
-/// `DBUS_SESSION_BUS_ADDRESS` or `XDG_RUNTIME_DIR`. Workers
-/// cannot reach either: the sandbox denies the Keychain services on macOS
-/// and every AF_UNIX socket, the session bus included, on Linux.
-fn machine_credential(c: &Config) -> Result<String> {
+/// `DBUS_SESSION_BUS_ADDRESS` or `XDG_RUNTIME_DIR`, as the caller of
+/// `fab dispatch` had them. Workers cannot reach either: the sandbox denies
+/// the Keychain services on macOS and every AF_UNIX socket, the session bus
+/// included, on Linux.
+fn machine_credential(c: &Config, session_bus: &[(String, String)]) -> Result<String> {
     let macos = cfg!(target_os = "macos");
     let (name, args) = credential_lookup(macos, &c.keychain_service, &c.keychain_account);
     let mut cmd = host_command(name)?;
     cmd.args(&args);
     if !macos {
-        for var in ["DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"] {
-            if let Some(value) = std::env::var_os(var) {
-                cmd.env(var, value);
-            }
+        for (name, value) in session_bus.iter().filter(|(n, _)| SESSION_BUS.contains(&n.as_str())) {
+            cmd.env(name, value);
         }
     }
     let bytes = execute(cmd, None, Duration::from_secs(30)).map_err(|_| "cannot read the issuer credential")?;
@@ -421,6 +426,14 @@ fn machine_credential(c: &Config) -> Result<String> {
         return Err("empty issuer credential".into());
     }
     Ok(machine)
+}
+
+/// The session bus variables `get` holds, for the recorder's `secret-tool`.
+fn session_bus(get: impl Fn(&str) -> Option<String>) -> Vec<(String, String)> {
+    SESSION_BUS
+        .iter()
+        .filter_map(|name| get(name).map(|value| (name.to_string(), value)))
+        .collect()
 }
 
 /// The command and arguments that print a secret store entry named by
@@ -436,8 +449,8 @@ fn credential_lookup<'a>(macos: bool, service: &'a str, account: &'a str) -> (&'
     }
 }
 
-fn issue(c: &Config, private: &Path, role: &str) -> Result<String> {
-    let machine = machine_credential(c)?;
+fn issue(c: &Config, session_bus: &[(String, String)], private: &Path, role: &str) -> Result<String> {
+    let machine = machine_credential(c, session_bus)?;
     let mut values = Vec::new();
     for id in [&c.app_id_secret, &c.installation_id_secret, &c.pem_secret] {
         let mut cmd = host_command("bws")?;
@@ -691,7 +704,7 @@ fn recorder(private: &Path, request: &Request) -> u8 {
             return Err("invalid recorder role".into());
         }
         let credential = oauth(&request.config.auth_file, request.timeout)?;
-        let token = issue(&request.config, private, &request.role)?;
+        let token = issue(&request.config, &request.session_bus, private, &request.role)?;
         // Issuance can outlive cancellation or the deadline. Never launch in that case.
         if cancelled() || Instant::now() >= deadline {
             return Err("worker cancelled or deadline exceeded during issuance".into());
@@ -971,6 +984,7 @@ fn dispatch(options: Options) -> Result<u8> {
         thinking,
         tools,
         skills,
+        session_bus: session_bus(|name| std::env::var(name).ok()),
     };
     write(
         &p.join("request.json"),

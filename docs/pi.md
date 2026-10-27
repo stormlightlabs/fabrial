@@ -16,6 +16,9 @@ Linux. You need Nix with flakes enabled, tmux, GitHub CLI, curl with
 machine token from the host's secret store: the Keychain through `security`
 on macOS, and on Linux the Secret Service through libsecret's `secret-tool`,
 with a keyring such as GNOME Keyring or KeePassXC unlocked in your session.
+Run `fab dispatch` from that session: it hands its `DBUS_SESSION_BUS_ADDRESS`
+and `XDG_RUNTIME_DIR` to the recorder, since the tmux pane has the tmux
+server's environment instead.
 
 Build `fab` and the sandbox wrapper from a trusted checkout kept apart from
 every PR worktree, never from a PR branch:
