@@ -24,6 +24,8 @@ throughout.
 The findings to address are those handed to you, or else those in the
 newest review from the bot whose body opens with `Standard pass on` or
 `Adversarial pass on`: its comments on the diff and the findings in its body.
+When `main`'s `comment.yml` had no `review` input, the review is the bot's
+newest plain comment that opens that way, and its findings have no ids.
 Add any a person left since. Earlier reviews are history: do not address a
 finding again unless it recurred.
 
@@ -94,7 +96,9 @@ Answering the review at 4f2a91c · <model> · <effort>
 
 Each line becomes a reply on that finding's thread. Answer the findings in
 the review's body as lines without an id; they stay in the answers review's
-own body. Keep the whole under 150 words. `Fixed in <sha>` is a complete
+own body. When the findings have no ids, or `main`'s `comment.yml` has no
+`answers` input, post the same text as a plain comment, with lines that name
+no id. Keep the whole under 150 words. `Fixed in <sha>` is a complete
 outcome. A finding needs a sentence only where you did not act on it, or
 where the diff does not show what changed.
 

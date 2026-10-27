@@ -2,7 +2,7 @@
 id = "arcl-t-01M5Z573CQF7XCPHTS2HW8KC6T"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
 title = "Review a fabrial update before main has its files"
-status = "pending"
+status = "in_progress"
 priority = "high"
 position = 4
 +++

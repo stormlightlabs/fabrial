@@ -12,6 +12,8 @@ Review a diff and report findings. Do not edit code during a review pass; the
 The `storm` skill runs the review stages `fab sequence` gives the pull request
 from `.github/fabrial-sequence.toml`, each pass in a fresh agent. A pass checks
 its own findings, reports to whoever invoked it, and posts only when they ask.
+It posts as the `storm` skill's **Posting** says, as a plain comment with the
+same body when `main`'s `comment.yml` has no `review` input.
 
 ## Pick the target and the pass
 

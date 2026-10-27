@@ -206,6 +206,12 @@ pub struct Report {
     pub unchanged: Vec<PathBuf>,
 }
 
+/// The text this build installs at `path`, relative to the repository root,
+/// or `None` when it installs no file there or writes it from settings.
+pub fn embedded(path: &str) -> Option<&'static str> {
+    EMBEDDED.iter().find(|(p, _, _)| *p == path).map(|(_, text, _)| *text)
+}
+
 /// Refuses a `root` with no `.git` entry. A worktree's `.git` is a file, so
 /// any kind of entry counts.
 pub fn require_repo_root(root: &Path) -> Result<(), Error> {

@@ -7,6 +7,7 @@
 use std::path::Path;
 
 use clap::Args;
+use fab_core::install;
 use serde::Deserialize;
 
 use crate::depth::{self, Depth};
@@ -63,16 +64,30 @@ pub fn run(options: Options) -> Result<()> {
     // from main: a pull request's change to them applies to later pull
     // requests, never to its own review.
     let base = run::git(here, &["merge-base", &options.diff.base, &options.diff.head])?;
-    let show = |path: &str| run::git(here, &["show", &format!("{base}:{path}")]);
-    let text = show(SEQUENCE_PATH).map_err(|e| format!("cannot read {SEQUENCE_PATH} at the base {base}: {e}"))?;
-    let sequence = parse(&text, |role| {
-        run::git(here, &["cat-file", "-e", &format!("{base}:.claude/agents/{role}.md")]).is_ok()
-    })?;
+    let at_base = |path: &str| run::git(here, &["cat-file", "-e", &format!("{base}:{path}")]).is_ok();
+    let agent = |role: &str| format!(".claude/agents/{role}.md");
+    // A pull request that installs fabrial, or updates it to the release
+    // that adds the file, has none at the base: it gets the sequence and
+    // roles this release installs, and the output says so.
+    let mut note = String::new();
+    let sequence = if at_base(SEQUENCE_PATH) {
+        let text = run::git(here, &["show", &format!("{base}:{SEQUENCE_PATH}")])
+            .map_err(|e| format!("cannot read {SEQUENCE_PATH} at the base {base}: {e}"))?;
+        parse(&text, |role| at_base(&agent(role)))?
+    } else {
+        let text = install::embedded(SEQUENCE_PATH).ok_or(format!("fab installs no {SEQUENCE_PATH}."))?;
+        note = format!(
+            "Sequence: the one fabrial {} installs, since the base {} has no {SEQUENCE_PATH}.\n\n",
+            fab_core::VERSION,
+            &base[..base.len().min(7)]
+        );
+        parse(text, |role| install::embedded(&agent(role)).is_some())?
+    };
     let (depth, reason) = match options.depth {
         Some(depth) => (depth, "given with --depth".to_string()),
         None => depth::of_diff(&options.diff)?,
     };
-    print!("{}", render(&sequence, depth, &reason));
+    print!("{note}{}", render(&sequence, depth, &reason));
     Ok(())
 }
 

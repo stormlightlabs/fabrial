@@ -321,3 +321,26 @@ fn sequence_reads_its_stages_from_the_base_not_the_head() {
     assert!(out.starts_with("Depth: full"), "{out}");
     assert!(out.contains("4. adversarial revise"), "{out}");
 }
+
+#[test]
+fn sequence_without_the_file_at_the_base_uses_the_installed_one() {
+    let fixture = Fixture::new();
+    fixture.commit(&[("README.md", "base\n")], "Start");
+    fixture.git(&["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    fixture.commit(&[("main.rs", "fn main() {}\n")], "Add code");
+    let output = fixture.fab(&["sequence"], &[]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let out = stdout(&output);
+    assert!(
+        out.starts_with(&format!(
+            "Sequence: the one fabrial {} installs",
+            env!("CARGO_PKG_VERSION")
+        )),
+        "{out}"
+    );
+    assert!(
+        out.contains("has no .github/fabrial-sequence.toml.\n\nDepth: full"),
+        "{out}"
+    );
+    assert!(out.contains("4. adversarial revise"), "{out}");
+}
