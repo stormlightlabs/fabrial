@@ -5,7 +5,7 @@ title = "Keep fabrial independent of any task tool"
 status = "completed"
 priority = "high"
 position = 1
-evidence = "Done in the pull request from `storm/arcl-t-01M5Z78VGP572H44Y3CV4215DX`: the installed skills and agents read the tracker from AGENTS.md's Tasks section, and `installed_files_name_no_task_tracker` fails when an installed file names arcl."
+evidence = "Done in #70: the installed skills and agents read the tracker from AGENTS.md's Tasks section, and `installed_files_name_no_task_tracker` fails when an installed file names arcl."
 +++
 
 fabrial uses arclightning to track its own work, but nothing it ships should
