@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 mod branch_pr;
+mod cleanup;
 mod depth;
 #[cfg(unix)]
 mod dispatch;
@@ -105,6 +106,10 @@ enum Command {
     /// one review, and resolve the threads they close; the Bot comment
     /// workflow runs it.
     PrAnswer(review::AnswerOptions),
+    /// After a merge: remove merged agent worktrees and their branches,
+    /// fast-forward a clean main, and list open agent pull requests that
+    /// need a resync. Exits 1 when something was kept or needs a resync.
+    Cleanup(cleanup::Options),
     /// fabrial's own release steps, which its release workflows run.
     Release {
         #[command(subcommand)]
@@ -142,6 +147,7 @@ fn main() -> ExitCode {
         Command::Check { repo } => in_repo(&repo, check),
         Command::Gate(options) => return in_workflow(gate::run(options)),
         Command::BranchPr(options) => return in_workflow(branch_pr::run(options)),
+        Command::Cleanup(options) => return cleanup::run(options),
         Command::Release { step } => return in_workflow(step.run()),
         Command::ReviewDepth(options) => return in_workflow(depth::run(options)),
         Command::Sequence(options) => return in_workflow(sequence::run(options)),
