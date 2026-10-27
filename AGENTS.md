@@ -71,6 +71,7 @@ conf/sandbox/     worker.nix, the Nix sandbox wrapper, and its Keychain patch
 package.json      the Pi package manifest, at the root so git installs find it
 .claude/skills/   skills; .agents/skills links here for Codex and Pi
 .claude/agents/   implementer, reviewer, adversarial-reviewer, verifier, reviser
+.claude/hooks/    session-start.sh, which installs arcl in cloud sessions
 .github/          CODEOWNERS and the Check, Branch PR and Review gate workflows
 .github/actions/fab/  the action that puts `fab` on the PATH for workflows
 .github/storm/    shot.sh, which captures a terminal UI as a PNG, and sgr.pl, its color filter
