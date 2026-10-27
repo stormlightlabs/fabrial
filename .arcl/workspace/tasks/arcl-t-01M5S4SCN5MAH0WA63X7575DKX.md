@@ -2,9 +2,20 @@
 id = "arcl-t-01M5S4SCN5MAH0WA63X7575DKX"
 phase = "arcl-ph-01M5S4SCGXWH09BAZNT1684VTF"
 title = "Claim tasks on refs/fabrial/claims"
-status = "pending"
+status = "parked"
 priority = "normal"
 position = 1
+handoff = """
+Parked by the owner. #71 holds an unreviewed implementation: `fab claim
+take|renew|release|list` over commits on `refs/fabrial/claims`, with race tests
+against a local bare repository. Two reasons to wait:
+
+- Nothing picks tasks unattended or in parallel yet, so nothing contends for a
+  task. Claims become useful with `fab run` or the daemon.
+- A Claude Code cloud session's git access pushes branches only: a push to
+  `refs/fabrial/claims` fails with HTTP 403. Decide where claims live (a
+  branch such as `fabrial/claims`, the hidden ref, or a setting) before #71
+  goes on."""
 +++
 
 Claims on `refs/fabrial/claims`, as PLAN.md's "Claims live in git, off

@@ -46,6 +46,12 @@ primary `main` to `origin/main`; never reset, stash, or discard the user's work.
 Leave unrelated worktrees, host credentials, shared runtimes, and Nix profiles
 alone. If cleanup is blocked, name what remains and why in the handoff.
 
+`fab cleanup` does the merge steps from git and GitHub alone, so it works
+after a restart, and lists the open agent pull requests to resync. A task owns
+no Nix roots outside its worktree: the sandbox wrapper is built once from a
+trusted checkout and shared. A `result` link in a worktree goes with it, but
+as an untracked file it keeps the worktree until you delete it.
+
 ## Gates
 
 ```sh
@@ -64,7 +70,7 @@ crates/fab-core   install and settings; later, the run operations
 crates/fab-cli    the `fab` binary, including what workflows and skills run:
                   `fab gate`, `fab branch-pr`, `fab release`,
                   `fab review-depth`, `fab sequence`, `fab pr-status`,
-                  `fab pr-review` and `fab pr-answer`
+                  `fab pr-review`, `fab pr-answer` and `fab cleanup`
 packages/pi/      the Pi package: extensions/ holds workers, PR status and the
                   status area, lib/ their shared code, and worker.ts the
                   extension `fab dispatch` gives each worker
