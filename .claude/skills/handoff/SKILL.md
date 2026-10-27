@@ -9,8 +9,8 @@ argument-hint: "[task|pick-up <task>]"
 A handoff is a note on the task that a later session reads to carry on where
 this one stopped. It lives with the task, so any machine and any harness can
 read it: in the tracker for a tracked task, as the **Tasks** section of
-`AGENTS.md` says, and as a comment on the GitHub issue, or on the pull request
-when there is no issue, otherwise.
+`AGENTS.md` says, or otherwise as a comment on the GitHub issue, or on the pull
+request when there is no issue.
 
 `/handoff <id>` writes one. `/handoff pick-up <id>` picks one up.
 

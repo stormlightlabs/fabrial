@@ -101,14 +101,15 @@ Follow these conventions, which arclightning keeps too:
 The installed skills read this section for the tracker's commands. fabrial's
 tasks live in arcl, in tracked files under `.arcl/workspace`; `arcl.db` is a
 local cache. In a cloud session `.claude/hooks/session-start.sh` installs the
-pinned `arcl` and builds it. Elsewhere, install it as PLAN.md's **Work** says,
-then run `arcl init` in each worktree.
+pinned `arcl` and builds the cache in the session's checkout only. Elsewhere,
+install it as PLAN.md's **Work** says. Every task worktree, cloud sessions
+included, needs `arcl init` before its first `arcl` command.
 
 | Step              | Command                                                       |
 | ----------------- | ------------------------------------------------------------- |
 | Read a task       | `arcl task show <id>` and `arcl context <id>`                 |
 | Check readiness   | `arcl ready`, and `arcl task explain <id>` for one task       |
-| Start             | `arcl task start <id>` in the task's worktree                 |
+| Start             | `arcl init`, then `arcl task start <id>`, in the task's worktree |
 | Complete          | `arcl task complete <id> --evidence "Done in #<n> at <sha>: <summary>"` |
 | Hand off          | `arcl task handoff <id> --note-file <file>`                   |
 | Pick up           | `arcl context <id>`, `arcl task unpark <id>`, `arcl task start <id>` |

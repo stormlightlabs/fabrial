@@ -20,7 +20,8 @@ The task comes from one of three places:
 
 A repository keeps its tasks where it chooses. Its `AGENTS.md` names the
 tracker in a **Tasks** section, with the commands that read a task and its
-readiness, start it, complete it, hand it off and record new work. Without
+readiness, start it, complete it, hand it off, pick it up and record new
+work. Without
 that section, a task is an issue or a description.
 
 Read the spec, plan or issue the task points at, then the code the change
