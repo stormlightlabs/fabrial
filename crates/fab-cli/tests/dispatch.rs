@@ -49,10 +49,16 @@ impl Fixture {
             "credential_cleanup": "pending", "result_file": null, "error": null,
             "resources": {"private_state": private, "tmux_session": "fab-worker-one", "supervisor_pid": null, "worker_pid": null}
         }).to_string()).unwrap();
-        fs::write(private.join("request.json"), json!({"record": record_dir.join("worker.json"), "config": config, "role": if mode == "reviser" { "reviser" } else { "reviewer" }, "worktree": p, "timeout": if mode == "deadline" {1} else {15}, "model": "openai/gpt-6-sol", "thinking": "low", "tools": ["bash", "read"], "skills": []}).to_string()).unwrap();
+        fs::write(private.join("request.json"), json!({"record": record_dir.join("worker.json"), "config": config, "role": if mode == "reviser" { "reviser" } else { "reviewer" }, "worktree": p, "timeout": if mode == "deadline" {1} else {15}, "model": "openai/gpt-6-sol", "thinking": "low", "tools": ["bash", "read"], "skills": [], "session_bus": [["DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/test-bus"], ["XDG_RUNTIME_DIR", "/run/test-runtime"]]}).to_string()).unwrap();
         script(
             &bin.join("security"),
             "test \"$*\" = 'find-generic-password -s local-service -a local-account -w'\nprintf 'machine-secret\\n'",
+        );
+        // libsecret's lookup, which a host other than macOS uses; it reaches
+        // the Secret Service over the session bus, so it must get the address.
+        script(
+            &bin.join("secret-tool"),
+            "test \"$*\" = 'lookup service local-service account local-account'\ntest \"$DBUS_SESSION_BUS_ADDRESS\" = 'unix:path=/run/test-bus'\ntest \"$XDG_RUNTIME_DIR\" = '/run/test-runtime'\nprintf 'machine-secret'",
         );
         script(
             &bin.join("bws"),
@@ -157,6 +163,7 @@ esac
 touch {}
 test -z "${{BWS_ACCESS_TOKEN+x}}"
 test -z "${{OWNER_SENTINEL+x}}"
+test -z "${{DBUS_SESSION_BUS_ADDRESS+x}}"
 test "$GH_TOKEN" = t-secret
 test "$GH_REPO" = org/repo
 test "$XDG_STATE_HOME" = "${{FAB_STATE%/state}}/sandbox-logs"
@@ -195,7 +202,11 @@ printf '%s\n' '{{"type":"agent_settled","aborted":false}}'
             .env("HOME", self.temp.path())
             .env("GH_TOKEN", "owner-secret")
             .env("BWS_ACCESS_TOKEN", "owner-secret")
-            .env("OWNER_SENTINEL", "must-not-inherit");
+            .env("OWNER_SENTINEL", "must-not-inherit")
+            // A tmux pane holds the server's bus, not the caller's: the
+            // recorder must take the request's.
+            .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/stale-bus")
+            .env("XDG_RUNTIME_DIR", "/run/stale-runtime");
         command
     }
 
