@@ -141,12 +141,11 @@ move with API changes.
 Open work lives in arcl, in `.arcl/workspace`, as the Roadmap plan's phases 1
 to 9. Install the pinned `arcl`, initialize the clone, and read the plan. In a
 Claude Code cloud session, `.claude/hooks/session-start.sh` does the first
-three steps:
+two steps:
 
 ```sh
 curl -LsSf https://github.com/stormlightlabs/arclightning/releases/download/v0.3.0/arcl-cli-installer.sh | sh
 arcl init
-arcl workspace import
 arcl tree           # the whole plan
 arcl ready          # tasks that can start
 arcl context <id>   # one task, with its plan and blockers
