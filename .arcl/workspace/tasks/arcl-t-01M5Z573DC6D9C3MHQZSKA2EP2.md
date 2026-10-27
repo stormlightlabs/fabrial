@@ -17,10 +17,11 @@ and README.md asks the owner to delete them by hand.
 
 Acceptance criteria:
 
-- [ ] fab-core keeps a list of the paths earlier releases installed and this
-      one does not
+- [ ] fab-core keeps a list of the files earlier releases installed and this
+      one does not, each with the contents or a hash of every version a
+      release wrote, since one path can ship in several versions
 - [ ] `fab check` reports each that exists
-- [ ] `fab update` deletes each that still matches what a release wrote, and
+- [ ] `fab update` deletes each that still matches one of those versions, and
       reports one that was edited instead of deleting it
 - [ ] Tests cover a retired file deleted, an edited one kept and reported, and
       a repository without them; README.md drops its by-hand step

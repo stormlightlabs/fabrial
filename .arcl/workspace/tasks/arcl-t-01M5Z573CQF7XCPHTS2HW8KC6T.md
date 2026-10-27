@@ -1,7 +1,7 @@
 +++
 id = "arcl-t-01M5Z573CQF7XCPHTS2HW8KC6T"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
-title = "Review a repository's update with the release it updates from"
+title = "Review a fabrial update before main has its files"
 status = "pending"
 priority = "high"
 position = 4
@@ -26,5 +26,7 @@ Acceptance criteria:
       release installs and says it used it, instead of failing
 - [ ] The `storm`, `review` and `revise` skills post a plain comment with the
       same body when `main`'s `comment.yml` has no input for the mode a stage
-      names
+      names. After that fallback the findings have no inline comment ids, so
+      `revise` posts its answers as a plain comment too, with lines that name
+      no id
 - [ ] Tests cover `fab sequence` at a base without the file

@@ -18,4 +18,8 @@ Acceptance criteria:
 
 - [ ] Every Markdown file at the repository root counts as documentation,
       except `AGENTS.md` and `CLAUDE.md`, which are agent instructions
+- [ ] The Check workflow's skip regex in `.github/workflows/check.yml`, its
+      header comment and `depth.rs`'s module doc move with it, so documentation
+      stays the files that workflow skips the build for, and
+      `the_documentation_paths_match_the_check_workflow` pins the new rule
 - [ ] Tests cover `ROADMAP.md` alone at standard depth and `AGENTS.md` at full
