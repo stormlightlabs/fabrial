@@ -38,8 +38,9 @@ Stop and ask when any of these is true:
   to someone else. Override that only when the person asks after seeing the
   reason, and say in your report that you did. A dispatched implementer has
   no one to ask: it reports the reasons and stops.
-- The task is already in progress and its latest handoff is not addressed to
-  this session.
+- The task is already in progress, its latest handoff is not addressed to
+  this session, and the run that dispatched you does not hold its claim (see
+  **Start it**).
 - It has open subtasks. Work those one at a time instead.
 - It has no acceptance criteria you could check, and the person has not given
   any.
@@ -77,10 +78,21 @@ shared build directory.
 
 An issue or a description needs no step here.
 
-For a tracked task, first check that nobody else has it:
-`gh pr list --search <id>` and `git ls-remote origin 'storm/<id>'` must both
-come back empty. Then start it as the **Tasks** section says, from the task
-worktree. When the tracker keeps tasks in files in the repository, commit the
+For a tracked task, claim it first:
+
+```sh
+fab claim take <id> --run <run>
+```
+
+`<run>` is the run ID the run that dispatched you gave you. A session nobody
+dispatched uses its branch and machine, such as `storm/<id>@<host>`. The
+command exits 0 when your run holds the claim, whether it is new or your run
+already held it: go on. It exits 1 and names the holder when another run
+holds it: stop and report that run. Then start the task as the **Tasks**
+section says, from the task worktree, unless the run that dispatched you
+already started it. A claim lasts an hour; extend it with
+`fab claim renew <id> --run <run>` while the work goes on, and remove it with
+`fab claim release <id> --run <run>` when you hand the task off. When the tracker keeps tasks in files in the repository, commit the
 changed file with the work.
 
 ## Do the work

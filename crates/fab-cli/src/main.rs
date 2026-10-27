@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 mod branch_pr;
+mod claim;
 mod depth;
 #[cfg(unix)]
 mod dispatch;
@@ -42,6 +43,11 @@ enum Command {
     #[cfg(unix)]
     #[command(hide = true)]
     DispatchRecord { private: PathBuf },
+    /// Take, renew, release or list task claims on refs/fabrial/claims.
+    Claim {
+        #[command(subcommand)]
+        operation: claim::Operation,
+    },
     /// Install fabrial's workflows, gate, skills and agents into a repository
     /// that does not have them yet.
     Init {
@@ -140,6 +146,7 @@ fn main() -> ExitCode {
             install::update(dir, change, force).map(|r| written(&r, "updated"))
         }),
         Command::Check { repo } => in_repo(&repo, check),
+        Command::Claim { operation } => return operation.run(),
         Command::Gate(options) => return in_workflow(gate::run(options)),
         Command::BranchPr(options) => return in_workflow(branch_pr::run(options)),
         Command::Release { step } => return in_workflow(step.run()),
