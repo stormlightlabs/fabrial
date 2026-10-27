@@ -38,11 +38,11 @@ a paid plan, so rulesets on `main` are enforced.
   `refs/fabrial/claims`, naming the task, machine, run and an expiry. The push
   is the lock: a rejected push means another machine claimed first, so fetch,
   recheck and pick again. Expiry frees a dead machine's claims. Every machine
-  can read every claim, so any machine's dashboard shows every run.
+  can read every claim, so the web UI shows every run.
 - **One set of run operations, three drivers.** A core crate holds the
   operations: claim, start a step, record a result, mark ready, release. The
   daemon drives the fixed sequence in code. An agent such as Pi drives it
-  through the CLI or `fab mcp`. A person drives it from the dashboard or with
+  through the CLI or `fab mcp`. A person drives it from the web UI or with
   `/storm:` PR comments.
 - **Enforcement is server-side:** rulesets, required checks and the review
   workflow. There is no shell-command parsing or general token broker. Worker
@@ -96,8 +96,8 @@ a paid plan, so rulesets on `main` are enforced.
   events to the control plane, push its branch and upload artifacts to R2
   through presigned URLs. Run state lives in git and on the VPS; workers,
   Cloudflare and R2 hold none.
-- **Web UI.** The dashboard is fabrial's web frontend to Pi, written in GPUI.
-  A Cloudflare Worker serves it and holds only the GitHub sign-in session; it
+- **Web UI.** The web UI is fabrial's frontend to Pi, written in GPUI. A
+  Cloudflare Worker serves it and holds only the GitHub sign-in session; it
   reaches the VPS through a Cloudflare Tunnel, so the VPS opens no public
   port. It shows every run from the claims ref, and renders the same PR
   status state as Pi's status area. GPUI's browser target is not yet

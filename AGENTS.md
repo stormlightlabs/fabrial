@@ -80,7 +80,7 @@ package.json      the Pi package manifest, at the root so git installs find it
 .github/fabrial-sequence.toml  the review stages the storm skill runs
 docs/hosts.md     what each host reads, and where they differ
 docs/pi.md        how to set up a host and run Pi workers
-docs/pi-design.md planned Pi ownership and PR status transport
+docs/pi-design.md planned Pi ownership, PR status transport, status area and web UI
 PLAN.md           decisions, and how to read the open work
 .arcl/            arcl's config; workspace/ holds the tasks, arcl.db is local
 AGENTS.md         this file (CLAUDE.md links to it)

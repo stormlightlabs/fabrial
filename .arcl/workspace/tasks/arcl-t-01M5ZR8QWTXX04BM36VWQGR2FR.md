@@ -9,5 +9,7 @@ position = 0
 
 Acceptance criteria:
 
-- [ ] The control plane receives the App's webhooks and updates the PR status state the Pi status area reads
-- [ ] Polling `gh` remains the fallback when no webhook arrives
+- [ ] GitHub delivers the App's webhooks to the control plane through the Cloudflare Tunnel
+- [ ] The control plane accepts a delivery only when its `X-Hub-Signature-256` matches the App's webhook secret, and a test shows a forged delivery changes no state
+- [ ] The control plane updates the PR status state, and Pi sessions on any machine read it from `fab serve`
+- [ ] Pi falls back to polling `gh` when webhooks stop arriving

@@ -1,7 +1,8 @@
 # Pi design
 
 This page holds the planned parts of fabrial's Pi setup: who owns it, how PR
-status could arrive, what the status area still lacks and the web UI.
+status could arrive, what the status area still lacks and how the web UI is
+built.
 [Pi dispatch](pi.md) covers what ships today, and arcl's roadmap phases 6
 to 8 track delivery ([PLAN.md](../PLAN.md#work)).
 
@@ -20,10 +21,17 @@ its own sandbox and fresh session.
 ## PR status
 
 The package collects PR status by polling `gh`, as
-[Pi dispatch](pi.md#pull-request-status) describes. App webhooks delivered to
-the control plane on the VPS will replace the polling. They change the
-transport, not the state the [status area](pi.md#status-area) reads, and the
-web UI reads that same state.
+[Pi dispatch](pi.md#pull-request-status) describes. App webhooks will become
+the main source, with polling as the fallback when they stop arriving:
+
+- GitHub delivers the App's webhooks to the control plane on the VPS through
+  the Cloudflare Tunnel.
+- The control plane checks each delivery's `X-Hub-Signature-256` against the
+  App's webhook secret and drops any that fail.
+- Pi sessions on any machine read the resulting PR status from `fab serve`.
+
+Webhooks change the transport, not the state the
+[status area](pi.md#status-area) reads, and the web UI reads that same state.
 
 ## Status area
 
