@@ -12,6 +12,7 @@ mod release;
 mod run;
 mod sequence;
 mod squash;
+mod status;
 
 use clap::{Args, Parser, Subcommand};
 use fab_core::install::{self, Report};
@@ -93,6 +94,9 @@ enum Command {
     /// Print the review stages the diff's depth gives, from
     /// .github/fabrial-sequence.toml.
     Sequence(sequence::Options),
+    /// Set a section of the pull request's status comment; the Bot comment
+    /// workflow runs it.
+    PrStatus(status::Options),
     /// fabrial's own release steps, which its release workflows run.
     Release {
         #[command(subcommand)]
@@ -133,6 +137,7 @@ fn main() -> ExitCode {
         Command::Release { step } => return in_workflow(step.run()),
         Command::ReviewDepth(options) => return in_workflow(depth::run(options)),
         Command::Sequence(options) => return in_workflow(sequence::run(options)),
+        Command::PrStatus(options) => return in_workflow(status::run(options)),
         #[cfg(unix)]
         Command::Dispatch(options) => return ExitCode::from(dispatch::run(options)),
         #[cfg(unix)]

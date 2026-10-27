@@ -6,7 +6,7 @@
 # the body from that commit's body as the squash keeps it, so it needs no
 # model. A pull request already open keeps its title and body. The pull
 # request stays a draft until its review finishes; the Review gate then marks
-# it ready and posts the squash message, and the owner merges it, by hand or
+# it ready and sets the squash message, and the owner merges it, by hand or
 # with auto-merge. Nothing here turns auto-merge on.
 #
 # `fab` comes from the branch, as this workflow does: in fabrial it is built

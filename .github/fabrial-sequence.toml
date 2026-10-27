@@ -11,7 +11,7 @@
 name = "standard review"
 role = "reviewer"
 depth = "standard"
-posts = "One comment opening with `Standard pass on <short sha> · <model>`, its findings most severe first, under 200 words."
+posts = "The status comment's `Standard pass` section: a line `Standard pass on <short sha> · <model>`, then its findings most severe first, under 200 words."
 
 [[stage]]
 name = "standard revise"

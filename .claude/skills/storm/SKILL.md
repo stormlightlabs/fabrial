@@ -35,14 +35,25 @@ with method `run_workflow`, `workflow_id` `comment.yml`, `ref` `main`, and
 scratch directory, never inside the repository. The comment appears once the
 run finishes, after about ten seconds.
 
-Both return once the run is queued, before it is listed, so a run that fails
-on a bad `pr` or a missing secret goes unseen, and the newest listed run may be
-an earlier one. Confirm each post by its result: within about a minute,
-`gh pr view <n> --comments`, or `pull_request_read` method `get_comments` in a
-cloud session, should show a comment from `stormlight-thunderbot[bot]`, created
-after you dispatched, whose first line matches yours. If none appears, look for
-a failure among the newest `comment.yml` runs and report it. Do not retry in a
-loop.
+A stage whose `posts` line names a section of the status comment adds
+`section`, such as `-f section="Standard pass"` or `"section": "Standard
+pass"` in `inputs`. That section of the bot's one status comment is set
+instead of a new comment, and an edit sends the owner no notification. The
+gate sets the `Squash message` section the same way. `Review finished` and
+the gate's requests to post a command again stay separate comments, since
+they need the owner or start the gate. A section post installs `fab` first,
+which in fabrial builds it and can take several minutes, so it lands later
+than a comment.
+
+Both return once the run is queued, before it is listed, so a run that fails on
+a bad `pr` or a missing secret goes unseen, and the newest listed run may be an
+earlier one. Confirm each post by its result: within about a minute, or for a
+section once its `comment.yml` run has finished, `gh pr view <n> --comments`,
+or `pull_request_read` method `get_comments` in a cloud session, should show a
+comment from `stormlight-thunderbot[bot]`, created after you dispatched, whose
+first line matches yours, or for a section, the status comment holding your
+text. If none appears, look for a failure among the newest `comment.yml` runs
+and report it. Do not retry in a loop.
 
 ## Implement
 
@@ -149,10 +160,10 @@ request this run reviews.
 
 Post it through the Bot comment workflow like the rest. The Review gate
 workflow then turns `storm/review` green for that head, marks the draft ready
-and posts the squash message. It never turns on auto-merge: the owner merges,
-by hand or with auto-merge they turn on. Post it only once the
-sequence has run to its end. A push after it sets the check back to pending,
-unless the push only moved the base.
+and sets the squash message in the status comment. It never turns on
+auto-merge: the owner merges, by hand or with auto-merge they turn on. Post it
+only once the sequence has run to its end. A push after it sets the check back
+to pending, unless the push only moved the base.
 
 Confirm the finish comment appeared, then watch `storm/review` and the
 repository's required checks for this head. With `gh`, use `gh pr checks <n>`
