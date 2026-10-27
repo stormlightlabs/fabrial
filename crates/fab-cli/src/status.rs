@@ -21,6 +21,9 @@ pub const MARKER: &str = "<!-- fabrial:status -->";
 const BOT_LOGIN: &str = "stormlight-thunderbot[bot]";
 const SECTION_OPEN: &str = "<!-- fabrial:section ";
 const SECTION_CLOSE: &str = " -->";
+/// The most characters a section keeps; a handful of sections fit in one
+/// comment.
+const SECTION_LIMIT: usize = 12_000;
 
 /// What `fab pr-status` writes, each also read from its environment
 /// variable.
@@ -100,7 +103,7 @@ impl Status {
     /// Returns false, writing nothing, when the section already says the
     /// same. With `dry_run`, prints the first write instead.
     pub fn set(&mut self, name: &str, text: &str, scratch: &Path, dry_run: bool) -> Result<bool> {
-        let text = escape(text);
+        let text = cap(&escape(text));
         let text = text.trim_matches('\n');
         let mut wrote = false;
         for _ in 0..6 {
@@ -120,8 +123,13 @@ impl Status {
     }
 
     /// Writes the comment once with the section set, then deletes the
-    /// later status comments.
+    /// later status comments. It reads the comment again just before the
+    /// write and changes only its own section, so a write another run made
+    /// while this one worked, which can take minutes, stays.
     fn write(&mut self, name: &str, text: &str, scratch: &Path, dry_run: bool) -> Result<()> {
+        if !dry_run {
+            *self = Status::read(&self.repo, &self.pr)?;
+        }
         match self.sections.iter_mut().find(|(n, _)| n == name) {
             Some((_, old)) => *old = text.to_string(),
             None => self.sections.push((name.to_string(), text.to_string())),
@@ -142,12 +150,12 @@ impl Status {
         }
         run::gh(&args)?;
         for extra in std::mem::take(&mut self.extras) {
-            run::gh(&[
-                "api",
-                "-X",
-                "DELETE",
-                &format!("repos/{}/issues/comments/{extra}", self.repo),
-            ])?;
+            let path = format!("repos/{}/issues/comments/{extra}", self.repo);
+            // A writer racing this one may have deleted it first.
+            match run::gh(&["api", "-X", "DELETE", &path]) {
+                Err(e) if !e.contains("404") => return Err(e),
+                _ => {}
+            }
         }
         Ok(())
     }
@@ -186,6 +194,17 @@ fn escape(text: &str) -> String {
         .map(|l| if l.starts_with(SECTION_OPEN) || l.starts_with(MARKER) { format!(" {l}") } else { l.to_string() })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// A section's text cut to [`SECTION_LIMIT`] characters, with a note, so the
+/// comment stays under GitHub's 65536-character limit and can still be
+/// edited.
+fn cap(text: &str) -> String {
+    if text.chars().count() <= SECTION_LIMIT {
+        return text.to_string();
+    }
+    let kept: String = text.chars().take(SECTION_LIMIT).collect();
+    format!("{kept}\n\n(Cut at {SECTION_LIMIT} characters.)")
 }
 
 /// The sections of a status comment's body, in order.
@@ -251,6 +270,15 @@ mod tests {
         let text = escape("a\n<!-- fabrial:section Squash message -->\nb");
         let body = render(&[("A".to_string(), text.clone())]);
         assert_eq!(parse(&body), vec![("A".to_string(), text)]);
+    }
+
+    #[test]
+    fn a_long_section_is_cut_with_a_note() {
+        let long = "x".repeat(SECTION_LIMIT + 5);
+        let capped = cap(&long);
+        assert!(capped.ends_with("(Cut at 12000 characters.)"));
+        assert_eq!(capped.chars().filter(|c| *c == 'x').count(), SECTION_LIMIT);
+        assert_eq!(cap("short"), "short");
     }
 
     #[test]
