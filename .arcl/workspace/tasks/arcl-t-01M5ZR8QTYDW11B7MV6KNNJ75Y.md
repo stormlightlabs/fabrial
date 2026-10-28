@@ -16,4 +16,4 @@ Acceptance criteria:
 - [ ] The worker spec names the model credential each worker uses
 - [ ] A worker run for another person uses that person's API key, never the owner's subscription login
 
-Cancelled: fabrial is the engine, not the host (PLAN.md). Hosting, other runner backends, artifact storage and web UIs are outside its scope.
+Cancelled: the runner interface's worker spec already carries a model credential (Run workers through one runner interface); choosing whose credential a hosted run uses belongs to whoever hosts it.
