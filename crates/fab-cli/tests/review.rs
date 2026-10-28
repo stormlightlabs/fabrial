@@ -15,7 +15,7 @@ const HEAD: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 /// `TEST_THREADS`, the bot's pending reviews with `TEST_PENDING`, and each
 /// mutation with the id its filter reads. With
 /// `TEST_FAIL` set to a mutation's name, that mutation fails.
-const FAKE_GH: &str = r#"#!/bin/bash
+const FAKE_GH: &str = r#"#!/usr/bin/env bash
 set -u
 input=null filter= query=
 for ((i = 1; i < $#; i++)); do

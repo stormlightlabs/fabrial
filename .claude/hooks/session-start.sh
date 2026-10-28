@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Prepares a Claude Code cloud session on fabrial: installs the pinned arcl
 # release from its prebuilt installer, then builds the local arcl database
 # from .arcl/workspace when the clone has none. Local sessions are left
