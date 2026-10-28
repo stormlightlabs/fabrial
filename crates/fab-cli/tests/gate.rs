@@ -20,7 +20,7 @@ const BOT: &str = "stormlight-thunderbot[bot]";
 /// collaborator's permission with `TEST_PERMISSION`; and a commit's check
 /// runs with `TEST_CHECK_RUNS`. It applies `--jq` as gh does and accepts the
 /// other writes the gate makes.
-const FAKE_GH: &str = r#"#!/bin/bash
+const FAKE_GH: &str = r#"#!/usr/bin/env bash
 set -u
 body= filter=
 for ((i = 1; i < $#; i++)); do

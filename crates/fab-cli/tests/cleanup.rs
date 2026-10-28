@@ -15,7 +15,7 @@ use serde_json::json;
 /// `$TEST_PULLS/<n>.json`, and a comparison with main by head with
 /// `$TEST_PULLS/compare-<head>.json`; a missing list is empty and a missing
 /// comparison is not behind. It logs every call and fails on anything else.
-const FAKE_GH: &str = r#"#!/bin/bash
+const FAKE_GH: &str = r#"#!/usr/bin/env bash
 set -eu
 printf '%s\n' "$*" >> "$TEST_PULLS/calls"
 answer() { if [[ -e $1 ]]; then cat "$1"; else echo '[]'; fi; }

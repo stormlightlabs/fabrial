@@ -25,7 +25,7 @@ impl Fixture {
         let gh = bin.join("gh");
         fs::write(
             &gh,
-            r#"#!/bin/bash
+            r#"#!/usr/bin/env bash
 set -eu
 body=
 for ((i = 1; i < $#; i++)); do

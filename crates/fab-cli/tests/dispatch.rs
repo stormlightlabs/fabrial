@@ -8,7 +8,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn script(path: &Path, text: &str) {
-    fs::write(path, format!("#!/bin/bash\nset -eu\n{text}\n")).unwrap();
+    fs::write(path, format!("#!/usr/bin/env bash\nset -eu\n{text}\n")).unwrap();
     fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
 }
 
