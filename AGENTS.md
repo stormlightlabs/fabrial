@@ -121,6 +121,19 @@ included, needs `arcl init` before its first `arcl` command.
 | Hand off          | `arcl task handoff <id> --note-file <file>`                   |
 | Pick up           | `arcl context <id>`, `arcl task unpark <id>`, `arcl task start <id>` |
 | Record new work   | `arcl task create --phase <id> "<title>"`, or `arcl capture create` |
+| Record an idea    | `arcl capture create "<title>" --body-file <file>`            |
+| Record a spec     | `arcl spec create "<title>" --body-file <file>`               |
+
+`decompose` writes these primitives:
+
+| Primitive  | In arcl                    | Write it with                                  |
+| ---------- | -------------------------- | ---------------------------------------------- |
+| Collection | a phase of the spec's plan | `arcl plan phase create --plan <id> "<title>"` |
+| Run unit   | a task with child tasks    | `arcl task create --phase <id> "<title>"`      |
+| Task       | a child task               | `arcl task create --parent <id> "<title>"`     |
+| Dependency | a blocker                  | `arcl dependency add <task> --blocked-by <id>` |
+
+A spec with no plan gets one first, with `arcl plan create --spec <id>`.
 
 - Every change to a task is a file change: commit it on the branch it
   describes, so the status reaches `main` with the merge. Record new tasks and

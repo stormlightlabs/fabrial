@@ -2,7 +2,7 @@
 id = "arcl-t-01M60CM91MZYXGCHTC9VFJ0Y3F"
 phase = "arcl-ph-01M5S4SCFE01K31R17FQ29AHJ8"
 title = "Port rubber-duck and decompose"
-status = "pending"
+status = "in_progress"
 priority = "normal"
 position = 0
 +++
