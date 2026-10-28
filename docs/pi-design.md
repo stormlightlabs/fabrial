@@ -1,8 +1,7 @@
 # Pi design
 
 This page holds the planned parts of fabrial's Pi setup: who owns it, how PR
-status could arrive, what the status area still lacks and how the web UI is
-built.
+status could arrive and what the status area still lacks.
 [Pi dispatch](pi.md) covers what ships today, and arcl's roadmap phases 6
 to 8 track delivery ([PLAN.md](../PLAN.md#work)).
 
@@ -21,17 +20,13 @@ its own sandbox and fresh session.
 ## PR status
 
 The package collects PR status by polling `gh`, as
-[Pi dispatch](pi.md#pull-request-status) describes. App webhooks will become
-the main source, with polling as the fallback when they stop arriving:
-
-- GitHub delivers the App's webhooks to the control plane on the VPS through
-  the Cloudflare Tunnel.
-- The control plane checks each delivery's `X-Hub-Signature-256` against the
-  App's webhook secret and drops any that fail.
-- Pi sessions on any machine read the resulting PR status from `fab serve`.
-
-Webhooks change the transport, not the state the
-[status area](pi.md#status-area) reads, and the web UI reads that same state.
+[Pi dispatch](pi.md#pull-request-status) describes. Where a host receives the
+App's webhooks, they can become the main source, with polling as the fallback
+when they stop arriving. The host checks each delivery's
+`X-Hub-Signature-256` against the App's webhook secret and drops any that
+fail, and Pi sessions read the resulting PR status from `fab serve`. Webhooks
+change the transport, not the state the [status area](pi.md#status-area)
+reads.
 
 ## Status area
 
@@ -46,30 +41,3 @@ Each needs a source that provides it. Do not invent a step, budget or cost,
 and do not show unknown cost as zero. A displayed budget does not enforce a
 spending limit.
 
-## Web UI
-
-The web UI is fabrial's frontend to Pi, written in GPUI. It has two views of
-one state: runs from the agent branches and the control plane's state, and the
-PR status the status area reads.
-It adds no fields of its own, so the gaps above apply to it too, with the same
-rules.
-
-The pieces sit where PLAN.md's **Hosting** and **Web UI** decisions put them:
-
-- A Cloudflare Worker serves the UI and holds the GitHub sign-in session. It
-  keeps no run state.
-- It reaches `fab serve` on the VPS through a Cloudflare Tunnel, over HTTP
-  for the run operations and a WebSocket for live events.
-- `fab serve` offers the operations `fab mcp` exposes, so the UI, Pi, the
-  daemon and `/storm:` comments drive runs the same way.
-- Workers report events to the control plane, never to the UI.
-
-GPUI's browser target is unsupported upstream as of October 2026. Community
-crates render it through WebGPU and are used for demos. A spike builds the
-status view for `wasm32-unknown-unknown` and checks it in current Chrome,
-Firefox and Safari. If it fails, the UI ships as a GPUI desktop client over the
-same API first, and the web build waits for upstream support.
-
-Workers for other people need their own model credentials. Hosted use of the
-Claude Agent SDK takes an API key, not a subscription login, so the runner's
-worker spec names the credential each worker uses.

@@ -41,22 +41,19 @@ a paid plan, so rulesets on `main` are enforced.
   commit names the task, machine, run and an expiry. Expiry frees a dead run's
   claim without losing its commits. Branch pushes work wherever an agent can
   push, cloud sessions included; a custom ref such as `refs/fabrial/claims`
-  does not. The control plane claims the same way when it launches a worker,
-  and the web UI shows every run from the agent branches and the control
-  plane's state.
+  does not. `fab daemon` claims the same way when it launches a worker.
 - **One set of run operations, three drivers.** A core crate holds the
   operations: claim, start a step, record a result, mark ready, release. The
   daemon drives the fixed sequence in code. An agent such as Pi drives it
-  through the CLI or `fab mcp`. A person drives it from the web UI or with
-  `/storm:` PR comments.
+  through the CLI or `fab mcp`. A person drives it with `/storm:` PR comments
+  or through a client of `fab serve`.
 - **Enforcement is server-side:** rulesets, required checks and the review
   workflow. There is no shell-command parsing or general token broker. Worker
-  sessions never hold the App's private key. Actions, the daemon, the VPS
-  control plane's token issuer, and the explicitly authorized local spike
-  issuer may hold it. The local issuer retrieves only configured BWS secrets
-  from the host's secret store, the Keychain on macOS and the Secret Service on
-  Linux, and mints repository-restricted App installation tokens; it never
-  accepts an owner PAT.
+  sessions never hold the App's private key. Actions, the daemon's token
+  issuer, and the explicitly authorized local spike issuer may hold it. The
+  local issuer retrieves only configured BWS secrets from the host's secret
+  store, the Keychain on macOS and the Secret Service on Linux, and mints
+  repository-restricted App installation tokens; it never accepts an owner PAT.
 - **The bot is `stormlight-thunderbot`,** with its App ID and private key as
   org secrets shared with each repository that uses fabrial.
 - **Pull requests.** The bot opens each PR as a draft, and it stays one until
@@ -77,7 +74,7 @@ a paid plan, so rulesets on `main` are enforced.
 - **Prose follows guidelines, not a CI check:** the writing standard and the
   tells catalogue from thunderstorm's `writing-docs`, in
   `.claude/skills/writing-docs/`.
-- **Workers.** Pi on the VPS comes first, through `dispatch` into tmux panes,
+- **Workers.** Pi on a host comes first, through `dispatch` into tmux panes,
   which lets Pi orchestrate and use opencode and OpenAI models. Claude Code and
   Codex run in their own clouds and push `claude/` and `codex/` branches; the
   workflows do the rest. Jules gets a spike later.
@@ -94,26 +91,14 @@ a paid plan, so rulesets on `main` are enforced.
   whether Claude Code, Codex and Pi read the same `SKILL.md` layout. Port
   per-host differences only where thunderstorm's `docs/internal/hosts.md` shows
   they are needed.
-- **Hosting.** An OVH VPS runs the control plane: `fab daemon`, the
-  scheduler, the token issuer and `fab serve`, which offers the run operations
-  over HTTP and WebSocket. Workers run through one runner interface with three
-  backends: tmux on the host, a k3s Job on OVH or a home machine, and an
-  exe.dev VM for disposable work. A worker connects only outward, to report
-  events to the control plane, push its branch and upload artifacts to R2
-  through presigned URLs. Events go through the Cloudflare Tunnel, since the
-  tmux sandbox blocks local ports and exe.dev VMs are off the tailnet. Each
-  worker sends them with a short-lived credential of its own, which the
-  control plane issues at launch and revokes on exit, as it does the
-  worker's installation token. Run state lives in git and on the VPS;
-  workers, Cloudflare and R2 hold none.
-- **Web UI.** The web UI is fabrial's frontend to Pi, written in GPUI. A
-  Cloudflare Worker serves it and holds only the GitHub sign-in session; it
-  reaches the VPS through a Cloudflare Tunnel, so the VPS opens no public
-  port. It shows every run from the agent branches and the control plane's
-  state, and renders the same PR status state as Pi's status area. GPUI's
-  browser target is not yet supported upstream, so a spike decides whether
-  it ships in the browser
-  ([Pi design](docs/pi-design.md#web-ui)).
+- **fabrial is the engine, not the host.** Harnesses such as Claude Code,
+  Codex and Pi use it to run agents and tasks. It ships `fab daemon`, which
+  drives the review loop, `fab serve`, which offers the run operations over
+  HTTP and WebSocket, and one runner interface with tmux as its first backend.
+  Each worker reports events with a short-lived credential of its own, issued
+  at launch and revoked on exit, as its installation token is. Where these
+  run, how they are reached, other runner backends, artifact storage and any
+  web UI belong to whoever hosts them; fabrial assumes none of them.
 - **Releases:** a workflow run opens a release pull request whose changelog
   section lists the squash subjects since the last tag, which the owner
   edits there; pull requests do not edit `CHANGELOG.md`. The tag lands on its
