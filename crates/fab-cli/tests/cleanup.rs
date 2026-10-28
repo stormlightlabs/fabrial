@@ -67,7 +67,18 @@ impl Fixture {
     }
 
     fn git(&self, dir: &Path, args: &[&str]) -> String {
-        let output = Command::new("git")
+        let output = self.git_output(dir, args);
+        assert!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
+
+    /// Runs git in `dir` and returns its output, whether or not it failed.
+    fn git_output(&self, dir: &Path, args: &[&str]) -> Output {
+        Command::new("git")
             .env_clear()
             .envs(self.env())
             .args([
@@ -81,13 +92,7 @@ impl Fixture {
             .args(args)
             .current_dir(dir)
             .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "git {args:?}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
+            .unwrap()
     }
 
     /// Writes a file in `dir`, commits it and returns the new head.
@@ -168,6 +173,12 @@ impl Fixture {
         [("PATH", path), ("HOME", self.temp.path().display().to_string())]
     }
 
+    /// Whether the primary's config has a `branch.<branch>` section.
+    fn has_settings(&self, branch: &str) -> bool {
+        let names = self.git(&self.primary(), &["config", "--local", "--list", "--name-only"]);
+        names.lines().any(|n| n.starts_with(&format!("branch.{branch}.")))
+    }
+
     fn has_branch(&self, branch: &str) -> bool {
         !self.git(&self.primary(), &["branch", "--list", branch]).is_empty()
     }
@@ -210,6 +221,7 @@ fn scene(f: &Fixture) -> [PathBuf; 5] {
 fn cleanup_removes_only_merged_clean_worktrees_and_lists_resyncs() {
     let f = Fixture::new();
     let [merged, dirty, moved, open, person] = scene(&f);
+    f.git(&f.primary(), &["config", "branch.storm/merged.remote", "origin"]);
     let head = f.advance_origin();
     let output = f.cleanup(&[]);
     let out = stdout(&output);
@@ -224,6 +236,7 @@ fn cleanup_removes_only_merged_clean_worktrees_and_lists_resyncs() {
         "{out}"
     );
     assert!(!merged.exists() && !f.has_branch("storm/merged"));
+    assert!(!f.has_settings("storm/merged"));
     assert!(
         out.contains("kept claude/dirty") && out.contains("uncommitted changes"),
         "{out}"
@@ -372,6 +385,7 @@ fn a_merged_worktree_with_only_target_ignored_is_removed() {
     assert_eq!(output.status.code(), Some(0), "{out}");
     assert!(out.contains("removed storm/merged at"), "{out}");
     assert!(!merged.exists() && !f.has_branch("storm/merged"));
+    assert!(!f.has_settings("storm/merged"));
 }
 
 #[test]
@@ -408,4 +422,144 @@ fn a_worktree_that_cannot_be_removed_keeps_its_branch() {
     assert!(merged.join("work").exists());
     assert_eq!(f.git(&merged, &["symbolic-ref", "HEAD"]), "refs/heads/storm/merged");
     assert_eq!(f.git(&f.primary(), &["rev-parse", "storm/merged"]), tip);
+}
+
+#[test]
+fn a_merged_branch_with_no_worktree_is_deleted_at_its_tip_only() {
+    let f = Fixture::new();
+    let tip = f.git(&f.primary(), &["rev-parse", "main"]);
+    f.git(&f.primary(), &["branch", "claude/fetched", "main"]);
+    f.git(&f.primary(), &["config", "branch.claude/fetched.remote", "origin"]);
+    f.pull("claude/fetched", 1, "closed", true, &tip);
+    f.git(&f.primary(), &["branch", "codex/moved", "main"]);
+    f.pull(
+        "codex/moved",
+        2,
+        "closed",
+        true,
+        "1111111111111111111111111111111111111111",
+    );
+    f.git(&f.primary(), &["branch", "storm/open", "main"]);
+    f.pull("storm/open", 3, "open", false, &tip);
+    f.git(&f.primary(), &["branch", "feature/mine", "main"]);
+    f.pull("feature/mine", 4, "closed", true, &tip);
+
+    let dry = f.cleanup(&["--dry-run"]);
+    let out = stdout(&dry);
+    assert_eq!(dry.status.code(), Some(1), "{out}");
+    assert!(
+        out.contains("would remove claude/fetched (no worktree): #1 merged"),
+        "{out}"
+    );
+    assert!(f.has_branch("claude/fetched"));
+
+    let output = f.cleanup(&[]);
+    let out = stdout(&output);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "{out}{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(out.contains("removed claude/fetched (no worktree): #1 merged"), "{out}");
+    assert!(!f.has_branch("claude/fetched"));
+    assert!(!f.has_settings("claude/fetched"));
+    assert!(
+        out.contains("kept codex/moved (no worktree): tip") && out.contains("differs from #2's merged head 1111111"),
+        "{out}"
+    );
+    assert!(f.has_branch("codex/moved"));
+    assert!(out.contains("left storm/open (no worktree): #3 is open"), "{out}");
+    assert!(f.has_branch("storm/open"));
+    assert!(!out.contains("feature/mine") && f.has_branch("feature/mine"), "{out}");
+}
+
+#[test]
+fn a_branch_a_worktree_is_rebasing_is_not_touched() {
+    let f = Fixture::new();
+    let (dir, tip) = f.worktree("storm/rebasing");
+    f.pull("storm/rebasing", 1, "closed", true, &tip);
+    f.git(
+        &dir,
+        &[
+            "-c",
+            "sequence.editor=perl -pi -e 's/^pick/edit/ if $. == 1'",
+            "rebase",
+            "-q",
+            "-i",
+            "--root",
+        ],
+    );
+    let listed = f.git(&f.primary(), &["worktree", "list", "--porcelain"]);
+    assert!(!listed.contains("refs/heads/storm/rebasing"), "{listed}");
+    let output = f.cleanup(&[]);
+    let out = stdout(&output);
+    assert_eq!(output.status.code(), Some(0), "{out}");
+    assert!(!out.contains("storm/rebasing"), "{out}");
+    assert_eq!(f.git(&f.primary(), &["rev-parse", "storm/rebasing"]), tip);
+}
+
+#[test]
+fn a_branch_a_worktree_is_bisecting_is_not_touched() {
+    let f = Fixture::new();
+    let (dir, _) = f.worktree("storm/bisecting");
+    f.commit(&dir, "more", "more\n");
+    let tip = f.commit(&dir, "last", "last\n");
+    f.pull("storm/bisecting", 1, "closed", true, &tip);
+    f.git(&dir, &["bisect", "start", "HEAD", "main"]);
+    let listed = f.git(&f.primary(), &["worktree", "list", "--porcelain"]);
+    assert!(!listed.contains("refs/heads/storm/bisecting"), "{listed}");
+    let output = f.cleanup(&[]);
+    let out = stdout(&output);
+    assert_eq!(output.status.code(), Some(0), "{out}");
+    assert!(!out.contains("storm/bisecting"), "{out}");
+    assert_eq!(f.git(&f.primary(), &["rev-parse", "storm/bisecting"]), tip);
+}
+
+#[test]
+fn a_branch_a_worktree_is_applying_is_not_touched() {
+    let f = Fixture::new();
+    let (dir, _) = f.worktree("storm/applying");
+    let tip = f.commit(&dir, "README", "theirs\n");
+    f.pull("storm/applying", 1, "closed", true, &tip);
+    f.commit(&f.primary(), "README", "ours\n");
+    let rebase = f.git_output(&dir, &["rebase", "--apply", "main"]);
+    assert!(!rebase.status.success(), "the rebase should stop on a conflict");
+    let listed = f.git(&f.primary(), &["worktree", "list", "--porcelain"]);
+    assert!(!listed.contains("refs/heads/storm/applying"), "{listed}");
+    let output = f.cleanup(&[]);
+    let out = stdout(&output);
+    assert!(!out.contains("storm/applying"), "{out}");
+    assert_eq!(f.git(&f.primary(), &["rev-parse", "storm/applying"]), tip);
+}
+
+#[test]
+fn a_locked_detached_worktree_whose_directory_is_gone_stops_only_itself() {
+    let f = Fixture::new();
+    let gone = f.path("gone");
+    f.git(
+        &f.primary(),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            "--lock",
+            &gone.to_string_lossy(),
+            "main",
+        ],
+    );
+    fs::remove_dir_all(&gone).unwrap();
+    let tip = f.git(&f.primary(), &["rev-parse", "main"]);
+    f.git(&f.primary(), &["branch", "claude/fetched", "main"]);
+    f.pull("claude/fetched", 1, "closed", true, &tip);
+    let output = f.cleanup(&[]);
+    let out = stdout(&output);
+    assert_eq!(output.status.code(), Some(2), "{out}");
+    assert!(
+        out.contains(&format!("error (detached) at {}:", gone.display())),
+        "{out}"
+    );
+    assert!(out.contains("removed claude/fetched (no worktree): #1 merged"), "{out}");
+    assert!(!f.has_branch("claude/fetched"));
 }
