@@ -38,19 +38,20 @@ a paid plan, so rulesets on `main` are enforced.
   `refs/fabrial/claims`, naming the task, machine, run and an expiry. The push
   is the lock: a rejected push means another machine claimed first, so fetch,
   recheck and pick again. Expiry frees a dead machine's claims. Every machine
-  can read every claim, so any machine's dashboard shows every run.
+  can read every claim, so the web UI shows every run.
 - **One set of run operations, three drivers.** A core crate holds the
   operations: claim, start a step, record a result, mark ready, release. The
   daemon drives the fixed sequence in code. An agent such as Pi drives it
-  through the CLI or `fab mcp`. A person drives it from the dashboard or with
+  through the CLI or `fab mcp`. A person drives it from the web UI or with
   `/storm:` PR comments.
 - **Enforcement is server-side:** rulesets, required checks and the review
   workflow. There is no shell-command parsing or general token broker. Worker
-  sessions never hold the App's private key. Actions, the daemon, and the
-  explicitly authorized local spike issuer may hold it. The local issuer
-  retrieves only configured BWS secrets from the host's secret store, the
-  Keychain on macOS and the Secret Service on Linux, and mints
-  repository-restricted App installation tokens; it never accepts an owner PAT.
+  sessions never hold the App's private key. Actions, the daemon, the VPS
+  control plane's token issuer, and the explicitly authorized local spike
+  issuer may hold it. The local issuer retrieves only configured BWS secrets
+  from the host's secret store, the Keychain on macOS and the Secret Service on
+  Linux, and mints repository-restricted App installation tokens; it never
+  accepts an owner PAT.
 - **The bot is `stormlight-thunderbot`,** with its App ID and private key as
   org secrets shared with each repository that uses fabrial.
 - **Pull requests.** The bot opens each PR as a draft, and it stays one until
@@ -88,7 +89,25 @@ a paid plan, so rulesets on `main` are enforced.
   whether Claude Code, Codex and Pi read the same `SKILL.md` layout. Port
   per-host differences only where thunderstorm's `docs/internal/hosts.md` shows
   they are needed.
-- **Dashboard** per machine, showing every run from the claims ref.
+- **Hosting.** An OVH VPS runs the control plane: `fab daemon`, the
+  scheduler, the token issuer and `fab serve`, which offers the run operations
+  over HTTP and WebSocket. Workers run through one runner interface with three
+  backends: tmux on the host, a k3s Job on OVH or a home machine, and an
+  exe.dev VM for disposable work. A worker connects only outward, to report
+  events to the control plane, push its branch and upload artifacts to R2
+  through presigned URLs. Events go through the Cloudflare Tunnel, since the
+  tmux sandbox blocks local ports and exe.dev VMs are off the tailnet. Each
+  worker sends them with a short-lived credential of its own, which the
+  control plane issues at launch and revokes on exit, as it does the
+  worker's installation token. Run state lives in git and on the VPS;
+  workers, Cloudflare and R2 hold none.
+- **Web UI.** The web UI is fabrial's frontend to Pi, written in GPUI. A
+  Cloudflare Worker serves it and holds only the GitHub sign-in session; it
+  reaches the VPS through a Cloudflare Tunnel, so the VPS opens no public
+  port. It shows every run from the claims ref, and renders the same PR
+  status state as Pi's status area. GPUI's browser target is not yet
+  supported upstream, so a spike decides whether it ships in the browser
+  ([Pi design](docs/pi-design.md#web-ui)).
 - **Releases:** a workflow run opens a release pull request whose changelog
   section lists the squash subjects since the last tag, which the owner
   edits there; pull requests do not edit `CHANGELOG.md`. The tag lands on its
@@ -96,14 +115,6 @@ a paid plan, so rulesets on `main` are enforced.
   release. The tag starts dist's workflow, which publishes prebuilt `fab`
   binaries and an installer with the release. Repositories install a tagged
   `fab` and refresh with `fab update`.
-
-## Open questions
-
-- Which VPS: Hetzner CX33, Hostinger KVM 2 or Linode, decided at deploy time
-  from the providers' live pricing pages. Aim for 8 GB and 4 vCPU.
-- Isolation on the VPS: the local spike wraps whole Pi workers with pinned
-  agent-sandbox.nix, but the deployment setup is still open.
-- Whether the dashboard is reachable only over Tailscale.
 
 ## Work
 
