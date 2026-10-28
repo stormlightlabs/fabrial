@@ -1,7 +1,7 @@
 +++
 id = "arcl-t-01M5S4SCVPWT0XNBSGC8RNAC58"
 phase = "arcl-ph-01M5S4SCHN0SYKWW4XZ5ZF6JET"
-title = "Run fab daemon under systemd"
+title = "Run fab daemon as a service"
 status = "pending"
 priority = "normal"
 position = 1
@@ -10,6 +10,7 @@ blocked-by = ["arcl-t-01M5S4SCMSGFK66J2R9E22WY6C", "arcl-t-01M5S4SCN5MAH0WA63X75
 
 Acceptance criteria:
 
-- [ ] `fab daemon` runs under systemd and takes ready tasks
+- [ ] `fab daemon` runs as a long-lived service and takes ready tasks; a systemd unit is the documented example, and any service manager works
 - [ ] It honours a concurrency cap
-- [ ] It wakes on App webhooks or polls
+- [ ] It polls GitHub for work
+- [ ] If it ever accepts webhook deliveries, it checks `X-Hub-Signature-256` and ignores a delivery that fails; a test shows a forged delivery changes nothing
