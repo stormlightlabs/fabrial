@@ -38,8 +38,9 @@ Stop and ask when any of these is true:
   to someone else. Override that only when the person asks after seeing the
   reason, and say in your report that you did. A dispatched implementer has
   no one to ask: it reports the reasons and stops.
-- The task is already in progress and its latest handoff is not addressed to
-  this session.
+- The task is already in progress, its latest handoff is not addressed to
+  this session, and the run that dispatched you does not hold its claim (see
+  **Start it**).
 - It has open subtasks. Work those one at a time instead.
 - It has no acceptance criteria you could check, and the person has not given
   any.
@@ -77,11 +78,27 @@ shared build directory.
 
 An issue or a description needs no step here.
 
-For a tracked task, first check that nobody else has it:
-`gh pr list --search <id>` and `git ls-remote origin 'storm/<id>'` must both
-come back empty. Then start it as the **Tasks** section says, from the task
-worktree. When the tracker keeps tasks in files in the repository, commit the
-changed file with the work.
+For a tracked task, first check that no pull request has it:
+`gh pr list --search <id>` must come back empty. Then claim it, which creates
+its `storm/<id>` branch on origin:
+
+```sh
+fab claim take <id> --run <run>
+```
+
+`<run>` is the run ID the run that dispatched you gave you. A session nobody
+dispatched uses its branch and machine, such as `storm/<id>@<host>`. The
+command exits 0 when your run holds the claim, new or already held, and
+prints the branch: go on, building on it with
+`git merge --ff-only origin/<branch>`.
+It exits 1 and names the holder when another run holds the task, or when the
+branch exists with no claim: stop and report it. A claim lasts an hour;
+extend it with `fab claim renew <id> --run <run>`. When you hand the task
+off before pushing any work, delete the branch with
+`fab claim release <id> --run <run>`. Then start the task as the **Tasks**
+section says, from the task worktree, unless the run that dispatched you
+already started it. When the tracker keeps tasks in files in the repository,
+commit the changed file with the work.
 
 ## Do the work
 
@@ -127,7 +144,7 @@ git push -u origin <branch>
 The Branch PR workflow then opens the pull request as a draft from
 stormlight-thunderbot, on the push that creates the branch. Do not open one
 yourself. If no pull request appears, because the branch had no commits
-ahead of `main` on that push or the run failed, run
+ahead of `main` on that push, held only its claim, or the run failed, run
 `gh workflow run branch-pr.yml --ref <branch>`, or ask the owner to run Branch
 PR on it from the Actions tab. It stays a draft until the
 `storm` skill's review finishes; GitHub requests the owner's review when it is

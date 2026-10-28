@@ -17,7 +17,8 @@
 #
 # It runs only on the push that creates the branch; later pushes skip the job,
 # which costs no runner time. A branch pushed with no commits ahead of main,
-# one whose first run failed, or one whose pull request was closed, gets its
+# one that held only a `fab claim` commit when it was created, one whose first
+# run failed, or one whose pull request was closed, gets its
 # pull request when this is run on that branch from the Actions tab or with
 # `gh workflow run branch-pr.yml --ref <branch>`.
 name: Branch PR

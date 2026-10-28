@@ -109,9 +109,10 @@ a paid plan, so rulesets on `main` are enforced.
 - **Web UI.** The web UI is fabrial's frontend to Pi, written in GPUI. A
   Cloudflare Worker serves it and holds only the GitHub sign-in session; it
   reaches the VPS through a Cloudflare Tunnel, so the VPS opens no public
-  port. It shows every run from the claims ref, and renders the same PR
-  status state as Pi's status area. GPUI's browser target is not yet
-  supported upstream, so a spike decides whether it ships in the browser
+  port. It shows every run from the agent branches and the control plane's
+  state, and renders the same PR status state as Pi's status area. GPUI's
+  browser target is not yet supported upstream, so a spike decides whether
+  it ships in the browser
   ([Pi design](docs/pi-design.md#web-ui)).
 - **Releases:** a workflow run opens a release pull request whose changelog
   section lists the squash subjects since the last tag, which the owner
