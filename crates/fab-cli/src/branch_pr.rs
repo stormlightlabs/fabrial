@@ -1,8 +1,9 @@
 //! Branch PR: opens a draft pull request for an agent's work branch as the
 //! bot, so the owner can approve it under the ruleset on main.
 //!
-//! The title is the branch's first commit subject and the body is that
-//! commit's body as the squash keeps it, above the footer line, so it needs no
+//! The title is the subject of the branch's first commit that is not a claim
+//! commit ([`fab_core::claims`]), and the body is that commit's body as the
+//! squash keeps it, above the footer line, so it needs no
 //! model. A pull request that is already open keeps the title and body set
 //! later by hand or by an agent. The pull request stays a draft until its
 //! review finishes; the Review gate then marks it ready and posts the squash
@@ -16,6 +17,7 @@ use std::path::PathBuf;
 
 use clap::Args;
 use clap::builder::FalseyValueParser;
+use fab_core::claims::Claim;
 
 use crate::run::{self, Result};
 use crate::squash;
@@ -42,12 +44,23 @@ pub struct Options {
 }
 
 /// Opens the branch's draft pull request, unless one is open or the branch
-/// has no commits ahead of main.
+/// has no commits ahead of main besides claim commits.
 pub fn run(options: Options) -> Result<()> {
     let git = |args: &[&str]| run::git(&options.head_dir, args);
     let commits = git(&["rev-list", "--reverse", "origin/main..HEAD"])?;
-    let Some(first) = commits.lines().next() else {
+    if commits.is_empty() {
         println!("No commits ahead of main.");
+        return Ok(());
+    }
+    let mut first = None;
+    for commit in commits.lines() {
+        if Claim::parse(&git(&["show", "-s", "--format=%B", commit])?).is_none() {
+            first = Some(commit);
+            break;
+        }
+    }
+    let Some(first) = first else {
+        println!("Only a claim on the branch; no work to open a pull request for.");
         return Ok(());
     };
     let open = run::gh(&[

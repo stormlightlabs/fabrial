@@ -1,9 +1,11 @@
-//! The core of fabrial. It installs fabrial into a repository ([`install`])
-//! and reads a repository's settings ([`settings`]). The run operations every
-//! driver shares (claim a task, start a step, record its result, mark the
-//! pull request ready, and release) are under active development, alongside
+//! The core of fabrial. It installs fabrial into a repository ([`install`]),
+//! reads a repository's settings ([`settings`]) and claims tasks for runs
+//! ([`claims`]). The other run operations every driver shares (start a step,
+//! record its result and mark the pull request ready) are under active
+//! development, alongside
 //! [arclightning](https://github.com/stormlightlabs/arclightning).
 
+pub mod claims;
 pub mod install;
 pub mod settings;
 

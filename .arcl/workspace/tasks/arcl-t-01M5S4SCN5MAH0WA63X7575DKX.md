@@ -1,8 +1,8 @@
 +++
 id = "arcl-t-01M5S4SCN5MAH0WA63X7575DKX"
 phase = "arcl-ph-01M5S4SCGXWH09BAZNT1684VTF"
-title = "Claim tasks on refs/fabrial/claims"
-status = "parked"
+title = "Claim a task by creating its branch"
+status = "completed"
 priority = "normal"
 position = 1
 handoff = """
@@ -16,14 +16,25 @@ against a local bare repository. Two reasons to wait:
   `refs/fabrial/claims` fails with HTTP 403. Decide where claims live (a
   branch such as `fabrial/claims`, the hidden ref, or a setting) before #71
   goes on."""
+evidence = "Done in #78: fab claim takes a task by creating storm/<task> with a create-only push, renews and releases it, and takes an expired claim without losing commits; Branch PR waits for work on a claimed branch."
 +++
 
-Claims on `refs/fabrial/claims`, as PLAN.md's "Claims live in git, off
-`main`" decision describes.
+A task's branch is its claim, as PLAN.md's "A task's branch is its claim"
+decision describes. Creating `storm/<task>` with a push that succeeds only
+when the branch does not exist yet is the lock, so it works wherever branch
+pushes work, cloud sessions included. #71 tried a custom ref,
+`refs/fabrial/claims`, which a cloud session cannot push.
 
 Acceptance criteria:
 
-- [ ] Claim, renew, release and expire a claim
+- [ ] `fab claim` takes a task by creating its branch with a create-only
+      push, and reports the run that holds it when the branch exists
+- [ ] The claim commit names the task, machine, run and an expiry; a run
+      renews it, and releases it by deleting a branch that holds no work
+- [ ] An expired claim can be taken again without losing the commits on
+      its branch
+- [ ] The Branch PR workflow opens no pull request for a branch that holds
+      only its claim
 - [ ] Tests cover two machines racing for one task
 - [ ] A worker that a run dispatched for a task it claimed finds the claim
       held by that run and goes on; the `implement` skill stops only when

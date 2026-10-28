@@ -189,6 +189,29 @@ fn branch_pr_opens_a_draft_from_the_first_commit() {
     assert!(dry.calls().iter().all(|(args, _)| args.starts_with("pr list")));
 }
 
+#[test]
+fn branch_pr_skips_claim_commits() {
+    let claim = "Claim x for run r until 1970-01-01T01:00:00Z\n\n\
+                 Fabrial-Claim: x\nFabrial-Machine: m\nFabrial-Run: r\nFabrial-Expires: 3600";
+    let fixture = Fixture::new();
+    fixture.commit(&[], claim);
+    let output = fixture.fab(&["branch-pr"], &BRANCH_ENV);
+    assert!(output.status.success());
+    assert_eq!(
+        stdout(&output),
+        "Only a claim on the branch; no work to open a pull request for."
+    );
+    assert!(fixture.calls().is_empty());
+
+    fixture.commit(&[], "Add a thing");
+    fixture.commit(&[], claim);
+    let output = fixture.fab(&["branch-pr"], &BRANCH_ENV);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let calls = fixture.calls();
+    let (args, _) = calls.iter().find(|(args, _)| args.starts_with("pr create")).unwrap();
+    assert!(args.contains("--title=Add a thing --body-file"), "{args}");
+}
+
 /// A repository whose newest commit sets the workspace version to `now`
 /// after `before`, with notes for `now`, and a bare `origin`. Returns the
 /// fixture and the commit.

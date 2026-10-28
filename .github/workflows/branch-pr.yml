@@ -15,10 +15,14 @@
 # release it updates to. In fabrial, a first push that does not build opens
 # no pull request; once it builds, run this from the Actions tab.
 #
-# It runs only on the push that creates the branch; later pushes skip the job,
-# which costs no runner time. A branch pushed with no commits ahead of main,
-# one whose first run failed, or one whose pull request was closed, gets its
-# pull request when this is run on that branch from the Actions tab or with
+# It runs on the push that creates the branch, and on the push that first
+# puts work on a branch that held only `fab claim` commits, as a claimed
+# `storm/<task>` branch does when `fab claim take` creates it. Later pushes
+# to `claude/` and `codex/` skip the job, which costs no runner time; later
+# pushes to `storm/` stop after a checkout and a `git log`. A branch
+# pushed with no commits ahead of main, one whose first run failed, or one
+# whose pull request was closed, gets its pull request when this is run on
+# that branch from the Actions tab or with
 # `gh workflow run branch-pr.yml --ref <branch>`.
 name: Branch PR
 
@@ -33,29 +37,55 @@ permissions:
 jobs:
   pr:
     # No concurrency group: a second quick push must not cancel the run that
-    # the branch's creation started, since its own job is skipped.
+    # opens the pull request.
     if: >-
-      (github.event_name == 'workflow_dispatch' || github.event.created) &&
+      (github.event_name == 'workflow_dispatch' || github.event.created ||
+       (startsWith(github.ref_name, 'storm/') && !github.event.deleted)) &&
       (startsWith(github.ref_name, 'claude/') || startsWith(github.ref_name, 'codex/') ||
        startsWith(github.ref_name, 'storm/'))
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/create-github-app-token@v2
-        id: app
-        with:
-          app-id: ${{ secrets.THUNDERBOT_APP_ID }}
-          private-key: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}
-
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           persist-credentials: false
 
+      # A later push opens the pull request only when the tip it replaced held
+      # nothing ahead of main but claim commits and the new tip holds work. A
+      # tip the checkout lacks, after a force push, counts as holding work.
+      - name: Decide
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          CREATED: ${{ github.event.created }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          work() {
+            git cat-file -e "$1^{commit}" 2>/dev/null || return 0
+            [ -n "$(git log --format=%H --invert-grep --grep='^Fabrial-Claim:' "origin/main..$1")" ]
+          }
+          open=false
+          if [ "$EVENT" = workflow_dispatch ] || [ "$CREATED" = true ]; then
+            open=true
+          elif ! work "$BEFORE" && work HEAD; then
+            open=true
+          fi
+          echo "open=$open" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/create-github-app-token@v2
+        if: steps.decide.outputs.open == 'true'
+        id: app
+        with:
+          app-id: ${{ secrets.THUNDERBOT_APP_ID }}
+          private-key: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}
+
       - uses: ./.github/actions/fab
+        if: steps.decide.outputs.open == 'true'
         with:
           command: branch-pr
 
       - name: Open the PR
+        if: steps.decide.outputs.open == 'true'
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}

@@ -49,7 +49,8 @@ spending limit.
 ## Web UI
 
 The web UI is fabrial's frontend to Pi, written in GPUI. It has two views of
-one state: runs from the claims ref, and the PR status the status area reads.
+one state: runs from the agent branches and the control plane's state, and the
+PR status the status area reads.
 It adds no fields of its own, so the gaps above apply to it too, with the same
 rules.
 

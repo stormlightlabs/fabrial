@@ -34,11 +34,16 @@ a paid plan, so rulesets on `main` are enforced.
 - **fabrial executes it.** It picks ready tasks, claims one, runs the review
   loop on a `storm/<task>` branch in its own worktree, opens the PR, and writes
   the handoff and evidence back to the task source.
-- **Claims live in git, off `main`.** A claim is a commit on a dedicated ref,
-  `refs/fabrial/claims`, naming the task, machine, run and an expiry. The push
-  is the lock: a rejected push means another machine claimed first, so fetch,
-  recheck and pick again. Expiry frees a dead machine's claims. Every machine
-  can read every claim, so the web UI shows every run.
+- **A task's branch is its claim.** A run claims a task by creating
+  `storm/<task>` with a push that succeeds only when the branch does not exist
+  yet, `--force-with-lease=refs/heads/storm/<task>:`. A rejected push means
+  another run claimed first, so fetch, recheck and pick again. The first
+  commit names the task, machine, run and an expiry. Expiry frees a dead run's
+  claim without losing its commits. Branch pushes work wherever an agent can
+  push, cloud sessions included; a custom ref such as `refs/fabrial/claims`
+  does not. The control plane claims the same way when it launches a worker,
+  and the web UI shows every run from the agent branches and the control
+  plane's state.
 - **One set of run operations, three drivers.** A core crate holds the
   operations: claim, start a step, record a result, mark ready, release. The
   daemon drives the fixed sequence in code. An agent such as Pi drives it
@@ -104,9 +109,10 @@ a paid plan, so rulesets on `main` are enforced.
 - **Web UI.** The web UI is fabrial's frontend to Pi, written in GPUI. A
   Cloudflare Worker serves it and holds only the GitHub sign-in session; it
   reaches the VPS through a Cloudflare Tunnel, so the VPS opens no public
-  port. It shows every run from the claims ref, and renders the same PR
-  status state as Pi's status area. GPUI's browser target is not yet
-  supported upstream, so a spike decides whether it ships in the browser
+  port. It shows every run from the agent branches and the control plane's
+  state, and renders the same PR status state as Pi's status area. GPUI's
+  browser target is not yet supported upstream, so a spike decides whether
+  it ships in the browser
   ([Pi design](docs/pi-design.md#web-ui)).
 - **Releases:** a workflow run opens a release pull request whose changelog
   section lists the squash subjects since the last tag, which the owner
