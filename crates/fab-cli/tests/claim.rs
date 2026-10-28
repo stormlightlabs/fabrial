@@ -117,3 +117,36 @@ fn an_unusable_task_id_is_refused() {
     assert_eq!(code, Some(2));
     assert!(stderr.contains("control character"), "{stderr}");
 }
+
+#[test]
+fn the_holding_run_renews_its_expired_claim_on_take() {
+    let temp = tempfile::tempdir().unwrap();
+    let (a, _) = machines(temp.path());
+    let take = |now: u64| fab(&a, now, &["take", "t", "--run", "r", "--machine", "m", "--ttl", "10"]);
+    assert_eq!(take(1000).0, Some(0));
+    let (code, stdout, stderr) = take(99_999);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(stdout, "renewed storm/t for run r on m until 1970-01-02T03:56:39Z\n");
+}
+
+#[test]
+fn a_refused_delete_says_when_the_claim_lapses() {
+    use std::os::unix::fs::PermissionsExt;
+    let temp = tempfile::tempdir().unwrap();
+    let (a, _) = machines(temp.path());
+    let take = fab(&a, 0, &["take", "t", "--run", "r", "--machine", "m", "--ttl", "10"]);
+    assert_eq!(take.0, Some(0), "{}", take.2);
+    let hook = temp.path().join("remote.git/hooks/pre-receive");
+    let refuse =
+        "#!/bin/sh\nwhile read old new ref; do\n  case $new in 0000000*) echo no deletes >&2; exit 1;; esac\ndone\n";
+    std::fs::write(&hook, refuse).unwrap();
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let (code, _, stderr) = fab(&a, 60, &["release", "t", "--run", "r", "--machine", "m"]);
+    assert_eq!(code, Some(2), "{stderr}");
+    assert!(
+        stderr.starts_with(
+            "fab: origin refused to delete storm/t, so the claim stays until it lapses at 1970-01-01T00:10:00Z: "
+        ),
+        "{stderr}"
+    );
+}

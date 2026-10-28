@@ -93,9 +93,14 @@ prints the branch: go on, building on it with
 `git merge --ff-only origin/<branch>`.
 It exits 1 and names the holder when another run holds the task, or when the
 branch exists with no claim: stop and report it. A claim lasts an hour;
-extend it with `fab claim renew <id> --run <run>`. When you hand the task
-off before pushing any work, delete the branch with
-`fab claim release <id> --run <run>`. Then start the task as the **Tasks**
+extend it with `fab claim renew <id> --run <run>`, which adds a commit to the
+branch on origin. Renew only before you push work, and with no local commits
+origin lacks; never renew after `Review finished`, since a renew moves the
+pull request's head. After each renew, run
+`git merge --ff-only origin/<branch>`. When you hand the task off before
+pushing any work, delete the branch with
+`fab claim release <id> --run <run>`. When origin refuses the delete, the
+claim lapses at its expiry: report that and go on. Then start the task as the **Tasks**
 section says, from the task worktree, unless the run that dispatched you
 already started it. When the tracker keeps tasks in files in the repository,
 commit the changed file with the work.

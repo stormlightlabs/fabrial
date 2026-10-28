@@ -36,7 +36,8 @@ const MAX_NAME: usize = 200;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     /// Claim the task for `ttl` seconds. Succeeds when nobody holds it, when
-    /// the holder's claim expired, or when this run already holds it.
+    /// the holder's claim expired, or when this run already holds it. A run
+    /// whose own claim expired renews it.
     Take { ttl: u64 },
     /// Extend this run's claim to `ttl` seconds from now.
     Renew { ttl: u64 },
@@ -49,7 +50,7 @@ pub enum Action {
 pub enum Outcome {
     /// The branch did not exist, and now holds this run's claim.
     Claimed(Claim),
-    /// This run already held the task; nothing was pushed.
+    /// This run already held a live claim on the task; nothing was pushed.
     AlreadyHeld(Claim),
     /// Another run's claim had expired, and this run's claim now sits on the
     /// branch's tip, above that run's commits.
@@ -245,6 +246,15 @@ impl Store {
             if stdout.lines().any(|l| l.starts_with('!') && l.contains("\t[rejected]")) {
                 return Ok(false);
             }
+            if let (None, Outcome::Released(claim)) = (&prepared.commit, &prepared.outcome) {
+                return Err(Error::Git(format!(
+                    "{} refused to delete {}, so the claim stays until it lapses at {}: {}",
+                    self.remote,
+                    prepared.branch,
+                    utc(claim.expires_at),
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )));
+            }
             return Err(Error::Git(format!(
                 "git push {} {refspec} failed: {}",
                 self.remote,
@@ -436,7 +446,8 @@ fn decide(request: &Request, fetched: Option<&Branch>, name: &str) -> Result<Out
     };
     let ours = holder.run == request.run;
     match request.action {
-        Action::Take { .. } if ours => Ok(Outcome::AlreadyHeld(holder)),
+        Action::Take { .. } if ours && holder.is_live(request.now) => Ok(Outcome::AlreadyHeld(holder)),
+        Action::Take { ttl } if ours => Ok(Outcome::Renewed(fresh(ttl))),
         Action::Take { .. } if holder.is_live(request.now) => Err(Error::Held(holder)),
         Action::Take { ttl } => Ok(Outcome::TookOver { claim: fresh(ttl), expired: holder }),
         Action::Renew { ttl } if ours => Ok(Outcome::Renewed(fresh(ttl))),
@@ -499,6 +510,16 @@ mod tests {
             decide(&request("b", take), Some(&unclaimed), "storm/t"),
             Err(Error::NoClaim(_))
         ));
+    }
+
+    #[test]
+    fn the_holding_run_renews_its_expired_claim_on_take() {
+        let Ok(Outcome::Renewed(claim)) =
+            decide(&request("a", Action::Take { ttl: 5 }), Some(&held("a", 100, true)), "")
+        else {
+            panic!("an expired claim of this run is renewed");
+        };
+        assert_eq!((claim.run.as_str(), claim.expires_at), ("a", 105));
     }
 
     #[test]
