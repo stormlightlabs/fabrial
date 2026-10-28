@@ -172,7 +172,8 @@ merged, but only when the worktree has no uncommitted changes, holds no
 ignored files except Cargo's `target/`, and its branch tip equals the merged
 pull request's head. It uses `git worktree remove` without `--force`, and
 deletes the branch only at that tip, since a squash merge leaves the branch
-looking unmerged. It fast-forwards the primary checkout's `main` when
+looking unmerged. An agent branch with no worktree, such as one fetched
+from a cloud session, goes at that tip too. It fast-forwards the primary checkout's `main` when
 that is clean and on `main`, and leaves it otherwise. It never touches a
 person's branch. `fab cleanup --dry-run` prints the same and changes nothing.
 

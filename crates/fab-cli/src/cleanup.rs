@@ -1,5 +1,5 @@
 //! `fab cleanup`: what follows a merge. It removes the worktrees and local
-//! branches of merged agent pull requests, fast-forwards a clean primary
+//! branches of merged agent pull requests, with or without a worktree, fast-forwards a clean primary
 //! `main`, and lists the open agent pull requests that need a resync.
 //!
 //! Everything it acts on comes from git and from GitHub's REST API through
@@ -7,8 +7,10 @@
 //! works after a restart. A worktree is removed only when its pull request
 //! merged, `git status --porcelain --ignored` lists nothing but Cargo's
 //! `target/`, and its branch tip equals the pull request's head. The branch
-//! is deleted only at that tip. Anything that fails stops that item, which
-//! stays as it was, and is reported. It never forces a removal, rebases,
+//! is deleted only at that tip. A local agent branch that no worktree has
+//! checked out, or is rebasing or bisecting, is deleted when its pull request
+//! merged at its tip. Anything that fails stops that item, which stays as it
+//! was, and is reported. It never forces a removal, rebases,
 //! resets or stashes; resyncing is the caller's, with the `resync` skill.
 //!
 //! Exit codes: 0 when everything was handled or needs nothing, 1 when
@@ -141,6 +143,10 @@ fn cleanup(options: &Options) -> Result<ExitCode> {
             tally.failed = true;
         }
     }
+    if let Err(e) = branches(&repo, &primary_dir, &worktrees, options.dry_run, &mut tally) {
+        println!("branches: error: {e}");
+        tally.failed = true;
+    }
     if let Err(e) = refresh_main(primary, options.dry_run, &mut tally) {
         println!("main: error: {e}");
         tally.failed = true;
@@ -158,12 +164,7 @@ fn one_worktree(
     repo: &str, primary: &Path, here: &Path, worktree: &Worktree, branch: &str, dry_run: bool, tally: &mut Tally,
 ) -> Result<()> {
     let at = worktree.path.display();
-    let owner = repo.split('/').next().unwrap_or_default();
-    let path = format!(
-        "repos/{repo}/pulls?head={}&state=all&per_page=100",
-        encode(&format!("{owner}:{branch}"))
-    );
-    let pulls = pulls(&run::gh(&["api", &path])?)?;
+    let pulls = branch_pulls(repo, branch)?;
     let tip = run::git(primary, &["rev-parse", &format!("refs/heads/{branch}")])?;
     let status = run::git(&worktree.path, &["status", "--porcelain", "--ignored"])?;
     let (ignored, changed): (Vec<&str>, Vec<&str>) = status.lines().partition(|l| l.starts_with("!! "));
@@ -194,6 +195,82 @@ fn one_worktree(
         Plan::Leave(why) => println!("left {branch} at {at}: {why}"),
     }
     Ok(())
+}
+
+/// Deletes each local agent branch that no worktree holds when its pull
+/// request merged at its tip, and reports what it did or why not. A branch
+/// is held when a worktree has it checked out or is rebasing or bisecting it.
+fn branches(repo: &str, primary: &Path, worktrees: &[Worktree], dry_run: bool, tally: &mut Tally) -> Result<()> {
+    let mut held: Vec<String> = Vec::new();
+    for worktree in worktrees {
+        held.extend(worktree.branch.clone());
+        if worktree.branch.is_none() && !worktree.prunable {
+            held.extend(in_progress(&worktree.path)?);
+        }
+    }
+    let refs = run::git(
+        primary,
+        &["for-each-ref", "--format=%(objectname) %(refname)", "refs/heads/"],
+    )?;
+    for line in refs.lines() {
+        let Some((tip, branch)) = line
+            .split_once(" refs/heads/")
+            .filter(|(_, b)| is_agent(b) && !held.iter().any(|h| h == b))
+        else {
+            continue;
+        };
+        if let Err(e) = one_branch(repo, primary, branch, tip, dry_run, tally) {
+            println!("error {branch} (no worktree): {e}");
+            tally.failed = true;
+        }
+    }
+    Ok(())
+}
+
+/// Deletes one branch that has no worktree when its pull request merged at
+/// `tip`, and only at `tip`, so a commit added since it was judged is kept.
+fn one_branch(repo: &str, primary: &Path, branch: &str, tip: &str, dry_run: bool, tally: &mut Tally) -> Result<()> {
+    match plan(&branch_pulls(repo, branch)?, tip, false) {
+        Plan::Remove(number) if dry_run => println!("would remove {branch} (no worktree): #{number} merged"),
+        Plan::Remove(number) => {
+            run::git(primary, &["update-ref", "-d", &format!("refs/heads/{branch}"), tip])
+                .map_err(|e| format!("cannot delete the branch: {e}"))?;
+            println!("removed {branch} (no worktree): #{number} merged");
+        }
+        Plan::Keep(why) => {
+            println!("kept {branch} (no worktree): {why}");
+            tally.kept = true;
+        }
+        Plan::Leave(why) => println!("left {branch} (no worktree): {why}"),
+    }
+    Ok(())
+}
+
+/// The branches a detached worktree is rebasing or bisecting, which git
+/// records in its own directory rather than in `HEAD`.
+fn in_progress(dir: &Path) -> Result<Vec<String>> {
+    let mut found = Vec::new();
+    for name in ["rebase-merge/head-name", "rebase-apply/head-name", "BISECT_START"] {
+        let file = PathBuf::from(run::git(
+            dir,
+            &["rev-parse", "--path-format=absolute", "--git-path", name],
+        )?);
+        if let Ok(text) = std::fs::read_to_string(&file) {
+            let text = text.trim();
+            found.push(text.strip_prefix("refs/heads/").unwrap_or(text).to_string());
+        }
+    }
+    Ok(found)
+}
+
+/// The pull requests whose head is `branch` in `repo`, from the REST API.
+fn branch_pulls(repo: &str, branch: &str) -> Result<Vec<Pull>> {
+    let owner = repo.split('/').next().unwrap_or_default();
+    let path = format!(
+        "repos/{repo}/pulls?head={}&state=all&per_page=100",
+        encode(&format!("{owner}:{branch}"))
+    );
+    pulls(&run::gh(&["api", &path])?)
 }
 
 /// Removes a worktree and its branch, deleting the branch first and only at

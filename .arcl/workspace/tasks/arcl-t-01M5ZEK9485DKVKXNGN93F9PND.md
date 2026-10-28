@@ -2,7 +2,7 @@
 id = "arcl-t-01M5ZEK9485DKVKXNGN93F9PND"
 phase = "arcl-ph-01M5S4SCGXWH09BAZNT1684VTF"
 title = "Remove merged agent branches that have no worktree"
-status = "pending"
+status = "in_progress"
 priority = "normal"
 position = 0
 +++

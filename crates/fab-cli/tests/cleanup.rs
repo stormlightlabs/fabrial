@@ -409,3 +409,76 @@ fn a_worktree_that_cannot_be_removed_keeps_its_branch() {
     assert_eq!(f.git(&merged, &["symbolic-ref", "HEAD"]), "refs/heads/storm/merged");
     assert_eq!(f.git(&f.primary(), &["rev-parse", "storm/merged"]), tip);
 }
+
+#[test]
+fn a_merged_branch_with_no_worktree_is_deleted_at_its_tip_only() {
+    let f = Fixture::new();
+    let tip = f.git(&f.primary(), &["rev-parse", "main"]);
+    f.git(&f.primary(), &["branch", "claude/fetched", "main"]);
+    f.pull("claude/fetched", 1, "closed", true, &tip);
+    f.git(&f.primary(), &["branch", "codex/moved", "main"]);
+    f.pull(
+        "codex/moved",
+        2,
+        "closed",
+        true,
+        "1111111111111111111111111111111111111111",
+    );
+    f.git(&f.primary(), &["branch", "storm/open", "main"]);
+    f.pull("storm/open", 3, "open", false, &tip);
+    f.git(&f.primary(), &["branch", "feature/mine", "main"]);
+    f.pull("feature/mine", 4, "closed", true, &tip);
+
+    let dry = f.cleanup(&["--dry-run"]);
+    let out = stdout(&dry);
+    assert_eq!(dry.status.code(), Some(1), "{out}");
+    assert!(
+        out.contains("would remove claude/fetched (no worktree): #1 merged"),
+        "{out}"
+    );
+    assert!(f.has_branch("claude/fetched"));
+
+    let output = f.cleanup(&[]);
+    let out = stdout(&output);
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "{out}{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(out.contains("removed claude/fetched (no worktree): #1 merged"), "{out}");
+    assert!(!f.has_branch("claude/fetched"));
+    assert!(
+        out.contains("kept codex/moved (no worktree): tip") && out.contains("differs from #2's merged head 1111111"),
+        "{out}"
+    );
+    assert!(f.has_branch("codex/moved"));
+    assert!(out.contains("left storm/open (no worktree): #3 is open"), "{out}");
+    assert!(f.has_branch("storm/open"));
+    assert!(!out.contains("feature/mine") && f.has_branch("feature/mine"), "{out}");
+}
+
+#[test]
+fn a_branch_a_worktree_is_rebasing_is_not_touched() {
+    let f = Fixture::new();
+    let (dir, tip) = f.worktree("storm/rebasing");
+    f.pull("storm/rebasing", 1, "closed", true, &tip);
+    f.git(
+        &dir,
+        &[
+            "-c",
+            "sequence.editor=sed -i 1s/^pick/edit/",
+            "rebase",
+            "-q",
+            "-i",
+            "--root",
+        ],
+    );
+    let listed = f.git(&f.primary(), &["worktree", "list", "--porcelain"]);
+    assert!(!listed.contains("refs/heads/storm/rebasing"), "{listed}");
+    let output = f.cleanup(&[]);
+    let out = stdout(&output);
+    assert_eq!(output.status.code(), Some(0), "{out}");
+    assert!(!out.contains("storm/rebasing"), "{out}");
+    assert_eq!(f.git(&f.primary(), &["rev-parse", "storm/rebasing"]), tip);
+}
