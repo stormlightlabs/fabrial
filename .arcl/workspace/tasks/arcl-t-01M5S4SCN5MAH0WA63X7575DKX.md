@@ -2,7 +2,7 @@
 id = "arcl-t-01M5S4SCN5MAH0WA63X7575DKX"
 phase = "arcl-ph-01M5S4SCGXWH09BAZNT1684VTF"
 title = "Claim a task by creating its branch"
-status = "in_progress"
+status = "completed"
 priority = "normal"
 position = 1
 handoff = """
@@ -16,6 +16,7 @@ against a local bare repository. Two reasons to wait:
   `refs/fabrial/claims` fails with HTTP 403. Decide where claims live (a
   branch such as `fabrial/claims`, the hidden ref, or a setting) before #71
   goes on."""
+evidence = "Done in #78: fab claim takes a task by creating storm/<task> with a create-only push, renews and releases it, and takes an expired claim without losing commits; Branch PR waits for work on a claimed branch."
 +++
 
 A task's branch is its claim, as PLAN.md's "A task's branch is its claim"
