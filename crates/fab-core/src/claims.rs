@@ -64,8 +64,9 @@ pub enum Outcome {
 /// What can go wrong reading or writing a claim.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// A task, machine or run is empty or holds a control character.
-    #[error("{what} {value:?} is empty or holds a control character")]
+    /// A task, machine or run is empty, starts or ends with whitespace, or
+    /// holds a control character.
+    #[error("{what} {value:?} is empty, starts or ends with whitespace, or holds a control character")]
     Invalid { what: &'static str, value: String },
     /// The task ID is too long to name a branch.
     #[error("task {0:?} is too long to claim")]
@@ -344,7 +345,8 @@ impl Store {
     }
 
     /// A git command in the repository. Claim commits carry fabrial's name,
-    /// so they need no identity configured on the machine.
+    /// so they need no identity configured on the machine. `LC_ALL=C` keeps
+    /// git's messages in English, since [`Store::fetch`] reads one.
     fn command(&self, args: &[&str]) -> Command {
         let mut command = Command::new("git");
         command
@@ -355,7 +357,8 @@ impl Store {
             .env("GIT_AUTHOR_EMAIL", "fabrial@invalid")
             .env("GIT_COMMITTER_NAME", "fabrial")
             .env("GIT_COMMITTER_EMAIL", "fabrial@invalid")
-            .env("GIT_TERMINAL_PROMPT", "0");
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("LC_ALL", "C");
         command
     }
 }
@@ -417,10 +420,11 @@ pub fn utc(seconds: u64) -> String {
     )
 }
 
-/// Refuses an empty value or one holding a control character, which would
-/// break the trailer it goes in.
+/// Refuses an empty value, one holding a control character, which would break
+/// the trailer it goes in, and one with whitespace at either end, which the
+/// trailer would lose when it is read back.
 fn check(what: &'static str, value: &str) -> Result<(), Error> {
-    if value.trim().is_empty() || value.chars().any(char::is_control) {
+    if value.is_empty() || value.trim() != value || value.chars().any(char::is_control) {
         return Err(Error::Invalid { what, value: value.to_string() });
     }
     Ok(())
@@ -475,7 +479,7 @@ mod tests {
         assert_eq!(branch("issue-12").unwrap(), "storm/issue-12");
         assert_eq!(branch("a/b c.d").unwrap(), "storm/a%2Fb%20c%2Ed");
         assert_ne!(branch("a/").unwrap(), branch("a%2F").unwrap());
-        for bad in ["", " ", "a\nb"] {
+        for bad in ["", " ", "a\nb", " t2", "t2 ", "t\u{a0}"] {
             assert!(matches!(branch(bad), Err(Error::Invalid { .. })), "{bad:?}");
         }
         assert!(matches!(branch(&"/".repeat(100)), Err(Error::TooLong(_))));
@@ -488,6 +492,18 @@ mod tests {
         assert!(message.starts_with("Claim issue-12 for run r 1 until 1970-01-01T01:00:00Z\n\n"));
         assert_eq!(Claim::parse(&message), Some(claim));
         assert_eq!(Claim::parse("Fix a bug\n\nFabrial-Claim: t\n"), None);
+    }
+
+    #[test]
+    fn a_run_or_machine_with_surrounding_whitespace_is_refused() {
+        for (machine, run) in [("m", " r"), ("m", "r "), (" m", "r")] {
+            let request = Request { machine: machine.into(), run: run.into(), ..request("r", Action::Release) };
+            let store = Store::new("/nonexistent", "origin");
+            assert!(
+                matches!(store.prepare(&request), Err(Error::Invalid { .. })),
+                "{machine:?} {run:?}"
+            );
+        }
     }
 
     #[test]

@@ -119,6 +119,32 @@ fn an_unusable_task_id_is_refused() {
 }
 
 #[test]
+fn a_zero_ttl_is_refused() {
+    let temp = tempfile::tempdir().unwrap();
+    let (a, _) = machines(temp.path());
+    for op in ["take", "renew"] {
+        let (code, _, stderr) = fab(&a, 0, &[op, "t", "--run", "r", "--machine", "m", "--ttl", "0"]);
+        assert_eq!(code, Some(2), "{op}: {stderr}");
+        assert!(stderr.contains("--ttl"), "{stderr}");
+    }
+}
+
+#[test]
+fn a_take_reads_git_in_english_under_any_locale() {
+    let temp = tempfile::tempdir().unwrap();
+    let (a, _) = machines(temp.path());
+    let output = Command::new(env!("CARGO_BIN_EXE_fab"))
+        .args(["claim", "take", "t", "--run", "r", "--machine", "m"])
+        .current_dir(&a)
+        .env("FAB_CLAIM_NOW", "0")
+        .env("LC_ALL", "de_DE.UTF-8")
+        .env("LANGUAGE", "de")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+}
+
+#[test]
 fn the_holding_run_renews_its_expired_claim_on_take() {
     let temp = tempfile::tempdir().unwrap();
     let (a, _) = machines(temp.path());

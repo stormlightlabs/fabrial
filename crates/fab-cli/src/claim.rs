@@ -56,8 +56,8 @@ pub struct Target {
 /// How long a claim lasts.
 #[derive(Args)]
 pub struct Ttl {
-    /// Minutes until the claim expires.
-    #[arg(long, default_value_t = claims::DEFAULT_TTL / 60)]
+    /// Minutes until the claim expires, at least 1.
+    #[arg(long, default_value_t = claims::DEFAULT_TTL / 60, value_parser = clap::value_parser!(u64).range(1..))]
     ttl: u64,
 }
 
