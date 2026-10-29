@@ -8,7 +8,7 @@ position = 0
 blocked-by = ["arcl-t-01M5VGBYGVK08V4GFD22ZZD8WS"]
 +++
 
-PLAN.md's **Hosting** decision runs workers through one runner interface.
+PLAN.md's **fabrial is the engine, not the host** decision runs workers through one runner interface, with tmux as its first backend.
 
 Acceptance criteria:
 

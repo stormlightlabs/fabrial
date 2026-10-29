@@ -5,7 +5,7 @@ title = "Archive and then delete thunderstorm"
 status = "pending"
 priority = "normal"
 position = 2
-blocked-by = ["arcl-t-01M5S4SCZPZ0MFGDK1XD27DZ1P"]
+blocked-by = ["arcl-t-01M5S4SCZPZ0MFGDK1XD27DZ1P", "arcl-t-01M60CM91MZYXGCHTC9VFJ0Y3F"]
 +++
 
 Acceptance criteria:
