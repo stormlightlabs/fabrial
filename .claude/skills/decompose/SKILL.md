@@ -32,7 +32,14 @@ names the command that writes it. Without that section, use GitHub:
 Both endpoints take the issue's numeric `id`, not its number. Read it with
 `gh api repos/{owner}/{repo}/issues/<n> --jq .id`.
 
+A lone run unit opens no collection. File it in an existing collection it
+belongs to, or leave out the collection flag (`--milestone` above).
+
 ## Before writing anything
+
+Look up what is already filed from the same source: search the tracker's
+titles and bodies for the idea's, spec's or finding's path or ID. Update or
+skip a record that exists rather than filing it again.
 
 Every task needs a stop rule anyone can check without judgment. When you
 cannot write one, you have reached the edge of what is understood. If one
@@ -81,7 +88,8 @@ its status alone.
 ## Then
 
 Report what you wrote: the collection, each run unit and each task, with
-their IDs, and the dependencies between them.
+their IDs, and the dependencies between them. If a write fails partway, stop
+and report exactly what was written, so the next run resumes from there.
 
 ## Do not
 

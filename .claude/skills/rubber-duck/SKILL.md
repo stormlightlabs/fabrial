@@ -59,9 +59,13 @@ rebuild. Neither holds a task list or code; the tasks are `decompose`'s.
 Write it through the commands the **Tasks** section of `AGENTS.md` names for
 an idea and a spec. Without that section, write `docs/ideas/<name>.md` or
 `docs/specs/<name>.md` in the current worktree, where `<name>` is a few words
-of the title joined with dashes. Commit nothing: the person decides how the
-record reaches `main`. A spec is reviewed in a pull request before work is cut
-from it.
+of the title joined with dashes.
+
+Write the record and stop. A record that is a file, through the **Tasks**
+section or under `docs/`, is committed only when the person asks: then on a
+new `claude/<topic>` branch, pushed so the Branch PR workflow opens the pull
+request, never on `main`. A spec is reviewed in that pull request before work
+is cut from it.
 
 Use the `writing-docs` skill for the prose.
 
@@ -72,6 +76,7 @@ criteria someone could check, it goes to `decompose`.
 
 ## Do not
 
-- Write code, or create branches, worktrees or pull requests.
+- Write code, or create worktrees.
+- Commit, or create a branch, unless the person asks.
 - Create tasks. That is `decompose`.
 - Ask the person for a fact you could look up.
