@@ -98,6 +98,11 @@ const EMBEDDED: &[(&str, &str, bool)] = &[
         false,
     ),
     (
+        ".claude/skills/decompose/SKILL.md",
+        include_str!("../../../.claude/skills/decompose/SKILL.md"),
+        false,
+    ),
+    (
         ".claude/skills/handoff/SKILL.md",
         include_str!("../../../.claude/skills/handoff/SKILL.md"),
         false,
@@ -125,6 +130,11 @@ const EMBEDDED: &[(&str, &str, bool)] = &[
     (
         ".claude/skills/revise/SKILL.md",
         include_str!("../../../.claude/skills/revise/SKILL.md"),
+        false,
+    ),
+    (
+        ".claude/skills/rubber-duck/SKILL.md",
+        include_str!("../../../.claude/skills/rubber-duck/SKILL.md"),
         false,
     ),
     (
@@ -619,6 +629,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let report = init(dir.path(), &settings(), false).unwrap();
         assert!(report.written.iter().any(|p| p == Path::new(".github/storm/shot.sh")));
+        for skill in ["rubber-duck", "decompose"] {
+            let path = PathBuf::from(format!(".claude/skills/{skill}/SKILL.md"));
+            assert!(report.written.contains(&path), "{skill} is not installed");
+        }
         assert_eq!(check(dir.path()).unwrap(), vec![]);
         let toml = fs::read_to_string(dir.path().join(SETTINGS_PATH)).unwrap();
         assert!(toml.contains(r#"gates = "npm test""#));

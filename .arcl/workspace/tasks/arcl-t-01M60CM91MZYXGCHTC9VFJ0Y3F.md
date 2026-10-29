@@ -2,9 +2,10 @@
 id = "arcl-t-01M60CM91MZYXGCHTC9VFJ0Y3F"
 phase = "arcl-ph-01M5S4SCFE01K31R17FQ29AHJ8"
 title = "Port rubber-duck and decompose"
-status = "pending"
+status = "completed"
 priority = "normal"
 position = 0
+evidence = "Done in #81: rubber-duck interviews in rounds after grill-me and records an idea or a spec; decompose writes tracker-neutral collections, run units, tasks and dependencies through the Tasks section's mapping."
 +++
 
 Design conversations happen ad hoc and their decisions are not written down. thunderstorm has `rubber-duck`, `specify` and `decompose` for this; fabrial ports two skills from them.
