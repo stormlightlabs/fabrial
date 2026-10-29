@@ -13,4 +13,5 @@ Acceptance criteria:
 - [ ] `fab serve` offers the run operations over HTTP, the same ones `fab mcp` exposes
 - [ ] It streams run events and PR status over a WebSocket
 - [ ] It listens on loopback unless configured otherwise, and serves a request only after the configured identity check passes; a test shows a request that fails the check changes nothing
-- [ ] It accepts a worker's events only with that worker's credential, and a test shows an expired or revoked one is refused
+- [ ] Workers on the tmux runner never connect to `fab serve`: it reads their events from dispatch's per-worker record and events under `state_dir`, as `fab worker events` does ([Pi dispatch](../../../docs/pi.md#events-and-steering)), so no worker needs a local port
+- [ ] For workers that report over the network, it accepts a worker's events only with that worker's credential, and a test shows an expired or revoked one is refused

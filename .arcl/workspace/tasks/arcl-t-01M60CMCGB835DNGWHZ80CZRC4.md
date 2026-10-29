@@ -7,9 +7,11 @@ priority = "normal"
 position = 0
 +++
 
-From a Claude Code cloud session, `fab claim take` and `renew` push storm/<task> fine, but `fab claim release` fails: the git proxy refuses branch deletion (HTTP 403), and the REST ref delete is blocked too. Expiry still frees the task. Decide whether release should fall back to an expired claim commit (expires now) when the delete is refused, and how a cloud session working on its harness branch (claude/<topic>) relates to the storm/<task> claim it holds.
+From a Claude Code cloud session, `fab claim take` and `renew` push storm/<task> fine, but `fab claim release` fails: the git proxy refuses branch deletion (HTTP 403), and the REST ref delete is blocked too. Expiry still frees the task. When the delete is refused, release falls back to a claim commit that has already expired.
+
+Open question for the owner: which branch does a cloud session push its work to while it holds the storm/<task> claim?
 
 Acceptance criteria:
 
 - [ ] When the remote refuses the delete, `fab claim release` pushes a claim commit that has already expired, so another run can take the task at once
-- [ ] The implement skill says which branch a cloud session pushes its work to while it holds a `storm/<task>` claim
+- [ ] The owner decides which branch a cloud session pushes its work to while it holds a `storm/<task>` claim, and the implement skill and PLAN.md say so
