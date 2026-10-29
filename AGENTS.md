@@ -126,14 +126,15 @@ included, needs `arcl init` before its first `arcl` command.
 
 `decompose` writes these primitives:
 
-| Primitive  | In arcl                    | Write it with                                  |
-| ---------- | -------------------------- | ---------------------------------------------- |
-| Collection | a phase of the spec's plan | `arcl plan phase create --plan <id> "<title>"` |
-| Run unit   | a task with child tasks    | `arcl task create --phase <id> "<title>"`      |
-| Task       | a child task               | `arcl task create --parent <id> "<title>"`     |
-| Dependency | a blocker                  | `arcl dependency add <task> --blocked-by <id>` |
+| Primitive  | In arcl                    | Write it with                                                        |
+| ---------- | -------------------------- | -------------------------------------------------------------------- |
+| Collection | a phase of the spec's plan | `arcl plan phase create --plan <id> "<title>" --body-file <file>`    |
+| Run unit   | a task with child tasks    | `arcl task create --phase <id> "<title>" --body-file <file>`         |
+| Task       | a child task               | `arcl task create --parent <id> "<title>" --body-file <file>`        |
+| Dependency | a blocker                  | `arcl dependency add <task> --blocked-by <id>`                       |
 
-A spec with no plan gets one first, with `arcl plan create --spec <id>`.
+A spec with no plan gets one first, with
+`arcl plan create --spec <id> "<title>"`.
 
 - Every change to a task is a file change: commit it on the branch it
   describes, so the status reaches `main` with the merge. Record new tasks and

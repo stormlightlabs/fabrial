@@ -40,9 +40,9 @@ evidence, hand it off, pick it up and record new work. For `rubber-duck` and
 primitive `decompose` writes (collection, run unit, task and dependency) to a
 record in the tracker. Without that section, a task is a GitHub issue or a
 description, ideas and specs go under `docs/`, and `decompose` writes
-milestones, issues with sub-issues and blocked-by links. fabrial tracks its own work in
-[arclightning](https://github.com/stormlightlabs/arclightning), and its
-`AGENTS.md` shows such a section.
+milestones, issues with sub-issues and blocked-by links. fabrial tracks its
+own work in [arclightning](https://github.com/stormlightlabs/arclightning),
+and its `AGENTS.md` shows such a section.
 
 To take a newer release, install that `fab` and run `fab update`. It keeps the
 settings in `.github/fabrial.toml`, unless `--owner`, `--trailer` or `--gates`

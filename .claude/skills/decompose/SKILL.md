@@ -29,8 +29,8 @@ names the command that writes it. Without that section, use GitHub:
 | Task       | a sub-issue               | `gh issue create`, then `gh api repos/{owner}/{repo}/issues/<unit>/sub_issues -F sub_issue_id=<id>` |
 | Dependency | blocked-by                | `gh api repos/{owner}/{repo}/issues/<task>/dependencies/blocked_by -F issue_id=<id>` |
 
-Both endpoints take the issue's numeric `id` from `gh api
-repos/{owner}/{repo}/issues/<n>`, not its number.
+Both endpoints take the issue's numeric `id`, not its number. Read it with
+`gh api repos/{owner}/{repo}/issues/<n> --jq .id`.
 
 ## Before writing anything
 
