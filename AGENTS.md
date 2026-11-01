@@ -121,6 +121,23 @@ included, needs `arcl init` before its first `arcl` command.
 | Hand off          | `arcl task handoff <id> --note-file <file>`                   |
 | Pick up           | `arcl context <id>`, `arcl task unpark <id>`, `arcl task start <id>` |
 | Record new work   | `arcl task create --phase <id> "<title>"`, or `arcl capture create` |
+| Record an idea    | `arcl capture create "<title>" --body-file <file>`            |
+| Record a spec     | `arcl spec create "<title>" --body-file <file>`               |
+
+`decompose` writes these primitives:
+
+| Primitive  | In arcl                    | Write it with                                                        |
+| ---------- | -------------------------- | -------------------------------------------------------------------- |
+| Collection | a phase of a plan          | `arcl plan phase create --plan <id> "<title>" --body-file <file>`    |
+| Run unit   | a task with child tasks    | `arcl task create --phase <id> "<title>" --body-file <file>`         |
+| Task       | a child task               | `arcl task create --parent <id> "<title>" --body-file <file>`        |
+| Dependency | a blocker                  | `arcl dependency add <task> --blocked-by <id>`                       |
+
+Work cut from a spec goes in a phase of the spec's plan; a spec with no plan
+gets one first, with `arcl plan create --spec <id> "<title>"`. Work cut from
+an idea or a finding goes in the Roadmap plan's phase it belongs in, as
+PLAN.md's **Work** says. A lone run unit uses an existing phase, or no
+`--phase`.
 
 - Every change to a task is a file change: commit it on the branch it
   describes, so the status reaches `main` with the merge. Record new tasks and
