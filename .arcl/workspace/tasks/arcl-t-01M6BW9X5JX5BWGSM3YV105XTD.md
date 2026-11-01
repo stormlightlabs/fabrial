@@ -15,9 +15,10 @@ Acceptance criteria:
 
 - [ ] fab-core's run operations are public, documented with rustdoc, and
       callable from another crate; a test calls them from outside fab-core
-- [ ] `fab events --follow` prints run events and PR status as JSON, one
-      object per line, from dispatch's records under `state_dir`, as
-      `fab worker events` reads them
+- [ ] `fab events --follow` prints run events as JSON, one object per
+      line, from dispatch's records under `state_dir`, as
+      `fab worker events` reads them. PR status is not in the stream: hosts
+      read it from GitHub, as the Pi package's `pr-status.ts` polls `gh`
 - [ ] `--after <cursor>` resumes the stream after the last event a host saw,
       and a test shows no event is repeated or skipped across a restart
 - [ ] Each line carries a format version, and docs/pi.md documents the fields
