@@ -24,9 +24,9 @@ The package collects PR status by polling `gh`, as
 App's webhooks, they can become the main source, with polling as the fallback
 when they stop arriving. The host checks each delivery's
 `X-Hub-Signature-256` against the App's webhook secret and drops any that
-fail, and Pi sessions read the resulting PR status from `fab serve`. Webhooks
-change the transport, not the state the [status area](pi.md#status-area)
-reads.
+fail, and passes the resulting PR status to Pi sessions by its own means.
+Webhooks change the transport, not the state the
+[status area](pi.md#status-area) reads.
 
 ## Status area
 

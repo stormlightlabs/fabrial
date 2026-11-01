@@ -46,7 +46,7 @@ a paid plan, so rulesets on `main` are enforced.
   operations: claim, start a step, record a result, mark ready, release. The
   daemon drives the fixed sequence in code. An agent such as Pi drives it
   through the CLI or `fab mcp`. A person drives it with `/storm:` PR comments
-  or through a client of `fab serve`.
+  or through whatever a host builds on the same operations.
 - **Enforcement is server-side:** rulesets, required checks and the review
   workflow. There is no shell-command parsing or general token broker. Worker
   sessions never hold the App's private key. Actions, the daemon's token
@@ -93,12 +93,12 @@ a paid plan, so rulesets on `main` are enforced.
   they are needed.
 - **fabrial is the engine, not the host.** Harnesses such as Claude Code,
   Codex and Pi use it to run agents and tasks. It ships `fab daemon`, which
-  drives the review loop, `fab serve`, which offers the run operations over
-  HTTP and WebSocket, and one runner interface with tmux as its first backend.
-  Each worker reports events with a short-lived credential of its own, issued
-  at launch and revoked on exit, as its installation token is. Where these
-  run, how they are reached, other runner backends, artifact storage and any
-  web UI belong to whoever hosts them; fabrial assumes none of them.
+  drives the review loop, and one runner interface with tmux as its first
+  backend. Hosts reach the run operations through fab-core, the CLI or
+  `fab mcp`, and follow run events with `fab events`, which prints them as
+  JSON lines. fabrial runs no server. Where these run, how they are reached,
+  network APIs, other runner backends, artifact storage and any web UI belong
+  to whoever hosts them; fabrial assumes none of them.
 - **Releases:** a workflow run opens a release pull request whose changelog
   section lists the squash subjects since the last tag, which the owner
   edits there; pull requests do not edit `CHANGELOG.md`. The tag lands on its
