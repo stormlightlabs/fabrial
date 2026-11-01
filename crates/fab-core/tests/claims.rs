@@ -200,6 +200,13 @@ fn a_release_the_remote_refuses_to_delete_lapses_and_one_it_refuses_outright_sta
         message.ends_with("so the claim stays until 1970-01-01T00:17:50Z"),
         "{message}"
     );
+    let Error::Git(message) = m.b.write(&request("mb", "run-b", Action::Release, 1080)).unwrap_err() else {
+        panic!("a release of an expired claim the remote refuses outright fails");
+    };
+    assert!(
+        message.ends_with("and the claim already expired at 1970-01-01T00:17:50Z"),
+        "{message}"
+    );
 }
 
 #[test]

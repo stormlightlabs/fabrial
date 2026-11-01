@@ -273,12 +273,18 @@ impl Store {
         match self.push(prepared, Some(lapse))? {
             Pushed::Done => Ok(Some(Outcome::Lapsed(expired.clone()))),
             Pushed::Moved => Ok(None),
-            Pushed::Failed(again) => Err(Error::Git(format!(
-                "{} refused to delete {} ({stderr}) and to let its claim lapse ({again}), so the claim stays until {}",
-                self.remote,
-                prepared.branch,
-                utc(holder.expires_at)
-            ))),
+            Pushed::Failed(again) => {
+                let until = utc(holder.expires_at);
+                let stays = if holder.is_live(expired.expires_at) {
+                    format!("so the claim stays until {until}")
+                } else {
+                    format!("and the claim already expired at {until}")
+                };
+                Err(Error::Git(format!(
+                    "{} could not delete {} ({stderr}) or let its claim lapse ({again}), {stays}",
+                    self.remote, prepared.branch
+                )))
+            }
         }
     }
 

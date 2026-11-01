@@ -55,7 +55,7 @@ A cloud session holds a container checkout nobody else owns, and makes no
 worktree. For a tracked task it works on the task's `storm/<id>` branch, which
 **Start it** claims, in place of the `claude/<topic>` or `codex/<topic>`
 branch its harness gave it: once the claim prints the branch, run
-`git switch -c <branch> --track origin/<branch>`. The claim and the pull
+`git switch <branch>`, which tracks `origin/<branch>`. The claim and the pull
 request are then one branch. For an issue or a description it works on the
 branch its harness gave it.
 
@@ -105,7 +105,8 @@ pull request's head. After each renew, run
 pushing any work, delete the branch with
 `fab claim release <id> --run <run>`. Where origin refuses the delete, as it
 does from a cloud session, release instead pushes a claim that has already
-expired, so any run can take the task at once. Then start the task as the **Tasks**
+expired, so any run can take the task at once. If release still fails, the
+claim lapses at its expiry: report that and go on. Then start the task as the **Tasks**
 section says, from the task worktree, unless the run that dispatched you
 already started it. When the tracker keeps tasks in files in the repository,
 commit the changed file with the work.
