@@ -5,7 +5,7 @@ title = "Owner: set up the bot and secrets across the org"
 status = "completed"
 priority = "normal"
 position = 2
-evidence = "The owner installed stormlight-thunderbot org-wide and shares its secrets with the org. The README's install steps cover each repository's rulesets."
+evidence = "The owner installed stormlight-thunderbot org-wide and shares its secrets with the org. The Versioning tag ruleset protects v* with the owner and the bot on its bypass list. Each repository requires storm/review after its fab init pull request merges, as the README says."
 +++
 
 Owner action. Install the bot and share its secrets with each repository that
