@@ -3,7 +3,7 @@ id = "arcl-t-01M5S4SCRGZTS5RNFK41ZT83WN"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Host-check Git push and Rust gates from dispatch"
 status = "pending"
-priority = "normal"
+priority = "low"
 position = 5
 +++
 

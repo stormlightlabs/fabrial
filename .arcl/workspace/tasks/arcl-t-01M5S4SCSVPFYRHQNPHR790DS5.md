@@ -3,7 +3,7 @@ id = "arcl-t-01M5S4SCSVPFYRHQNPHR790DS5"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Maintain fabrial's development Pi setup"
 status = "pending"
-priority = "normal"
+priority = "low"
 position = 8
 +++
 

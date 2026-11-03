@@ -3,7 +3,7 @@ id = "arcl-t-01M5S4SCTSAM8TD9Y3MN8N935V"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Start cloud workers and follow their branches"
 status = "pending"
-priority = "normal"
+priority = "low"
 position = 10
 +++
 

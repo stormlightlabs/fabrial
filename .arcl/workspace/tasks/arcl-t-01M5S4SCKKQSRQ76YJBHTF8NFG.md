@@ -2,9 +2,10 @@
 id = "arcl-t-01M5S4SCKKQSRQ76YJBHTF8NFG"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
 title = "Owner: set up the bot and secrets across the org"
-status = "pending"
+status = "completed"
 priority = "normal"
 position = 2
+evidence = "The owner installed stormlight-thunderbot org-wide and shares its secrets with the org. The README's install steps cover each repository's rulesets."
 +++
 
 Owner action. Install the bot and share its secrets with each repository that

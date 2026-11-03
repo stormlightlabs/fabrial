@@ -3,7 +3,7 @@ id = "arcl-t-01M5S4SCV7MDYVFKZAAMP3W5QQ"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Jules spike"
 status = "pending"
-priority = "normal"
+priority = "low"
 position = 11
 +++
 
