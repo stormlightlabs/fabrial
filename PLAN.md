@@ -77,7 +77,7 @@ a paid plan, so rulesets on `main` are enforced.
 - **Workers.** Pi on a host comes first, through `dispatch` into tmux panes,
   which lets Pi orchestrate and use opencode and OpenAI models. Claude Code and
   Codex run in their own clouds and push `claude/` and `codex/` branches; the
-  workflows do the rest. Jules gets a spike later.
+  workflows do the rest. Cursor agents and Grok models get a spike later.
 - **Pi setup during development.** fabrial can own the working Pi setup,
   including extensions, UI, defaults, and configuration. This is broader than
   dispatch integration. Keep worker isolation and credential custody intact.
