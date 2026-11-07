@@ -51,3 +51,43 @@ fn signoff_is_set_by_init_kept_by_update_and_removed_by_an_empty_flag() {
     fab(dir.path(), &["update", "--signoff", ""]);
     assert!(!settings().contains("signoff"), "{}", settings());
 }
+
+#[test]
+fn assisted_by_is_set_by_init_and_changed_by_update() {
+    let dir = tempfile::tempdir().unwrap();
+    assert!(
+        Command::new("git")
+            .arg("init")
+            .arg("-q")
+            .arg(dir.path())
+            .status()
+            .unwrap()
+            .success()
+    );
+    let settings = || fs::read_to_string(dir.path().join(".github/fabrial.toml")).unwrap();
+    fab(
+        dir.path(),
+        &[
+            "init",
+            "--owner",
+            "o",
+            "--trailer",
+            "A <a@b>",
+            "--gates",
+            "true",
+            "--assisted-by",
+            "on",
+        ],
+    );
+    assert!(
+        settings().lines().any(|l| l == r#"assisted_by = "on""#),
+        "{}",
+        settings()
+    );
+    fab(dir.path(), &["update", "--assisted-by", "off"]);
+    assert!(
+        settings().lines().any(|l| l == r#"assisted_by = "off""#),
+        "{}",
+        settings()
+    );
+}

@@ -67,6 +67,10 @@ enum Command {
         /// squash commit with; for repositories that use the DCO.
         #[arg(long)]
         signoff: Option<String>,
+        /// "on" to add an Assisted-by line naming each agent model to every
+        /// squash commit.
+        #[arg(long, value_parser = ["on", "off"])]
+        assisted_by: Option<String>,
         /// Replace files fabrial did not write.
         #[arg(long)]
         force: bool,
@@ -89,6 +93,9 @@ enum Command {
         /// removes it.
         #[arg(long)]
         signoff: Option<String>,
+        /// "on" or "off": whether the squash commit names agent models.
+        #[arg(long, value_parser = ["on", "off"])]
+        assisted_by: Option<String>,
         /// Install this build's files over a newer release's.
         #[arg(long)]
         force: bool,
@@ -140,11 +147,11 @@ struct Repo {
 
 fn main() -> ExitCode {
     let result = match Cli::parse().command {
-        Command::Init { repo, owner, trailer, gates, signoff, force } => in_repo(&repo, |dir| {
-            let settings = Settings { owner, trailer, gates, signoff, version: None };
+        Command::Init { repo, owner, trailer, gates, signoff, assisted_by, force } => in_repo(&repo, |dir| {
+            let settings = Settings { owner, trailer, gates, signoff, assisted_by, version: None };
             install::install(dir, &settings, force).map(|r| written(&r, "installed"))
         }),
-        Command::Update { repo, owner, trailer, gates, signoff, force } => in_repo(&repo, |dir| {
+        Command::Update { repo, owner, trailer, gates, signoff, assisted_by, force } => in_repo(&repo, |dir| {
             let change = |s: &mut Settings| {
                 if let Some(owner) = owner {
                     s.owner = owner;
@@ -157,6 +164,9 @@ fn main() -> ExitCode {
                 }
                 if let Some(signoff) = signoff {
                     s.signoff = Some(signoff).filter(|v| !v.is_empty());
+                }
+                if let Some(assisted_by) = assisted_by {
+                    s.assisted_by = Some(assisted_by);
                 }
             };
             install::update(dir, change, force).map(|r| written(&r, "updated"))

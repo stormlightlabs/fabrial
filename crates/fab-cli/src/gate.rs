@@ -105,6 +105,7 @@ struct Gate {
     head_dir: PathBuf,
     trailer: String,
     signoff: Option<String>,
+    assisted: bool,
     dry_run: bool,
     scratch: tempfile::TempDir,
 }
@@ -243,10 +244,19 @@ impl Gate {
     /// wrote. Writes nothing when the pull request is closed or stopped, or
     /// when the section already says the same.
     fn squash_message(&self) -> Result<bool> {
-        let info = self.view("state,title,body,headRefName,labels,autoMergeRequest")?;
+        let fields = "state,title,body,headRefName,labels,autoMergeRequest";
+        let info = self.view(&if self.assisted { format!("{fields},commits") } else { fields.into() })?;
         if info["state"] != "OPEN" || stopped(&info) {
             return Ok(false);
         }
+        // The gate reads the commits rather than Branch PR, so commits pushed
+        // after the pull request opened count too.
+        let assisted = match info["commits"].as_array() {
+            Some(commits) if self.assisted => {
+                squash::assisted_by(commits.iter().filter_map(|c| c["messageBody"].as_str()))
+            }
+            _ => Vec::new(),
+        };
         // The subject carries the PR number, as GitHub's own squash title
         // does, so `git log` on main leads back to the pull request.
         let mut title = info["title"].as_str().unwrap_or_default().to_string();
@@ -260,6 +270,7 @@ impl Gate {
             branch,
             &self.trailer,
             self.signoff.as_deref(),
+            &assisted,
         );
         // The fence outgrows any backtick run in the message, so a title
         // cannot close it early.
@@ -387,7 +398,9 @@ impl Gate {
 pub fn run(options: Options) -> Result<()> {
     let text = std::fs::read_to_string(".github/fabrial.toml")
         .map_err(|e| format!("cannot read .github/fabrial.toml: {e}"))?;
-    let Settings { trailer, signoff, .. } = Settings::parse(&text).map_err(|e| e.to_string())?;
+    let settings = Settings::parse(&text).map_err(|e| e.to_string())?;
+    let assisted = settings.assisted();
+    let Settings { trailer, signoff, .. } = settings;
     let given = |v: Option<String>| v.filter(|s| !s.is_empty());
     let mut gate = Gate {
         repo: options.repo,
@@ -396,6 +409,7 @@ pub fn run(options: Options) -> Result<()> {
         head_dir: options.head_dir,
         trailer,
         signoff,
+        assisted,
         dry_run: options.dry_run,
         scratch: tempfile::tempdir().map_err(|e| format!("cannot make a scratch directory: {e}"))?,
     };

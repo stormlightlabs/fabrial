@@ -620,6 +620,7 @@ mod tests {
             owner: "desertthunder".into(),
             trailer: "Owais <desertthunder.dev@gmail.com>".into(),
             signoff: None,
+            assisted_by: None,
             gates: "npm test".into(),
             version: None,
         }

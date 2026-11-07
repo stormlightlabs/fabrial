@@ -25,6 +25,11 @@ pub struct Settings {
     /// leaves the line out.
     #[serde(default)]
     pub signoff: Option<String>,
+    /// `"on"` adds an `Assisted-by: <model>` line to the squash commit for
+    /// each agent model the pull request's commits name; `"off"` or no value
+    /// keeps model names off `main`.
+    #[serde(default)]
+    pub assisted_by: Option<String>,
     /// The fabrial version that last wrote the installed files.
     #[serde(default)]
     pub version: Option<String>,
@@ -41,6 +46,14 @@ impl Settings {
     /// Checks that every value can be written in the one-line form the
     /// workflows read.
     pub fn validate(&self) -> Result<(), Error> {
+        if let Some(value) = &self.assisted_by
+            && value != "on"
+            && value != "off"
+        {
+            return Err(Error::Settings(format!(
+                "`assisted_by` is {value:?}, not \"on\" or \"off\""
+            )));
+        }
         let signoff = self.signoff.as_ref().map(|s| ("signoff", s));
         for (key, value) in [
             ("owner", &self.owner),
@@ -72,6 +85,11 @@ impl Settings {
         Ok(())
     }
 
+    /// Whether the squash commit names the agent models that worked on it.
+    pub fn assisted(&self) -> bool {
+        self.assisted_by.as_deref() == Some("on")
+    }
+
     /// Renders the settings file, recording `version` as the installing
     /// fabrial version. `signoff` is written only when it is set.
     pub fn render(&self, version: &str) -> String {
@@ -80,6 +98,13 @@ impl Settings {
                 "\n# The Signed-off-by trailer that ends every squash commit; the owner\n\
                  # certifies agent work at merge.\n\
                  signoff = \"{s}\"\n"
+            )
+        });
+        let assisted = self.assisted_by.as_ref().map_or_else(String::new, |a| {
+            format!(
+                "\n# \"on\" adds an Assisted-by line to every squash commit for each agent\n\
+                 # model its pull request's commits name.\n\
+                 assisted_by = \"{a}\"\n"
             )
         });
         format!(
@@ -96,6 +121,7 @@ impl Settings {
              # The command agents run before pushing.\n\
              gates = \"{}\"\n\
              {signoff}\
+             {assisted}\
              \n\
              # The fabrial version that wrote the installed files. `fab check`\n\
              # compares it with its own.\n\
@@ -126,6 +152,7 @@ mod tests {
             trailer: "Owais <desertthunder.dev@gmail.com>".into(),
             gates: "just check".into(),
             signoff: None,
+            assisted_by: None,
             version: None,
         }
     }
@@ -162,6 +189,19 @@ mod tests {
             Settings::parse(&text).unwrap(),
             Settings { version: Some("0.1.0".into()), ..signed }
         );
+    }
+
+    #[test]
+    fn assisted_by_is_on_or_off_and_written_only_when_set() {
+        assert!(!settings().assisted());
+        assert!(!settings().render("0.1.0").contains("assisted_by"));
+        let mut on = settings();
+        on.assisted_by = Some("on".into());
+        let parsed = Settings::parse(&on.render("0.1.0")).unwrap();
+        assert!(parsed.assisted());
+        let mut bad = settings();
+        bad.assisted_by = Some("yes".into());
+        assert!(bad.validate().is_err());
     }
 
     #[test]

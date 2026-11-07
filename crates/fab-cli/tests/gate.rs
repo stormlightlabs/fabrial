@@ -295,6 +295,34 @@ fn a_signoff_in_the_settings_ends_the_squash_message() {
 }
 
 #[test]
+fn assisted_by_names_each_agent_model_in_the_commits() {
+    let settings = tempfile::tempdir().unwrap();
+    fs::create_dir(settings.path().join(".github")).unwrap();
+    fs::write(
+        settings.path().join(".github/fabrial.toml"),
+        "owner = \"o\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\nassisted_by = \"on\"\n",
+    )
+    .unwrap();
+    let commits = json!([
+        {"messageBody": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"},
+        {"messageBody": "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nCo-authored-by: A <a@b>"},
+        {"messageBody": ""}
+    ]);
+    let pr = json!({"body": "A change.\nAssisted-by: Someone", "commits": commits});
+    let run = gate_in(settings.path(), &with(&finished(), &[]), pr, None);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    let message = run.posts()[0];
+    assert!(
+        message.contains("Merged from storm/test.\n\nAssisted-by: Claude Opus 5.5\nCo-authored-by: A <a@b>\n"),
+        "{message}"
+    );
+    assert_eq!(message.matches("Assisted-by").count(), 1, "{message}");
+    // Off by default: the repository's own settings name no models.
+    let run = gate(&with(&finished(), &[]), json!({"commits": commits}), None);
+    assert!(!run.posts()[0].contains("Assisted-by"), "{}", run.posts()[0]);
+}
+
+#[test]
 fn a_repeated_review_finished_posts_the_same_squash_message_once() {
     let comments = json!([bot_comment(5, &posted("Test change"))]);
     let run = gate(
