@@ -85,7 +85,8 @@ enum Command {
         /// A new command for agents to run before pushing.
         #[arg(long)]
         gates: Option<String>,
-        /// A new Signed-off-by value for the squash commit.
+        /// A new Signed-off-by value for the squash commit; an empty value
+        /// removes it.
         #[arg(long)]
         signoff: Option<String>,
         /// Install this build's files over a newer release's.
@@ -155,7 +156,7 @@ fn main() -> ExitCode {
                     s.gates = gates;
                 }
                 if let Some(signoff) = signoff {
-                    s.signoff = Some(signoff);
+                    s.signoff = Some(signoff).filter(|v| !v.is_empty());
                 }
             };
             install::update(dir, change, force).map(|r| written(&r, "updated"))

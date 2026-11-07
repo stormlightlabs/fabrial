@@ -7,11 +7,11 @@
 //! after it stays out. The body Branch PR generated before the footer existed
 //! counts as empty. Lines that attribute the work to an agent are dropped,
 //! quoted or not and in any case: Co-authored-by, Signed-off-by and
-//! Claude-Session trailers,
-//! a `Session:` line naming a link, "Generated with" lines, the robot emoji,
-//! and Claude Code session and Codex task links. No agent attribution reaches
-//! main, and only the settings can sign off. Code blocks get no special
-//! treatment.
+//! Claude-Session trailers, a `Session:` line naming a link, "Generated with"
+//! lines, the robot emoji, and Claude Code session and Codex task links. No
+//! agent attribution reaches main, and only the settings can sign off, so a
+//! Signed-off-by line in a description goes whether or not `signoff` is set.
+//! Code blocks get no special treatment.
 
 /// The line that ends the part of a pull request body the squash keeps.
 pub const FOOTER: &str = "<!-- fabrial:footer";

@@ -50,8 +50,9 @@ and its `AGENTS.md` shows such a section.
 
 To take a newer release, install that `fab` and run `fab update`. It keeps the
 settings in `.github/fabrial.toml`, unless `--owner`, `--trailer`, `--gates`
-or `--signoff` changes one, and replaces the files with this build's. It refuses to install
-an older release over a newer one unless you pass `--force`. It leaves files
+or `--signoff` changes one, and replaces the files with this build's.
+`--signoff ""` removes the sign-off. It refuses to install an older release
+over a newer one unless you pass `--force`. It leaves files
 that only older releases wrote, such as `.github/storm/gate.sh` and
 `.github/storm/squash-body.sh`; delete them. `CHANGELOG.md` says what each
 release changes. A repository moving to this release from one that named
