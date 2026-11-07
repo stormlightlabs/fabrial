@@ -20,6 +20,11 @@ pub struct Settings {
     pub trailer: String,
     /// The command agents run before pushing.
     pub gates: String,
+    /// The `Signed-off-by` value that ends every squash commit, for
+    /// repositories that use the Developer Certificate of Origin. `None`
+    /// leaves the line out.
+    #[serde(default)]
+    pub signoff: Option<String>,
     /// The fabrial version that last wrote the installed files.
     #[serde(default)]
     pub version: Option<String>,
@@ -36,11 +41,15 @@ impl Settings {
     /// Checks that every value can be written in the one-line form the
     /// workflows read.
     pub fn validate(&self) -> Result<(), Error> {
+        let signoff = self.signoff.as_ref().map(|s| ("signoff", s));
         for (key, value) in [
             ("owner", &self.owner),
             ("trailer", &self.trailer),
             ("gates", &self.gates),
-        ] {
+        ]
+        .into_iter()
+        .chain(signoff)
+        {
             if value.is_empty() {
                 return Err(Error::Settings(format!("`{key}` is empty")));
             }
@@ -64,8 +73,15 @@ impl Settings {
     }
 
     /// Renders the settings file, recording `version` as the installing
-    /// fabrial version.
+    /// fabrial version. `signoff` is written only when it is set.
     pub fn render(&self, version: &str) -> String {
+        let signoff = self.signoff.as_ref().map_or_else(String::new, |s| {
+            format!(
+                "\n# The Signed-off-by trailer that ends every squash commit; the owner\n\
+                 # certifies agent work at merge.\n\
+                 signoff = \"{s}\"\n"
+            )
+        });
         format!(
             "# fabrial's settings for this repository. The Branch PR workflow, the Review\n\
              # gate and the skills read them. Each value is one line: key = \"value\".\n\
@@ -79,6 +95,7 @@ impl Settings {
              \n\
              # The command agents run before pushing.\n\
              gates = \"{}\"\n\
+             {signoff}\
              \n\
              # The fabrial version that wrote the installed files. `fab check`\n\
              # compares it with its own.\n\
@@ -108,6 +125,7 @@ mod tests {
             owner: "desertthunder".into(),
             trailer: "Owais <desertthunder.dev@gmail.com>".into(),
             gates: "just check".into(),
+            signoff: None,
             version: None,
         }
     }
@@ -129,6 +147,24 @@ mod tests {
     }
 
     #[test]
+    fn signoff_is_written_only_when_set_and_parses_back() {
+        let text = settings().render("0.1.0");
+        assert!(!text.contains("signoff"));
+        assert_eq!(Settings::parse(&text).unwrap().signoff, None);
+        let mut signed = settings();
+        signed.signoff = Some("Owais <desertthunder.dev@gmail.com>".into());
+        let text = signed.render("0.1.0");
+        assert!(
+            text.lines()
+                .any(|l| l == r#"signoff = "Owais <desertthunder.dev@gmail.com>""#)
+        );
+        assert_eq!(
+            Settings::parse(&text).unwrap(),
+            Settings { version: Some("0.1.0".into()), ..signed }
+        );
+    }
+
+    #[test]
     fn rejects_values_the_workflows_cannot_read() {
         let mut bad = settings();
         bad.trailer = r#"O "Q" <q@x>"#.into();
@@ -138,6 +174,12 @@ mod tests {
         assert!(bad.validate().is_err());
         let mut bad = settings();
         bad.gates = String::new();
+        assert!(bad.validate().is_err());
+        let mut bad = settings();
+        bad.signoff = Some("A <a@b>\nSigned-off-by: B <b@c>".into());
+        assert!(bad.validate().is_err());
+        let mut bad = settings();
+        bad.signoff = Some(String::new());
         assert!(bad.validate().is_err());
     }
 

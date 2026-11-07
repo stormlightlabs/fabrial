@@ -63,6 +63,10 @@ enum Command {
         /// The command agents run before pushing.
         #[arg(long)]
         gates: String,
+        /// The owner's Signed-off-by value, as "Name <email>", to end every
+        /// squash commit with; for repositories that use the DCO.
+        #[arg(long)]
+        signoff: Option<String>,
         /// Replace files fabrial did not write.
         #[arg(long)]
         force: bool,
@@ -81,6 +85,10 @@ enum Command {
         /// A new command for agents to run before pushing.
         #[arg(long)]
         gates: Option<String>,
+        /// A new Signed-off-by value for the squash commit; an empty value
+        /// removes it.
+        #[arg(long)]
+        signoff: Option<String>,
         /// Install this build's files over a newer release's.
         #[arg(long)]
         force: bool,
@@ -132,11 +140,11 @@ struct Repo {
 
 fn main() -> ExitCode {
     let result = match Cli::parse().command {
-        Command::Init { repo, owner, trailer, gates, force } => in_repo(&repo, |dir| {
-            let settings = Settings { owner, trailer, gates, version: None };
+        Command::Init { repo, owner, trailer, gates, signoff, force } => in_repo(&repo, |dir| {
+            let settings = Settings { owner, trailer, gates, signoff, version: None };
             install::install(dir, &settings, force).map(|r| written(&r, "installed"))
         }),
-        Command::Update { repo, owner, trailer, gates, force } => in_repo(&repo, |dir| {
+        Command::Update { repo, owner, trailer, gates, signoff, force } => in_repo(&repo, |dir| {
             let change = |s: &mut Settings| {
                 if let Some(owner) = owner {
                     s.owner = owner;
@@ -146,6 +154,9 @@ fn main() -> ExitCode {
                 }
                 if let Some(gates) = gates {
                     s.gates = gates;
+                }
+                if let Some(signoff) = signoff {
+                    s.signoff = Some(signoff).filter(|v| !v.is_empty());
                 }
             };
             install::update(dir, change, force).map(|r| written(&r, "updated"))

@@ -149,7 +149,7 @@ mod tests {
     fn the_squash_keeps_what_branch_pr_writes_above_the_footer() {
         let written = body("Why it changed.\n", "storm/x");
         assert_eq!(
-            squash::body(&written, "storm/x", "A <a@b>"),
+            squash::body(&written, "storm/x", "A <a@b>", None),
             "Why it changed.\n\nMerged from storm/x.\n\nCo-authored-by: A <a@b>"
         );
     }

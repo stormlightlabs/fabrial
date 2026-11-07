@@ -173,6 +173,10 @@ drifted.
   session links in the body are dropped, so nothing on `main` carries AI
   attribution. Editing the title or body of a reviewed PR posts the new
   squash message. Auto-merge keeps the message it was turned on with.
+- When `.github/fabrial.toml` sets `signoff`, the squash message ends with
+  the owner's `Signed-off-by` line: the owner certifies agent work at merge.
+  Agents never add `Signed-off-by`, and the squash drops one written in a PR
+  body.
 - Before pushing, run the command `gates` names in `.github/fabrial.toml`.
 - The owner approves the PR and merges it, with the posted squash message or
   their own edit of it. Agents never approve or merge.

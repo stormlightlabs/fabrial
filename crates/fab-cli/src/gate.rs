@@ -104,6 +104,7 @@ struct Gate {
     head: String,
     head_dir: PathBuf,
     trailer: String,
+    signoff: Option<String>,
     dry_run: bool,
     scratch: tempfile::TempDir,
 }
@@ -254,7 +255,12 @@ impl Gate {
             title = format!("{title} {number}");
         }
         let branch = info["headRefName"].as_str().unwrap_or_default();
-        let body = squash::body(info["body"].as_str().unwrap_or_default(), branch, &self.trailer);
+        let body = squash::body(
+            info["body"].as_str().unwrap_or_default(),
+            branch,
+            &self.trailer,
+            self.signoff.as_deref(),
+        );
         // The fence outgrows any backtick run in the message, so a title
         // cannot close it early.
         let fence = "`".repeat(longest_backtick_run(&format!("{title}{body}")).max(2) + 1);
@@ -381,7 +387,7 @@ impl Gate {
 pub fn run(options: Options) -> Result<()> {
     let text = std::fs::read_to_string(".github/fabrial.toml")
         .map_err(|e| format!("cannot read .github/fabrial.toml: {e}"))?;
-    let trailer = Settings::parse(&text).map_err(|e| e.to_string())?.trailer;
+    let Settings { trailer, signoff, .. } = Settings::parse(&text).map_err(|e| e.to_string())?;
     let given = |v: Option<String>| v.filter(|s| !s.is_empty());
     let mut gate = Gate {
         repo: options.repo,
@@ -389,6 +395,7 @@ pub fn run(options: Options) -> Result<()> {
         head: String::new(),
         head_dir: options.head_dir,
         trailer,
+        signoff,
         dry_run: options.dry_run,
         scratch: tempfile::tempdir().map_err(|e| format!("cannot make a scratch directory: {e}"))?,
     };
