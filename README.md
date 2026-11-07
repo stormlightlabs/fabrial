@@ -17,7 +17,9 @@ fab init --owner <github-login> --trailer "Name <email>" --gates "<gate command>
 
 A repository that uses the Developer Certificate of Origin adds
 `--signoff "Name <email>"`: every squash commit then ends with the owner's
-`Signed-off-by` line, since an agent cannot sign off.
+`Signed-off-by` line, since an agent cannot sign off. In an installed
+repository, set it with `fab update --signoff`, which also installs a
+release whose gate reads it; an older release ignores the key.
 
 The installer fetches the prebuilt `fab` for Linux x86_64 or Apple Silicon
 into `~/.cargo/bin`. With Homebrew on those two platforms,

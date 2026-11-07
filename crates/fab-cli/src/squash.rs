@@ -72,7 +72,7 @@ fn attributes_an_agent(line: &str) -> bool {
         })
     });
     bare.starts_with("co-authored-by:")
-        || bare.starts_with("signed-off-by:")
+        || is_signoff(&bare)
         || bare.starts_with("claude-session:")
         || bare
             .strip_prefix("session:")
@@ -80,6 +80,15 @@ fn attributes_an_agent(line: &str) -> bool {
         || generated
         || bare.contains("claude.ai/code/session_")
         || bare.contains("chatgpt.com/codex/")
+}
+
+/// Whether a lowercased line is a sign-off, also behind a list marker or a
+/// backtick and with space before its colon, so no form of one reaches the
+/// squash from a description.
+fn is_signoff(bare: &str) -> bool {
+    bare.trim_start_matches(|c: char| c.is_whitespace() || "-*+`".contains(c))
+        .split_once(':')
+        .is_some_and(|(key, _)| key.trim_end() == "signed-off-by")
 }
 
 /// Whether a line is `From `<branch>`:`, the old generated body's first line.
@@ -107,7 +116,8 @@ mod tests {
 
     #[test]
     fn a_signoff_ends_the_body_and_the_description_cannot_write_one() {
-        let description = "Why.\nSigned-off-by: Agent <agent@x>\n> signed-off-by: B <b@c>\n";
+        let description = "Why.\nSigned-off-by: Agent <agent@x>\n> signed-off-by: B <b@c>\n\
+            Signed-off-by : C <c@d>\n- Signed-off-by: D <d@e>\n`Signed-off-by: E <e@f>`\n";
         assert_eq!(
             body(description, "storm/x", "A <a@b>", Some("A <a@b>")),
             "Why.\n\nMerged from storm/x.\n\nCo-authored-by: A <a@b>\nSigned-off-by: A <a@b>"
