@@ -11,6 +11,10 @@ trailer = "Owais <desertthunder.dev@gmail.com>"
 # The command agents run before pushing.
 gates = "just check"
 
+# "on" adds an Assisted-by line to every squash commit for each agent
+# model its pull request's commits name.
+assisted_by = "on"
+
 # The fabrial version that wrote the installed files. `fab check`
 # compares it with its own.
 version = "0.8.0"

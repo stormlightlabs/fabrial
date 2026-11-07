@@ -170,13 +170,18 @@ drifted.
   `Add Pi dispatch (#21)`, the PR body above its
   `<!-- fabrial:footer` line, `Merged from <branch>.` and the owner's
   `Co-authored-by` line from `.github/fabrial.toml`. Attribution lines and
-  session links in the body are dropped, so nothing on `main` carries AI
-  attribution. Editing the title or body of a reviewed PR posts the new
-  squash message. Auto-merge keeps the message it was turned on with.
+  session links in the body are dropped, so `main` carries no AI attribution
+  beyond the `Assisted-by` lines below. Editing the title or body of a
+  reviewed PR posts the new squash message. Auto-merge keeps the message it
+  was turned on with.
 - When `.github/fabrial.toml` sets `signoff`, the squash message ends with
   the owner's `Signed-off-by` line: the owner certifies agent work at merge.
   Agents never add `Signed-off-by`, and the squash drops one written in a PR
   body.
+- When `.github/fabrial.toml` sets `assisted_by = "on"`, the squash message
+  names each agent model the commits' `Co-authored-by` trailers name, as
+  `Assisted-by: <model>`. Agents never write `Assisted-by` in a PR body; the
+  squash drops it.
 - Before pushing, run the command `gates` names in `.github/fabrial.toml`.
 - The owner approves the PR and merges it, with the posted squash message or
   their own edit of it. Agents never approve or merge.

@@ -20,6 +20,9 @@ A repository that uses the Developer Certificate of Origin adds
 `Signed-off-by` line, since an agent cannot sign off. In an installed
 repository, set it with `fab update --signoff`, which also installs a
 release whose gate reads it; an older release ignores the key.
+`--assisted-by on` adds an `Assisted-by: <model>` line to each squash commit
+for every agent model its pull request's commits name, so `git log --grep`
+on `main` finds agent work by model.
 
 The installer fetches the prebuilt `fab` for Linux x86_64 or Apple Silicon
 into `~/.cargo/bin`. With Homebrew on those two platforms,
@@ -51,10 +54,10 @@ own work in [arclightning](https://github.com/stormlightlabs/arclightning),
 and its `AGENTS.md` shows such a section.
 
 To take a newer release, install that `fab` and run `fab update`. It keeps the
-settings in `.github/fabrial.toml`, unless `--owner`, `--trailer`, `--gates`
-or `--signoff` changes one, and replaces the files with this build's.
-`--signoff ""` removes the sign-off. It refuses to install an older release
-over a newer one unless you pass `--force`. It leaves files
+settings in `.github/fabrial.toml`, unless `--owner`, `--trailer`,
+`--gates`, `--signoff` or `--assisted-by` changes one, and replaces the files
+with this build's. `--signoff ""` removes the sign-off. It refuses to install
+an older release over a newer one unless you pass `--force`. It leaves files
 that only older releases wrote, such as `.github/storm/gate.sh` and
 `.github/storm/squash-body.sh`; delete them. `CHANGELOG.md` says what each
 release changes. A repository moving to this release from one that named

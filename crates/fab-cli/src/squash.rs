@@ -1,32 +1,75 @@
 //! The squash commit body Branch PR and the Review gate both build from a
-//! pull request's description: its text, then `Merged from <branch>.`, the
+//! pull request's description: its text, then `Merged from <branch>.`, an
+//! `Assisted-by` line for each agent model the gate found in the commits, the
 //! owner's Co-authored-by line and, when the settings name one, the owner's
 //! Signed-off-by line.
 //!
 //! The description stops at the footer line Branch PR writes, so the text
 //! after it stays out. The body Branch PR generated before the footer existed
 //! counts as empty. Lines that attribute the work to an agent are dropped,
-//! quoted or not and in any case: Co-authored-by, Signed-off-by and
-//! Claude-Session trailers, a `Session:` line naming a link, "Generated with"
-//! lines, the robot emoji, and Claude Code session and Codex task links. No
-//! agent attribution reaches main, and only the settings can sign off, so a
-//! Signed-off-by line in a description goes whether or not `signoff` is set.
-//! Code blocks get no special treatment.
+//! quoted or not and in any case: Co-authored-by, Signed-off-by,
+//! Assisted-by and Claude-Session trailers, a `Session:` line naming a link,
+//! "Generated with" lines, the robot emoji, and Claude Code session and Codex
+//! task links. Only fab writes attribution to main: the settings sign off and
+//! the commits name the models, so those lines in a description go whatever
+//! the settings say. Code blocks get no special treatment.
 
 /// The line that ends the part of a pull request body the squash keeps.
 pub const FOOTER: &str = "<!-- fabrial:footer";
+/// The addresses agents sign their `Co-authored-by` trailers with. Add one
+/// only once its harness is seen writing it.
+const AGENT_ADDRESSES: &[&str] = &["noreply@anthropic.com"];
 
 /// The squash body for a description: its kept text, a blank line, then
-/// `Merged from <branch>.`, the owner's trailer and, when `signoff` is set,
-/// the owner's `Signed-off-by` line. A description with nothing kept gives
-/// the plain `Merged from <branch>.` body.
-pub fn body(description: &str, branch: &str, trailer: &str, signoff: Option<&str>) -> String {
+/// `Merged from <branch>.`, an `Assisted-by` line for each of `assisted`, the
+/// owner's trailer and, when `signoff` is set, the owner's `Signed-off-by`
+/// line. A description with nothing kept gives the plain
+/// `Merged from <branch>.` body.
+pub fn body(description: &str, branch: &str, trailer: &str, signoff: Option<&str>, assisted: &[String]) -> String {
     let text = kept_text(description);
-    let mut merged = format!("Merged from {branch}.\n\nCo-authored-by: {trailer}");
+    let mut merged = format!("Merged from {branch}.\n\n");
+    for model in assisted {
+        merged = format!("{merged}Assisted-by: {model}\n");
+    }
+    merged = format!("{merged}Co-authored-by: {trailer}");
     if let Some(signoff) = signoff {
         merged = format!("{merged}\nSigned-off-by: {signoff}");
     }
     if text.is_empty() { merged } else { format!("{text}\n\n{merged}") }
+}
+
+/// The agent models commit messages name, one per distinct name in the order
+/// they first appear: the name of each `Co-authored-by` trailer whose address
+/// is an agent's. Only a message's last paragraph holds trailers, and an
+/// indented line there is a continuation or an example, not one. A name
+/// must look like a model's, so a trailer cannot carry other text to main.
+pub fn assisted_by<'a>(messages: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut models: Vec<String> = Vec::new();
+    let trailers = |m: &'a str| {
+        m.replace('\r', "")
+            .trim_end()
+            .rsplit("\n\n")
+            .next()
+            .unwrap_or_default()
+            .to_string()
+    };
+    let blocks: Vec<String> = messages.into_iter().map(trailers).collect();
+    for line in blocks.iter().flat_map(|b| b.lines()) {
+        if line.starts_with(char::is_whitespace) {
+            continue;
+        }
+        let Some((key, value)) = line.split_once(':') else { continue };
+        if !key.trim_end().eq_ignore_ascii_case("co-authored-by") {
+            continue;
+        }
+        let Some((name, rest)) = value.split_once('<') else { continue };
+        let (name, address) = (name.trim(), rest.trim_end().trim_end_matches('>'));
+        let agent = AGENT_ADDRESSES.iter().any(|a| address.eq_ignore_ascii_case(a));
+        if agent && is_model_name(name) && !models.iter().any(|m| m == name) {
+            models.push(name.to_string());
+        }
+    }
+    models
 }
 
 /// The description's text that the squash keeps, without blank lines at
@@ -72,7 +115,8 @@ fn attributes_an_agent(line: &str) -> bool {
         })
     });
     bare.starts_with("co-authored-by:")
-        || is_signoff(&bare)
+        || is_trailer(&bare, "signed-off-by")
+        || is_trailer(&bare, "assisted-by")
         || bare.starts_with("claude-session:")
         || bare
             .strip_prefix("session:")
@@ -82,13 +126,21 @@ fn attributes_an_agent(line: &str) -> bool {
         || bare.contains("chatgpt.com/codex/")
 }
 
-/// Whether a lowercased line is a sign-off, also behind a list marker or a
-/// backtick and with space before its colon, so no form of one reaches the
-/// squash from a description.
-fn is_signoff(bare: &str) -> bool {
+/// Whether a name looks like a model's: a letter, then up to 63 letters,
+/// digits, spaces, dots, hyphens or underscores.
+fn is_model_name(name: &str) -> bool {
+    name.len() <= 64
+        && name.starts_with(|c: char| c.is_ascii_alphabetic())
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || " .-_".contains(c))
+}
+
+/// Whether a lowercased line is the trailer `key`, also behind a list marker
+/// or a backtick and with space before its colon, so no form of one reaches
+/// the squash from a description.
+fn is_trailer(bare: &str, key: &str) -> bool {
     bare.trim_start_matches(|c: char| c.is_whitespace() || "-*+`".contains(c))
         .split_once(':')
-        .is_some_and(|(key, _)| key.trim_end() == "signed-off-by")
+        .is_some_and(|(k, _)| k.trim_end() == key)
 }
 
 /// Whether a line is `From `<branch>`:`, the old generated body's first line.
@@ -105,11 +157,11 @@ mod tests {
     #[test]
     fn the_body_ends_with_the_branch_and_the_owner() {
         assert_eq!(
-            body("Why it changed.\n", "storm/x", "A <a@b>", None),
+            body("Why it changed.\n", "storm/x", "A <a@b>", None, &[]),
             "Why it changed.\n\nMerged from storm/x.\n\nCo-authored-by: A <a@b>"
         );
         assert_eq!(
-            body("", "storm/x", "A <a@b>", None),
+            body("", "storm/x", "A <a@b>", None, &[]),
             "Merged from storm/x.\n\nCo-authored-by: A <a@b>"
         );
     }
@@ -119,13 +171,48 @@ mod tests {
         let description = "Why.\nSigned-off-by: Agent <agent@x>\n> signed-off-by: B <b@c>\n\
             Signed-off-by : C <c@d>\n- Signed-off-by: D <d@e>\n`Signed-off-by: E <e@f>`\n";
         assert_eq!(
-            body(description, "storm/x", "A <a@b>", Some("A <a@b>")),
+            body(description, "storm/x", "A <a@b>", Some("A <a@b>"), &[]),
             "Why.\n\nMerged from storm/x.\n\nCo-authored-by: A <a@b>\nSigned-off-by: A <a@b>"
         );
         assert_eq!(
-            body(description, "storm/x", "A <a@b>", None),
+            body(description, "storm/x", "A <a@b>", None, &[]),
             "Why.\n\nMerged from storm/x.\n\nCo-authored-by: A <a@b>"
         );
+    }
+
+    #[test]
+    fn assisted_by_lines_come_from_the_commits_and_not_the_description() {
+        let models = ["Claude Opus 5.5".to_string(), "Claude Sonnet 5.5".to_string()];
+        assert_eq!(
+            body(
+                "Why.\nAssisted-by: Fake\n- assisted-by : Fake\n",
+                "storm/x",
+                "A <a@b>",
+                Some("A <a@b>"),
+                &models
+            ),
+            "Why.\n\nMerged from storm/x.\n\nAssisted-by: Claude Opus 5.5\nAssisted-by: Claude Sonnet 5.5\n\
+             Co-authored-by: A <a@b>\nSigned-off-by: A <a@b>"
+        );
+    }
+
+    #[test]
+    fn assisted_by_names_each_agent_model_once() {
+        let commits = [
+            "Add a\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nClaude-Session: x",
+            "Fix a\n\nco-authored-by: Claude Opus 5.5 <NoReply@Anthropic.com>",
+            "Fix b\n\nCo-authored-by: Claude Sonnet 5.5 <noreply@anthropic.com>\nCo-authored-by: A <a@b>",
+        ];
+        assert_eq!(assisted_by(commits), ["Claude Opus 5.5", "Claude Sonnet 5.5"]);
+        assert!(assisted_by(["Plain\n\nCo-authored-by: A <a@b>", "No trailers"]).is_empty());
+        assert!(assisted_by(["Co-authored-by: <noreply@anthropic.com>"]).is_empty());
+        let example = "Docs\n\nLike this:\n    Co-authored-by: Claude Sonnet 4 <noreply@anthropic.com>\n\nCo-authored-by: A <a@b>";
+        assert!(assisted_by([example]).is_empty());
+        let body_only =
+            "Fix\n\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>\nwas wrong\n\nSigned-off-by: A <a@b>";
+        assert!(assisted_by([body_only]).is_empty());
+        let free_text = "Fix\n\nCo-authored-by: Closes #1, see https://evil <noreply@anthropic.com>";
+        assert!(assisted_by([free_text]).is_empty());
     }
 
     #[test]

@@ -34,6 +34,7 @@ printf '%s\0' "$@" | jq -Rsc --arg body "$body" '{args: split("\u0000")[:-1], bo
 reply() { if [[ -n $filter ]]; then jq -r "$filter" <<<"$1"; else printf '%s\n' "$1"; fi; }
 if [[ $1 == pr && ${2:-} == "${TEST_FAIL:-}" ]]; then exit 1; fi
 if [[ $1 == api && ${2:-} == -X && ${4:-} == */comments* && ${TEST_FAIL:-} == comment ]]; then exit 1; fi
+if [[ $1 == api && ${3:-} == */commits && ${TEST_FAIL:-} == commits ]]; then exit 1; fi
 case "$1 ${2:-}" in
   "pr view")
     view=$TEST_PR
@@ -68,6 +69,7 @@ case "$1 ${2:-}" in
       */issues/*/comments*) out=$(cat "$TEST_COMMENTS") ;;
       */collaborators/*/permission) out="{\"permission\": \"${TEST_PERMISSION:-none}\"}" ;;
       */check-runs\?*) out=${TEST_CHECK_RUNS:-"{\"check_runs\": []}"} ;;
+      */pulls/*/commits) out=${TEST_COMMITS:-[]} ;;
       *) exit 92 ;;
     esac
     reply "$out" ;;
@@ -292,6 +294,59 @@ fn a_signoff_in_the_settings_ends_the_squash_message() {
         "{message}"
     );
     assert!(!message.contains("Agent <agent@x>"), "{message}");
+}
+
+#[test]
+fn assisted_by_names_each_agent_model_in_the_commits() {
+    let settings = tempfile::tempdir().unwrap();
+    fs::create_dir(settings.path().join(".github")).unwrap();
+    let toml = settings.path().join(".github/fabrial.toml");
+    fs::write(
+        &toml,
+        "owner = \"o\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\nassisted_by = \"on\"\n",
+    )
+    .unwrap();
+    let commits = json!([
+        {"commit": {"message": "Add a\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"}},
+        {"commit": {"message": "Fix a\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nCo-authored-by: A <a@b>"}},
+        {"commit": {"message": "Plain"}}
+    ])
+    .to_string();
+    let base = finished();
+    let env = with(&base, &[("TEST_COMMITS", &commits)]);
+    let run = gate_in(
+        settings.path(),
+        &env,
+        json!({"body": "A change.\nAssisted-by: Someone"}),
+        None,
+    );
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    let message = run.posts()[0];
+    assert!(
+        message.contains("Merged from storm/test.\n\nAssisted-by: Claude Opus 5.5\nCo-authored-by: A <a@b>\n"),
+        "{message}"
+    );
+    assert_eq!(message.matches("Assisted-by").count(), 1, "{message}");
+    assert!(
+        run.calls
+            .iter()
+            .any(|c| c.is("api", "--paginate") && c.args[2].ends_with("/commits"))
+    );
+    // A failed read still writes the message, with a note, and fails the run.
+    let failing = with(&base, &[("TEST_COMMITS", &commits), ("TEST_FAIL", "commits")]);
+    let run = gate_in(settings.path(), &failing, json!({}), None);
+    assert_ne!(run.code, Some(0));
+    assert!(run.succeeded_check());
+    let message = run.posts()[0];
+    assert!(
+        message.contains("could not read the commits") && !message.contains("Assisted-by:"),
+        "{message}"
+    );
+    // Off without the setting: the gate does not read the commits.
+    fs::write(&toml, "owner = \"o\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\n").unwrap();
+    let run = gate_in(settings.path(), &env, json!({}), None);
+    assert!(!run.posts()[0].contains("Assisted-by"), "{}", run.posts()[0]);
+    assert!(!run.calls.iter().any(|c| c.args.iter().any(|a| a.ends_with("/commits"))));
 }
 
 #[test]

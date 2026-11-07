@@ -43,6 +43,9 @@ const STOP_LABEL: &str = "storm:stopped";
 const INTRO: &str = "When you merge, by hand or with auto-merge, squash with this message:";
 const AUTO_MERGE_NOTE: &str = "Auto-merge is on and squashes with the message it was turned on with. \
                                To use this one, turn auto-merge off and on again with it.";
+/// The note under a squash message whose commits could not be read.
+const UNREAD_NOTE: &str = "The gate could not read the commits, so this message names no models. \
+    Push again or rerun the Review gate.";
 const MARKER: &str = "<!-- storm-review diff=";
 /// The status comment section that holds the squash message.
 const SQUASH_SECTION: &str = "Squash message";
@@ -105,6 +108,7 @@ struct Gate {
     head_dir: PathBuf,
     trailer: String,
     signoff: Option<String>,
+    assisted: bool,
     dry_run: bool,
     scratch: tempfile::TempDir,
 }
@@ -247,6 +251,24 @@ impl Gate {
         if info["state"] != "OPEN" || stopped(&info) {
             return Ok(false);
         }
+        // The gate reads the commits rather than Branch PR, so commits pushed
+        // after the pull request opened count too. The REST list pages
+        // through all of them, up to the 250 GitHub returns for a pull
+        // request, one JSON string per message. A failed read still writes
+        // the message, with a note, so the section never keeps an older
+        // head's message beside this head's success; the run then fails.
+        let (assisted, unread) = if self.assisted {
+            let path = format!("repos/{}/pulls/{}/commits", self.repo, self.pr);
+            match run::gh(&["api", "--paginate", &path, "--jq", ".[].commit.message | @json"]) {
+                Ok(lines) => {
+                    let messages: Vec<String> = lines.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+                    (squash::assisted_by(messages.iter().map(String::as_str)), None)
+                }
+                Err(e) => (Vec::new(), Some(e)),
+            }
+        } else {
+            (Vec::new(), None)
+        };
         // The subject carries the PR number, as GitHub's own squash title
         // does, so `git log` on main leads back to the pull request.
         let mut title = info["title"].as_str().unwrap_or_default().to_string();
@@ -260,6 +282,7 @@ impl Gate {
             branch,
             &self.trailer,
             self.signoff.as_deref(),
+            &assisted,
         );
         // The fence outgrows any backtick run in the message, so a title
         // cannot close it early.
@@ -270,10 +293,17 @@ impl Gate {
         if !info["autoMergeRequest"].is_null() {
             text = format!("{text}\n\n{AUTO_MERGE_NOTE}");
         }
+        if unread.is_some() {
+            text = format!("{text}\n\n{UNREAD_NOTE}");
+        }
         // A section of the status comment, which an edit changes without a
         // notification, so a run that changes nothing posts nothing.
         let mut status = Status::read(&self.repo, &self.pr)?;
-        status.set(SQUASH_SECTION, &text, self.scratch.path(), self.dry_run)
+        let wrote = status.set(SQUASH_SECTION, &text, self.scratch.path(), self.dry_run)?;
+        match unread {
+            Some(e) => Err(format!("cannot read the pull request's commits for Assisted-by: {e}")),
+            None => Ok(wrote),
+        }
     }
 
     /// Asks for a command again when the SHA it names is not the head.
@@ -387,7 +417,9 @@ impl Gate {
 pub fn run(options: Options) -> Result<()> {
     let text = std::fs::read_to_string(".github/fabrial.toml")
         .map_err(|e| format!("cannot read .github/fabrial.toml: {e}"))?;
-    let Settings { trailer, signoff, .. } = Settings::parse(&text).map_err(|e| e.to_string())?;
+    let settings = Settings::parse(&text).map_err(|e| e.to_string())?;
+    let assisted = settings.assisted();
+    let Settings { trailer, signoff, .. } = settings;
     let given = |v: Option<String>| v.filter(|s| !s.is_empty());
     let mut gate = Gate {
         repo: options.repo,
@@ -396,6 +428,7 @@ pub fn run(options: Options) -> Result<()> {
         head_dir: options.head_dir,
         trailer,
         signoff,
+        assisted,
         dry_run: options.dry_run,
         scratch: tempfile::tempdir().map_err(|e| format!("cannot make a scratch directory: {e}"))?,
     };
