@@ -6,7 +6,7 @@ status = "completed"
 priority = "normal"
 position = 0
 blocked-by = ["arcl-t-01M6SCJTNZ9MYTYEZ74XG6WCZG"]
-evidence = "Done in #86 at ed953a6: with assisted_by on, the gate adds one Assisted-by line per agent model in the commits' trailers"
+evidence = "Done in #86: with assisted_by on, the gate adds one Assisted-by line per agent model in the commits' trailers. The gate runs from main, so the first squash after #86 merges is where git log --grep shows it."
 +++
 
 `main` shows that an agent made a change, since stormlight-thunderbot
@@ -48,4 +48,4 @@ Acceptance criteria:
 - [x] Several commits with the same trailer give one line, and commits from
       two models give two
 - [x] A PR with no agent trailers gets no line
-- [x] `git log --grep "Assisted-by: Claude"` on `main` finds the change
+- [ ] `git log --grep "Assisted-by: Claude"` on `main` finds the change

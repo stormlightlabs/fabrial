@@ -244,18 +244,20 @@ impl Gate {
     /// wrote. Writes nothing when the pull request is closed or stopped, or
     /// when the section already says the same.
     fn squash_message(&self) -> Result<bool> {
-        let fields = "state,title,body,headRefName,labels,autoMergeRequest";
-        let info = self.view(&if self.assisted { format!("{fields},commits") } else { fields.into() })?;
+        let info = self.view("state,title,body,headRefName,labels,autoMergeRequest")?;
         if info["state"] != "OPEN" || stopped(&info) {
             return Ok(false);
         }
         // The gate reads the commits rather than Branch PR, so commits pushed
-        // after the pull request opened count too.
-        let assisted = match info["commits"].as_array() {
-            Some(commits) if self.assisted => {
-                squash::assisted_by(commits.iter().filter_map(|c| c["messageBody"].as_str()))
-            }
-            _ => Vec::new(),
+        // after the pull request opened count too. The REST list pages
+        // through all of them, up to the 250 GitHub returns for a pull
+        // request.
+        let assisted = if self.assisted {
+            let path = format!("repos/{}/pulls/{}/commits", self.repo, self.pr);
+            let messages = run::gh(&["api", "--paginate", &path, "--jq", ".[].commit.message"])?;
+            squash::assisted_by([messages.as_str()])
+        } else {
+            Vec::new()
         };
         // The subject carries the PR number, as GitHub's own squash title
         // does, so `git log` on main leads back to the pull request.
