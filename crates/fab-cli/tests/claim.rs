@@ -156,10 +156,10 @@ fn the_holding_run_renews_its_expired_claim_on_take() {
 }
 
 #[test]
-fn a_refused_delete_says_when_the_claim_lapses() {
+fn a_refused_delete_lets_the_claim_lapse_at_once() {
     use std::os::unix::fs::PermissionsExt;
     let temp = tempfile::tempdir().unwrap();
-    let (a, _) = machines(temp.path());
+    let (a, b) = machines(temp.path());
     let take = fab(&a, 0, &["take", "t", "--run", "r", "--machine", "m", "--ttl", "10"]);
     assert_eq!(take.0, Some(0), "{}", take.2);
     let hook = temp.path().join("remote.git/hooks/pre-receive");
@@ -167,12 +167,14 @@ fn a_refused_delete_says_when_the_claim_lapses() {
         "#!/bin/sh\nwhile read old new ref; do\n  case $new in 0000000*) echo no deletes >&2; exit 1;; esac\ndone\n";
     std::fs::write(&hook, refuse).unwrap();
     std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let (code, _, stderr) = fab(&a, 60, &["release", "t", "--run", "r", "--machine", "m"]);
-    assert_eq!(code, Some(2), "{stderr}");
-    assert!(
-        stderr.starts_with(
-            "fab: origin refused to delete storm/t, so the claim stays until it lapses at 1970-01-01T00:10:00Z: "
-        ),
-        "{stderr}"
+    let (code, stdout, stderr) = fab(&a, 60, &["release", "t", "--run", "r", "--machine", "m"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(
+        stdout,
+        "released storm/t for run r; the remote refused to delete it, so the claim expired at \
+         1970-01-01T00:01:00Z and any run can take the task\n"
     );
+    let (code, stdout, stderr) = fab(&b, 60, &["take", "t", "--run", "s", "--machine", "n"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stdout.ends_with("; run r's claim had expired\n"), "{stdout}");
 }

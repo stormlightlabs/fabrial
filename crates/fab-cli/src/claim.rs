@@ -29,8 +29,10 @@ pub enum Operation {
         #[command(flatten)]
         ttl: Ttl,
     },
-    /// Delete the branch of a run's claim when it holds nothing else. Exits 1
-    /// when the run does not hold it or the branch holds work.
+    /// Delete the branch of a run's claim when it holds nothing else, or,
+    /// where the remote refuses the delete, end the claim with one that has
+    /// already expired. Exits 1 when the run does not hold it or the branch
+    /// holds work.
     Release {
         #[command(flatten)]
         target: Target,
@@ -122,6 +124,11 @@ fn done(outcome: &Outcome, branch: &str) -> String {
         }
         Outcome::Renewed(c) => format!("renewed {}", until(c)),
         Outcome::Released(c) => format!("released {branch} for run {}; the branch is deleted", c.run),
+        Outcome::Lapsed(c) => format!(
+            "released {branch} for run {}; the remote refused to delete it, so the claim expired at {} and any run can take the task",
+            c.run,
+            utc(c.expires_at)
+        ),
     }
 }
 

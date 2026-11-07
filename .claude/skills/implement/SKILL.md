@@ -51,9 +51,13 @@ Stop and ask when any of these is true:
 A dispatched implementer already has one: the run created it and named the
 directory. Change into it and skip this section.
 
-A cloud session holds a container checkout nobody else owns. It works on the
-branch its harness gave it, `claude/<topic>` or `codex/<topic>`, and makes no
-worktree.
+A cloud session holds a container checkout nobody else owns, and makes no
+worktree. For a tracked task it works on the task's `storm/<id>` branch, which
+**Start it** claims, in place of the `claude/<topic>` or `codex/<topic>`
+branch its harness gave it: once the claim prints the branch, run
+`git switch <branch>`, which tracks `origin/<branch>`. The claim and the pull
+request are then one branch. For an issue or a description it works on the
+branch its harness gave it.
 
 A local session takes a worktree beside the repository, because the checkout
 is the user's. First fetch `main`. When the primary checkout is clean and on
@@ -99,7 +103,9 @@ origin lacks; never renew after `Review finished`, since a renew moves the
 pull request's head. After each renew, run
 `git merge --ff-only origin/<branch>`. When you hand the task off before
 pushing any work, delete the branch with
-`fab claim release <id> --run <run>`. When origin refuses the delete, the
+`fab claim release <id> --run <run>`. Where origin refuses the delete, as it
+does from a cloud session, release instead pushes a claim that has already
+expired, so any run can take the task at once. If release still fails, the
 claim lapses at its expiry: report that and go on. Then start the task as the **Tasks**
 section says, from the task worktree, unless the run that dispatched you
 already started it. When the tracker keeps tasks in files in the repository,

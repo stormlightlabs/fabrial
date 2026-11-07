@@ -41,7 +41,11 @@ a paid plan, so rulesets on `main` are enforced.
   commit names the task, machine, run and an expiry. Expiry frees a dead run's
   claim without losing its commits. Branch pushes work wherever an agent can
   push, cloud sessions included; a custom ref such as `refs/fabrial/claims`
-  does not. `fab daemon` claims the same way when it launches a worker.
+  does not. Work goes on the claimed branch, so it is also the pull request's
+  branch; a cloud session uses it in place of the branch its harness names.
+  Where a remote refuses to delete branches, releasing pushes a claim that
+  has already expired. `fab daemon` claims the same way when it launches a
+  worker.
 - **One set of run operations, three drivers.** A core crate holds the
   operations: claim, start a step, record a result, mark ready, release. The
   daemon drives the fixed sequence in code. An agent such as Pi drives it

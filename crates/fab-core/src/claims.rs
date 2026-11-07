@@ -7,7 +7,9 @@
 //! commit on the branch's tip, a fast-forward. Work goes on top of the claim.
 //! An expired claim is taken by adding a claim commit on the tip, so the
 //! commits already on the branch stay. Releasing deletes the branch, and only
-//! when it holds nothing but claim commits. Every push carries a lease on the
+//! when it holds nothing but claim commits. Where the remote refuses to
+//! delete branches, releasing adds a claim commit that has already expired,
+//! so any run can take the task at once. Every push carries a lease on the
 //! tip it was built from, and no push rewrites history.
 //!
 //! Writes build their commits with git plumbing and never touch the
@@ -41,7 +43,8 @@ pub enum Action {
     Take { ttl: u64 },
     /// Extend this run's claim to `ttl` seconds from now.
     Renew { ttl: u64 },
-    /// Delete the branch of this run's claim.
+    /// Delete the branch of this run's claim, or let the claim lapse at once
+    /// where the remote refuses the delete.
     Release,
 }
 
@@ -59,6 +62,9 @@ pub enum Outcome {
     Renewed(Claim),
     /// The branch is gone.
     Released(Claim),
+    /// The remote refused to delete the branch, so a claim that expired at
+    /// the release now sits on its tip, and any run can take the task.
+    Lapsed(Claim),
 }
 
 /// What can go wrong reading or writing a claim.
@@ -89,6 +95,16 @@ pub enum Error {
     /// A git command failed.
     #[error("{0}")]
     Git(String),
+}
+
+/// What one push did.
+enum Pushed {
+    /// The remote took it.
+    Done,
+    /// The remote rejected it because the branch moved since the fetch.
+    Moved,
+    /// The remote refused it for another reason, which git's error gives.
+    Failed(String),
 }
 
 /// One claim, as a claim commit's trailers hold it. Times are UTC seconds
@@ -165,6 +181,9 @@ pub struct Prepared {
     /// The commit to push, `None` to delete the branch. Unused when
     /// `push` is false.
     pub commit: Option<String>,
+    /// For a release, the commit to push when the remote refuses the delete:
+    /// the claim, expired at the release, on the branch's tip.
+    pub lapse: Option<(String, Claim)>,
     /// Whether the write pushes anything.
     pub push: bool,
     /// What the write does once the push lands.
@@ -189,8 +208,8 @@ impl Store {
     pub fn write(&self, request: &Request) -> Result<Outcome, Error> {
         for _ in 0..ATTEMPTS {
             let prepared = self.prepare(request)?;
-            if self.publish(&prepared)? {
-                return Ok(prepared.outcome);
+            if let Some(outcome) = self.publish(&prepared)? {
+                return Ok(outcome);
             }
         }
         Err(Error::Contended(branch(&request.task)?))
@@ -212,62 +231,92 @@ impl Store {
         let outcome = decide(request, fetched.as_ref(), &name)?;
         let lease = fetched.map(|b| b.tip);
         let base = lease.clone().unwrap_or(main);
-        let (commit, push) = match &outcome {
-            Outcome::AlreadyHeld(_) => (None, false),
-            Outcome::Released(_) => (None, true),
+        let build = |c: &Claim| {
+            let tree = format!("{base}^{{tree}}");
+            self.git(&["commit-tree", "--no-gpg-sign", &tree, "-p", &base, "-m", &c.message()])
+        };
+        let (commit, push, lapse) = match &outcome {
+            Outcome::AlreadyHeld(_) | Outcome::Lapsed(_) => (None, false, None),
+            Outcome::Released(holder) => {
+                let expired = Claim { expires_at: request.now, ..holder.clone() };
+                (None, true, Some((build(&expired)?, expired)))
+            }
             Outcome::Claimed(c) | Outcome::Renewed(c) | Outcome::TookOver { claim: c, .. } => {
-                let tree = format!("{base}^{{tree}}");
-                let commit = self.git(&["commit-tree", "--no-gpg-sign", &tree, "-p", &base, "-m", &c.message()])?;
-                (Some(commit), true)
+                (Some(build(c)?), true, None)
             }
         };
-        Ok(Prepared { branch: name, lease, commit, push, outcome })
+        Ok(Prepared { branch: name, lease, commit, lapse, push, outcome })
     }
 
     /// The second step of a write: pushes the commit, or deletes the branch,
-    /// with a lease on the tip it was built from. `false` when the remote
-    /// rejected it because the branch moved since the fetch.
-    pub fn publish(&self, prepared: &Prepared) -> Result<bool, Error> {
+    /// with a lease on the tip it was built from. When the remote refuses a
+    /// release's delete, pushes the release's lapse commit instead. Returns
+    /// what the write did, or `None` when the remote rejected it because the
+    /// branch moved since the fetch.
+    pub fn publish(&self, prepared: &Prepared) -> Result<Option<Outcome>, Error> {
         if !prepared.push {
-            return Ok(true);
+            return Ok(Some(prepared.outcome.clone()));
         }
+        let commit = prepared.commit.as_deref();
+        let stderr = match self.push(prepared, commit)? {
+            Pushed::Done => return Ok(Some(prepared.outcome.clone())),
+            Pushed::Moved => return Ok(None),
+            Pushed::Failed(stderr) => stderr,
+        };
+        let (None, Some((lapse, expired)), Outcome::Released(holder)) = (commit, &prepared.lapse, &prepared.outcome)
+        else {
+            return Err(Error::Git(format!(
+                "git push {} {} failed: {stderr}",
+                self.remote, prepared.branch
+            )));
+        };
+        match self.push(prepared, Some(lapse))? {
+            Pushed::Done => Ok(Some(Outcome::Lapsed(expired.clone()))),
+            Pushed::Moved => Ok(None),
+            Pushed::Failed(again) => {
+                let until = utc(holder.expires_at);
+                let stays = if holder.is_live(expired.expires_at) {
+                    format!("so the claim stays until {until}")
+                } else {
+                    format!("and the claim already expired at {until}")
+                };
+                Err(Error::Git(format!(
+                    "{} could not delete {} ({stderr}) or let its claim lapse ({again}), {stays}",
+                    self.remote, prepared.branch
+                )))
+            }
+        }
+    }
+
+    /// Pushes `commit` to the prepared branch, or deletes it when `None`,
+    /// with the prepared lease, and moves the remote-tracking ref to match.
+    fn push(&self, prepared: &Prepared, commit: Option<&str>) -> Result<Pushed, Error> {
         let target = format!("refs/heads/{}", prepared.branch);
         let lease = format!(
             "--force-with-lease={target}:{}",
             prepared.lease.as_deref().unwrap_or_default()
         );
-        let refspec = format!("{}:{target}", prepared.commit.as_deref().unwrap_or_default());
+        let refspec = format!("{}:{target}", commit.unwrap_or_default());
         let output = self
             .command(&["push", "--porcelain", "--no-verify", &lease, &self.remote, &refspec])
             .stdin(Stdio::null())
             .output()
             .map_err(|e| Error::Git(format!("cannot run git: {e}")))?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
         if !output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
             if stdout.lines().any(|l| l.starts_with('!') && l.contains("\t[rejected]")) {
-                return Ok(false);
+                return Ok(Pushed::Moved);
             }
-            if let (None, Outcome::Released(claim)) = (&prepared.commit, &prepared.outcome) {
-                return Err(Error::Git(format!(
-                    "{} refused to delete {}, so the claim stays until it lapses at {}: {}",
-                    self.remote,
-                    prepared.branch,
-                    utc(claim.expires_at),
-                    String::from_utf8_lossy(&output.stderr).trim()
-                )));
-            }
-            return Err(Error::Git(format!(
-                "git push {} {refspec} failed: {}",
-                self.remote,
-                String::from_utf8_lossy(&output.stderr).trim()
-            )));
+            return Ok(Pushed::Failed(
+                String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            ));
         }
         let tracking = format!("refs/remotes/{}/{}", self.remote, prepared.branch);
-        match &prepared.commit {
+        match commit {
             Some(commit) => self.git(&["update-ref", &tracking, commit])?,
             None => self.git(&["update-ref", "-d", &tracking])?,
         };
-        Ok(true)
+        Ok(Pushed::Done)
     }
 
     /// Fetches the remote's `branch` into its remote-tracking ref and returns

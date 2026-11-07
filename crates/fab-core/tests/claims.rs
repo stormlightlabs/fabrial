@@ -34,6 +34,19 @@ impl Machines {
         Self { remote, a: Store::new(&a_dir, "origin"), b: Store::new(b_dir, "origin"), a_dir, _temp: temp }
     }
 
+    /// Makes the remote refuse a push whenever `check`, a shell snippet run
+    /// for each pushed ref with `$old`, `$new` and `$ref` set, exits 1.
+    fn refuse(&self, check: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        let hook = self.remote.join("hooks/pre-receive");
+        std::fs::write(
+            &hook,
+            format!("#!/bin/sh\nwhile read old new ref; do\n  {check}\ndone\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
     /// The remote's commit subjects on `branch`, newest first, or `None`
     /// when the branch does not exist.
     fn subjects(&self, branch: &str) -> Option<Vec<String>> {
@@ -84,9 +97,9 @@ fn two_machines_racing_for_one_task_leave_one_claim() {
     // Both read the task as free before either pushes.
     let first = m.a.prepare(&take("ma", "run-a", 1000)).unwrap();
     let second = m.b.prepare(&take("mb", "run-b", 1000)).unwrap();
-    assert!(m.a.publish(&first).unwrap());
+    assert!(matches!(m.a.publish(&first).unwrap(), Some(Outcome::Claimed(_))));
     assert!(
-        !m.b.publish(&second).unwrap(),
+        m.b.publish(&second).unwrap().is_none(),
         "the second create-only push is rejected"
     );
     let Error::Held(holder) = m.b.write(&take("mb", "run-b", 1001)).unwrap_err() else {
@@ -159,6 +172,40 @@ fn an_expired_claim_is_taken_without_losing_its_work_and_work_is_never_released(
     assert_eq!(
         &subjects[1..3],
         ["Work", "Claim issue-12 for run run-a until 1970-01-01T00:17:40Z"]
+    );
+}
+
+#[test]
+fn a_release_the_remote_refuses_to_delete_lapses_and_one_it_refuses_outright_stays() {
+    let m = Machines::new();
+    m.a.write(&take("ma", "run-a", 1000)).unwrap();
+    m.refuse("case $new in 0000000*) exit 1;; esac");
+    let Outcome::Lapsed(lapsed) = m.a.write(&request("ma", "run-a", Action::Release, 1010)).unwrap() else {
+        panic!("a refused delete lapses the claim");
+    };
+    assert_eq!((lapsed.run.as_str(), lapsed.expires_at), ("run-a", 1010));
+    assert_eq!(
+        m.subjects("storm/issue-12").unwrap()[0],
+        "Claim issue-12 for run run-a until 1970-01-01T00:16:50Z"
+    );
+    let Outcome::TookOver { expired, .. } = m.b.write(&take("mb", "run-b", 1010)).unwrap() else {
+        panic!("another run takes the lapsed claim at once");
+    };
+    assert_eq!(expired.expires_at, 1010);
+    m.refuse("exit 1");
+    let Error::Git(message) = m.b.write(&request("mb", "run-b", Action::Release, 1020)).unwrap_err() else {
+        panic!("a release the remote refuses outright fails");
+    };
+    assert!(
+        message.ends_with("so the claim stays until 1970-01-01T00:17:50Z"),
+        "{message}"
+    );
+    let Error::Git(message) = m.b.write(&request("mb", "run-b", Action::Release, 1080)).unwrap_err() else {
+        panic!("a release of an expired claim the remote refuses outright fails");
+    };
+    assert!(
+        message.ends_with("and the claim already expired at 1970-01-01T00:17:50Z"),
+        "{message}"
     );
 }
 
