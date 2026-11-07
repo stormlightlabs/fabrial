@@ -2,9 +2,10 @@
 id = "arcl-t-01M6SCJTNZ9MYTYEZ74XG6WCZG"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
 title = "Let the owner sign off in the squash message"
-status = "in_progress"
+status = "completed"
 priority = "high"
 position = 0
+evidence = "Done in #85 at efbcb9d: an optional signoff setting ends the squash message with the owner's Signed-off-by; PR-body sign-offs are dropped"
 +++
 
 A repository that uses the Developer Certificate of Origin (DCO) needs a
@@ -48,8 +49,8 @@ Changes:
 
 Acceptance criteria:
 
-- [ ] With `signoff` set, the posted squash message ends with the owner's
+- [x] With `signoff` set, the posted squash message ends with the owner's
       `Signed-off-by` line
-- [ ] Without it, the squash message is unchanged
-- [ ] A `Signed-off-by` line in a PR body never reaches the squash message
-- [ ] `fab update` keeps the setting
+- [x] Without it, the squash message is unchanged
+- [x] A `Signed-off-by` line in a PR body never reaches the squash message
+- [x] `fab update` keeps the setting
