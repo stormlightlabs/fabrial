@@ -43,6 +43,9 @@ const STOP_LABEL: &str = "storm:stopped";
 const INTRO: &str = "When you merge, by hand or with auto-merge, squash with this message:";
 const AUTO_MERGE_NOTE: &str = "Auto-merge is on and squashes with the message it was turned on with. \
                                To use this one, turn auto-merge off and on again with it.";
+/// The note under a squash message whose commits could not be read.
+const UNREAD_NOTE: &str = "The gate could not read the commits, so this message names no models. \
+    Push again or rerun the Review gate.";
 const MARKER: &str = "<!-- storm-review diff=";
 /// The status comment section that holds the squash message.
 const SQUASH_SECTION: &str = "Squash message";
@@ -251,13 +254,20 @@ impl Gate {
         // The gate reads the commits rather than Branch PR, so commits pushed
         // after the pull request opened count too. The REST list pages
         // through all of them, up to the 250 GitHub returns for a pull
-        // request.
-        let assisted = if self.assisted {
+        // request, one JSON string per message. A failed read still writes
+        // the message, with a note, so the section never keeps an older
+        // head's message beside this head's success; the run then fails.
+        let (assisted, unread) = if self.assisted {
             let path = format!("repos/{}/pulls/{}/commits", self.repo, self.pr);
-            let messages = run::gh(&["api", "--paginate", &path, "--jq", ".[].commit.message"])?;
-            squash::assisted_by([messages.as_str()])
+            match run::gh(&["api", "--paginate", &path, "--jq", ".[].commit.message | @json"]) {
+                Ok(lines) => {
+                    let messages: Vec<String> = lines.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+                    (squash::assisted_by(messages.iter().map(String::as_str)), None)
+                }
+                Err(e) => (Vec::new(), Some(e)),
+            }
         } else {
-            Vec::new()
+            (Vec::new(), None)
         };
         // The subject carries the PR number, as GitHub's own squash title
         // does, so `git log` on main leads back to the pull request.
@@ -283,10 +293,17 @@ impl Gate {
         if !info["autoMergeRequest"].is_null() {
             text = format!("{text}\n\n{AUTO_MERGE_NOTE}");
         }
+        if unread.is_some() {
+            text = format!("{text}\n\n{UNREAD_NOTE}");
+        }
         // A section of the status comment, which an edit changes without a
         // notification, so a run that changes nothing posts nothing.
         let mut status = Status::read(&self.repo, &self.pr)?;
-        status.set(SQUASH_SECTION, &text, self.scratch.path(), self.dry_run)
+        let wrote = status.set(SQUASH_SECTION, &text, self.scratch.path(), self.dry_run)?;
+        match unread {
+            Some(e) => Err(format!("cannot read the pull request's commits for Assisted-by: {e}")),
+            None => Ok(wrote),
+        }
     }
 
     /// Asks for a command again when the SHA it names is not the head.

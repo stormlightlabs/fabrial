@@ -34,6 +34,7 @@ printf '%s\0' "$@" | jq -Rsc --arg body "$body" '{args: split("\u0000")[:-1], bo
 reply() { if [[ -n $filter ]]; then jq -r "$filter" <<<"$1"; else printf '%s\n' "$1"; fi; }
 if [[ $1 == pr && ${2:-} == "${TEST_FAIL:-}" ]]; then exit 1; fi
 if [[ $1 == api && ${2:-} == -X && ${4:-} == */comments* && ${TEST_FAIL:-} == comment ]]; then exit 1; fi
+if [[ $1 == api && ${3:-} == */commits && ${TEST_FAIL:-} == commits ]]; then exit 1; fi
 case "$1 ${2:-}" in
   "pr view")
     view=$TEST_PR
@@ -326,6 +327,21 @@ fn assisted_by_names_each_agent_model_in_the_commits() {
         "{message}"
     );
     assert_eq!(message.matches("Assisted-by").count(), 1, "{message}");
+    assert!(
+        run.calls
+            .iter()
+            .any(|c| c.is("api", "--paginate") && c.args[2].ends_with("/commits"))
+    );
+    // A failed read still writes the message, with a note, and fails the run.
+    let failing = with(&base, &[("TEST_COMMITS", &commits), ("TEST_FAIL", "commits")]);
+    let run = gate_in(settings.path(), &failing, json!({}), None);
+    assert_ne!(run.code, Some(0));
+    assert!(run.succeeded_check());
+    let message = run.posts()[0];
+    assert!(
+        message.contains("could not read the commits") && !message.contains("Assisted-by:"),
+        "{message}"
+    );
     // Off without the setting: the gate does not read the commits.
     fs::write(&toml, "owner = \"o\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\n").unwrap();
     let run = gate_in(settings.path(), &env, json!({}), None);

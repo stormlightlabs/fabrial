@@ -40,18 +40,32 @@ pub fn body(description: &str, branch: &str, trailer: &str, signoff: Option<&str
 
 /// The agent models commit messages name, one per distinct name in the order
 /// they first appear: the name of each `Co-authored-by` trailer whose address
-/// is an agent's.
+/// is an agent's. Only a message's last paragraph holds trailers, and an
+/// indented line there is a continuation or an example, not one. A name
+/// must look like a model's, so a trailer cannot carry other text to main.
 pub fn assisted_by<'a>(messages: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     let mut models: Vec<String> = Vec::new();
-    for line in messages.into_iter().flat_map(str::lines) {
-        let Some((key, value)) = line.trim().split_once(':') else { continue };
+    let trailers = |m: &'a str| {
+        m.replace('\r', "")
+            .trim_end()
+            .rsplit("\n\n")
+            .next()
+            .unwrap_or_default()
+            .to_string()
+    };
+    let blocks: Vec<String> = messages.into_iter().map(trailers).collect();
+    for line in blocks.iter().flat_map(|b| b.lines()) {
+        if line.starts_with(char::is_whitespace) {
+            continue;
+        }
+        let Some((key, value)) = line.split_once(':') else { continue };
         if !key.trim_end().eq_ignore_ascii_case("co-authored-by") {
             continue;
         }
         let Some((name, rest)) = value.split_once('<') else { continue };
         let (name, address) = (name.trim(), rest.trim_end().trim_end_matches('>'));
         let agent = AGENT_ADDRESSES.iter().any(|a| address.eq_ignore_ascii_case(a));
-        if agent && !name.is_empty() && !models.iter().any(|m| m == name) {
+        if agent && is_model_name(name) && !models.iter().any(|m| m == name) {
             models.push(name.to_string());
         }
     }
@@ -110,6 +124,14 @@ fn attributes_an_agent(line: &str) -> bool {
         || generated
         || bare.contains("claude.ai/code/session_")
         || bare.contains("chatgpt.com/codex/")
+}
+
+/// Whether a name looks like a model's: a letter, then up to 63 letters,
+/// digits, spaces, dots, hyphens or underscores.
+fn is_model_name(name: &str) -> bool {
+    name.len() <= 64
+        && name.starts_with(|c: char| c.is_ascii_alphabetic())
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || " .-_".contains(c))
 }
 
 /// Whether a lowercased line is the trailer `key`, also behind a list marker
@@ -184,6 +206,13 @@ mod tests {
         assert_eq!(assisted_by(commits), ["Claude Opus 5.5", "Claude Sonnet 5.5"]);
         assert!(assisted_by(["Plain\n\nCo-authored-by: A <a@b>", "No trailers"]).is_empty());
         assert!(assisted_by(["Co-authored-by: <noreply@anthropic.com>"]).is_empty());
+        let example = "Docs\n\nLike this:\n    Co-authored-by: Claude Sonnet 4 <noreply@anthropic.com>\n\nCo-authored-by: A <a@b>";
+        assert!(assisted_by([example]).is_empty());
+        let body_only =
+            "Fix\n\nCo-authored-by: Claude Opus 5.5 <noreply@anthropic.com>\nwas wrong\n\nSigned-off-by: A <a@b>";
+        assert!(assisted_by([body_only]).is_empty());
+        let free_text = "Fix\n\nCo-authored-by: Closes #1, see https://evil <noreply@anthropic.com>";
+        assert!(assisted_by([free_text]).is_empty());
     }
 
     #[test]
