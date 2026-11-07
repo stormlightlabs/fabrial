@@ -1,24 +1,31 @@
 //! The squash commit body Branch PR and the Review gate both build from a
-//! pull request's description: its text, then `Merged from <branch>.` and the
-//! owner's Co-authored-by line.
+//! pull request's description: its text, then `Merged from <branch>.`, the
+//! owner's Co-authored-by line and, when the settings name one, the owner's
+//! Signed-off-by line.
 //!
 //! The description stops at the footer line Branch PR writes, so the text
 //! after it stays out. The body Branch PR generated before the footer existed
 //! counts as empty. Lines that attribute the work to an agent are dropped,
-//! quoted or not and in any case: Co-authored-by and Claude-Session trailers,
+//! quoted or not and in any case: Co-authored-by, Signed-off-by and
+//! Claude-Session trailers,
 //! a `Session:` line naming a link, "Generated with" lines, the robot emoji,
 //! and Claude Code session and Codex task links. No agent attribution reaches
-//! main. Code blocks get no special treatment.
+//! main, and only the settings can sign off. Code blocks get no special
+//! treatment.
 
 /// The line that ends the part of a pull request body the squash keeps.
 pub const FOOTER: &str = "<!-- fabrial:footer";
 
 /// The squash body for a description: its kept text, a blank line, then
-/// `Merged from <branch>.` and the owner's trailer. A description with
-/// nothing kept gives the plain `Merged from <branch>.` body.
-pub fn body(description: &str, branch: &str, trailer: &str) -> String {
+/// `Merged from <branch>.`, the owner's trailer and, when `signoff` is set,
+/// the owner's `Signed-off-by` line. A description with nothing kept gives
+/// the plain `Merged from <branch>.` body.
+pub fn body(description: &str, branch: &str, trailer: &str, signoff: Option<&str>) -> String {
     let text = kept_text(description);
-    let merged = format!("Merged from {branch}.\n\nCo-authored-by: {trailer}");
+    let mut merged = format!("Merged from {branch}.\n\nCo-authored-by: {trailer}");
+    if let Some(signoff) = signoff {
+        merged = format!("{merged}\nSigned-off-by: {signoff}");
+    }
     if text.is_empty() { merged } else { format!("{text}\n\n{merged}") }
 }
 
@@ -65,6 +72,7 @@ fn attributes_an_agent(line: &str) -> bool {
         })
     });
     bare.starts_with("co-authored-by:")
+        || bare.starts_with("signed-off-by:")
         || bare.starts_with("claude-session:")
         || bare
             .strip_prefix("session:")
@@ -88,12 +96,25 @@ mod tests {
     #[test]
     fn the_body_ends_with_the_branch_and_the_owner() {
         assert_eq!(
-            body("Why it changed.\n", "storm/x", "A <a@b>"),
+            body("Why it changed.\n", "storm/x", "A <a@b>", None),
             "Why it changed.\n\nMerged from storm/x.\n\nCo-authored-by: A <a@b>"
         );
         assert_eq!(
-            body("", "storm/x", "A <a@b>"),
+            body("", "storm/x", "A <a@b>", None),
             "Merged from storm/x.\n\nCo-authored-by: A <a@b>"
+        );
+    }
+
+    #[test]
+    fn a_signoff_ends_the_body_and_the_description_cannot_write_one() {
+        let description = "Why.\nSigned-off-by: Agent <agent@x>\n> signed-off-by: B <b@c>\n";
+        assert_eq!(
+            body(description, "storm/x", "A <a@b>", Some("A <a@b>")),
+            "Why.\n\nMerged from storm/x.\n\nCo-authored-by: A <a@b>\nSigned-off-by: A <a@b>"
+        );
+        assert_eq!(
+            body(description, "storm/x", "A <a@b>", None),
+            "Why.\n\nMerged from storm/x.\n\nCo-authored-by: A <a@b>"
         );
     }
 

@@ -128,6 +128,12 @@ fn root() -> PathBuf {
 /// Runs `fab gate` with `env` against a pull request: a draft with a title
 /// and body, changed by `pr`, and by `later` too once the run has posted.
 fn gate(env: &[(&str, &str)], pr: Value, later: Option<Value>) -> Run {
+    gate_in(&root(), env, pr, later)
+}
+
+/// [`gate`], reading `.github/fabrial.toml` from `dir` instead of the
+/// repository root.
+fn gate_in(dir: &Path, env: &[(&str, &str)], pr: Value, later: Option<Value>) -> Run {
     let target = root().join("target");
     fs::create_dir_all(&target).unwrap();
     let temp = tempfile::tempdir_in(target).unwrap();
@@ -150,7 +156,7 @@ fn gate(env: &[(&str, &str)], pr: Value, later: Option<Value>) -> Run {
     let path = format!("{}:{}", temp.path().display(), std::env::var("PATH").unwrap());
     let output = Command::new(env!("CARGO_BIN_EXE_fab"))
         .arg("gate")
-        .current_dir(root())
+        .current_dir(dir)
         .env_clear()
         .env("PATH", path)
         .env("HOME", temp.path())
@@ -266,6 +272,26 @@ fn review_finished_marks_the_draft_ready_and_posts_the_squash_message() {
             "the gate must not touch auto-merge"
         );
     }
+}
+
+#[test]
+fn a_signoff_in_the_settings_ends_the_squash_message() {
+    let settings = tempfile::tempdir().unwrap();
+    fs::create_dir(settings.path().join(".github")).unwrap();
+    fs::write(
+        settings.path().join(".github/fabrial.toml"),
+        "owner = \"o\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\nsignoff = \"A <a@b>\"\n",
+    )
+    .unwrap();
+    let body = "A change.\nSigned-off-by: Agent <agent@x>";
+    let run = gate_in(settings.path(), &with(&finished(), &[]), json!({"body": body}), None);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    let message = run.posts()[0];
+    assert!(
+        message.contains("Co-authored-by: A <a@b>\nSigned-off-by: A <a@b>\n"),
+        "{message}"
+    );
+    assert!(!message.contains("Agent <agent@x>"), "{message}");
 }
 
 #[test]

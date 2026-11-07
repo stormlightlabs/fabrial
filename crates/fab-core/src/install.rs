@@ -619,6 +619,7 @@ mod tests {
         Settings {
             owner: "desertthunder".into(),
             trailer: "Owais <desertthunder.dev@gmail.com>".into(),
+            signoff: None,
             gates: "npm test".into(),
             version: None,
         }
@@ -659,6 +660,10 @@ mod tests {
         assert!(toml.contains(r#"gates = "just check""#));
         assert!(toml.contains(r#"owner = "desertthunder""#));
         assert_eq!(check(dir.path()).unwrap(), vec![]);
+        update(dir.path(), |s| s.signoff = Some("Owais <o@x>".into()), false).unwrap();
+        update(dir.path(), |_| {}, false).unwrap();
+        let toml = fs::read_to_string(dir.path().join(SETTINGS_PATH)).unwrap();
+        assert!(toml.contains(r#"signoff = "Owais <o@x>""#), "{toml}");
     }
 
     #[test]

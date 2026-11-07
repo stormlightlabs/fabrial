@@ -2,7 +2,7 @@
 id = "arcl-t-01M6SCJTNZ9MYTYEZ74XG6WCZG"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
 title = "Let the owner sign off in the squash message"
-status = "pending"
+status = "in_progress"
 priority = "high"
 position = 0
 +++
