@@ -317,8 +317,18 @@ fn assisted_by_names_each_agent_model_in_the_commits() {
         "{message}"
     );
     assert_eq!(message.matches("Assisted-by").count(), 1, "{message}");
-    // Off by default: the repository's own settings name no models.
-    let run = gate(&with(&finished(), &[]), json!({"commits": commits}), None);
+    // Off without the setting, though the pull request's commits name a model.
+    fs::write(
+        settings.path().join(".github/fabrial.toml"),
+        "owner = \"o\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\n",
+    )
+    .unwrap();
+    let run = gate_in(
+        settings.path(),
+        &with(&finished(), &[]),
+        json!({"commits": commits}),
+        None,
+    );
     assert!(!run.posts()[0].contains("Assisted-by"), "{}", run.posts()[0]);
 }
 
