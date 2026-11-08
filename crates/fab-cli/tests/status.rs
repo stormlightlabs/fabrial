@@ -85,7 +85,8 @@ fn take(temp: &Path, now: u64, task: &str, run: &str) {
 }
 
 /// A host configuration whose private `state_dir` holds one worker record
-/// for each `(role, worktree name, created_at)`.
+/// for each `(role, worktree name, created_at)`, and an empty record
+/// directory, as dispatch leaves while it creates a record.
 fn config(temp: &Path, workers: &[(&str, &str, u64)]) -> PathBuf {
     let state = temp.join("state");
     for (i, (role, worktree, created_at)) in workers.iter().enumerate() {
@@ -101,7 +102,7 @@ fn config(temp: &Path, workers: &[(&str, &str, u64)]) -> PathBuf {
         });
         fs::write(dir.join("worker.json"), record.to_string()).unwrap();
     }
-    fs::create_dir_all(&state).unwrap();
+    fs::create_dir_all(state.join("records").join("00000000-0000-4000-8000-ffffffffffff")).unwrap();
     fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).unwrap();
     let path = temp.join("host.toml");
     fs::write(
@@ -139,9 +140,9 @@ fn live_lapsed_and_worked_claims_show_their_holder_pull_request_and_step() {
     git(&clone, &["push", "-q", "origin", "storm/worked"]);
     let pulls = json!([
         {"number": 7, "html_url": "https://github.com/o/r/pull/7", "draft": true,
-         "head": {"ref": "storm/worked", "repo": {"full_name": "o/r"}}},
+         "head": {"ref": "storm/worked", "repo": {"full_name": "o/r"}}, "base": {"repo": {"full_name": "o/r"}}},
         {"number": 8, "html_url": "https://github.com/x/r/pull/8", "draft": false,
-         "head": {"ref": "storm/live", "repo": {"full_name": "x/r"}}},
+         "head": {"ref": "storm/live", "repo": {"full_name": "x/r"}}, "base": {"repo": {"full_name": "o/r"}}},
     ]);
     fs::write(temp.path().join("pulls.json"), pulls.to_string()).unwrap();
 
@@ -205,4 +206,99 @@ fn live_lapsed_and_worked_claims_show_their_holder_pull_request_and_step() {
         stdout.contains("live: live until 1970-01-01T00:20:00Z, run run-b on m\n  step: no worker recorded\n"),
         "{stdout}"
     );
+}
+
+#[test]
+fn unclaimed_orphan_and_renamed_branches_are_each_reported() {
+    let temp = tempfile::tempdir().unwrap();
+    let clone = fixture(temp.path());
+    git(&clone, &["switch", "-q", "-c", "storm/plain"]);
+    fs::write(clone.join("file"), "work\n").unwrap();
+    git(&clone, &["add", "file"]);
+    git(&clone, &["commit", "-q", "-m", "Work"]);
+    git(&clone, &["push", "-q", "origin", "storm/plain"]);
+    take(temp.path(), 0, "orphan", "run-o");
+    take(temp.path(), 0, "renamed", "run-r");
+    // Replace storm/orphan with a root commit carrying the same claim
+    // message, so it shares no history with main.
+    let message = Command::new("git")
+        .args([
+            "-C",
+            clone.to_str().unwrap(),
+            "log",
+            "-1",
+            "--format=%B",
+            "origin/storm/orphan",
+        ])
+        .output()
+        .unwrap();
+    let message = String::from_utf8(message.stdout).unwrap();
+    let empty = Command::new("git")
+        .args([
+            "-C",
+            clone.to_str().unwrap(),
+            "hash-object",
+            "-t",
+            "tree",
+            "-w",
+            "--stdin",
+        ])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    let empty = String::from_utf8(empty.stdout).unwrap();
+    let root = Command::new("git")
+        .args(["-C", clone.to_str().unwrap()])
+        .args([
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit-tree",
+            empty.trim(),
+            "-m",
+            &message,
+        ])
+        .output()
+        .unwrap();
+    let root = String::from_utf8(root.stdout).unwrap();
+    git(
+        &clone,
+        &[
+            "push",
+            "-q",
+            "-f",
+            "origin",
+            &format!("{}:refs/heads/storm/orphan", root.trim()),
+        ],
+    );
+    // After a rename GitHub names the new repository in head and base.
+    let pulls = json!([
+        {"number": 9, "html_url": "https://github.com/o/new/pull/9", "draft": false,
+         "head": {"ref": "storm/renamed", "repo": {"full_name": "O/New"}}, "base": {"repo": {"full_name": "o/new"}}},
+    ]);
+    fs::write(temp.path().join("pulls.json"), pulls.to_string()).unwrap();
+
+    let (code, stdout, stderr) = fab(temp.path(), 60, &["status", "--repo", "o/r"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(lines[0].starts_with("orphan: cannot read storm/orphan: "), "{stdout}");
+    assert_eq!(
+        lines[1..],
+        [
+            "plain: storm/plain holds no claim",
+            "  work on the branch, no open pull request",
+            "renamed: live until 1970-01-01T00:10:00Z, run run-r on m",
+            "  pull request #9 https://github.com/o/new/pull/9",
+        ]
+    );
+
+    let (code, stdout, _) = fab(temp.path(), 60, &["status", "--repo", "o/r", "--json"]);
+    assert_eq!(code, Some(0));
+    let tasks: Vec<Value> = stdout.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert!(tasks[0]["error"].is_string(), "{stdout}");
+    assert_eq!(tasks[0]["claim"], Value::Null);
+    assert_eq!((&tasks[1]["claim"], &tasks[1]["work"]), (&Value::Null, &json!(true)));
+    assert!(tasks[1].get("error").is_none());
+    assert_eq!(tasks[2]["pull_request"]["number"], 9);
 }

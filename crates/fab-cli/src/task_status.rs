@@ -48,8 +48,9 @@ struct Step {
     state: String,
 }
 
-/// Runs `fab status` in the current repository. Exits 2 when git, `gh` or
-/// the worker records cannot be read.
+/// Runs `fab status` in the current repository. Exits 2 when the remote,
+/// `gh` or the worker registry cannot be read; a single branch or worker
+/// record that cannot be read is reported and skipped.
 pub fn run(options: Options) -> ExitCode {
     match status(&options) {
         Ok(()) => ExitCode::SUCCESS,
@@ -95,7 +96,9 @@ fn status(options: &Options) -> Result<()> {
 }
 
 /// The open pull requests from the repository's own branches, by head
-/// branch, read with one paginated `gh api` call.
+/// branch, read with one paginated `gh api` call. A pull request is from
+/// the repository's own branch when its head and base repositories match,
+/// which holds after a rename that the remote's URL predates.
 fn pulls(repo: &str) -> Result<Vec<(String, Pull)>> {
     let list = run::gh(&[
         "api",
@@ -105,9 +108,10 @@ fn pulls(repo: &str) -> Result<Vec<(String, Pull)>> {
     Ok(cleanup::pages(&list)?
         .iter()
         .filter(|p| {
-            p["head"]["repo"]["full_name"]
-                .as_str()
-                .is_some_and(|name| name.eq_ignore_ascii_case(repo))
+            let head = p["head"]["repo"]["full_name"].as_str();
+            let base = p["base"]["repo"]["full_name"].as_str();
+            head.zip(base)
+                .is_some_and(|(head, base)| head.eq_ignore_ascii_case(base))
         })
         .filter_map(|p| {
             let branch = p["head"]["ref"].as_str()?.to_string();
@@ -180,6 +184,9 @@ fn object(task: &Listed, pull: Option<&Pull>, step: Option<&Option<Step>>, now: 
         "work": task.work,
         "pull_request": pull,
     });
+    if let Some(error) = &task.error {
+        value["error"] = json!(error);
+    }
     if let Some(step) = step {
         value["step"] = match step {
             Some(s) => json!({"worker_id": s.worker_id, "role": s.role, "state": s.state}),
@@ -193,6 +200,14 @@ fn object(task: &Listed, pull: Option<&Pull>, step: Option<&Option<Step>>, now: 
 /// and the step when there are any.
 fn text(task: &Listed, pull: Option<&Pull>, step: Option<&Option<Step>>, now: u64) -> String {
     let mut out = match &task.holder {
+        _ if task.error.is_some() => {
+            format!(
+                "{}: cannot read {}: {}\n",
+                task.task,
+                task.branch,
+                task.error.as_deref().unwrap_or_default()
+            )
+        }
         Some(c) => {
             let state = if c.is_live(now) { "live until" } else { "lapsed at" };
             format!(

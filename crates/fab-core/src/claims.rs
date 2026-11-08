@@ -204,6 +204,9 @@ pub struct Listed {
     pub holder: Option<Claim>,
     /// Whether the branch holds anything besides claim commits.
     pub work: bool,
+    /// Why the branch could not be read, such as a branch that shares no
+    /// history with `main`. `holder` and `work` are then empty.
+    pub error: Option<String>,
 }
 
 /// The claims of one remote, read and written through a local repository.
@@ -306,7 +309,9 @@ impl Store {
 
     /// Every `storm/` branch of the remote, sorted by name, from one fetch
     /// of `main` and those branches. The fetch prunes remote-tracking refs
-    /// of deleted `storm/` branches.
+    /// of deleted `storm/` branches. A branch that cannot be read is listed
+    /// with its [`Listed::error`]; only a failed fetch or ref listing fails
+    /// the whole list.
     pub fn list(&self) -> Result<Vec<Listed>, Error> {
         let tracking = format!("refs/remotes/{}/", self.remote);
         let main = format!("+refs/heads/main:{tracking}main");
@@ -333,8 +338,13 @@ impl Store {
             let branch = name.trim_start_matches(&tracking).to_string();
             let raw = &branch[PREFIX.len()..];
             let task = task_of(&branch).unwrap_or_else(|| raw.to_string());
-            let read = self.read(&task, &main, tip.to_string())?;
-            listed.push(Listed { branch, task, tip: read.tip, holder: read.holder, work: read.work });
+            let entry = match self.read(&task, &main, tip.to_string()) {
+                Ok(read) => Listed { branch, task, tip: read.tip, holder: read.holder, work: read.work, error: None },
+                Err(e) => {
+                    Listed { branch, task, tip: tip.to_string(), holder: None, work: false, error: Some(e.to_string()) }
+                }
+            };
+            listed.push(entry);
         }
         listed.sort_by(|a, b| a.branch.cmp(&b.branch));
         Ok(listed)
