@@ -1,5 +1,6 @@
 //! Queue admission is serialized across independent submitters.
 
+use std::os::unix::fs::PermissionsExt;
 use std::sync::{Arc, Barrier};
 use std::thread;
 

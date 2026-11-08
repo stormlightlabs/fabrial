@@ -10,6 +10,8 @@ mod depth;
 #[cfg(unix)]
 mod dispatch;
 mod drive;
+#[cfg(unix)]
+mod events;
 mod gate;
 mod gates;
 mod release;
@@ -43,6 +45,10 @@ enum Command {
         #[command(subcommand)]
         operation: dispatch::operations::Operation,
     },
+    /// Print run events from dispatch's records as JSON lines, one per
+    /// event, each with the cursor to resume after it.
+    #[cfg(unix)]
+    Events(events::Options),
     /// Internal trusted tmux recorder.
     #[cfg(unix)]
     #[command(hide = true)]
@@ -218,6 +224,8 @@ fn main() -> ExitCode {
         Command::Dispatch(options) => return ExitCode::from(dispatch::run(options)),
         #[cfg(unix)]
         Command::Worker { operation } => return ExitCode::from(operation.run()),
+        #[cfg(unix)]
+        Command::Events(options) => return ExitCode::from(events::run(options)),
         #[cfg(unix)]
         Command::DispatchRecord { private } => return ExitCode::from(dispatch::record(&private)),
         #[cfg(unix)]

@@ -67,8 +67,8 @@ requires. Clippy warnings fail it whether or not your change caused them.
 ## Layout
 
 ```text
-crates/fab-core   install, settings and task claims; later, the other run
-                  operations
+crates/fab-core   install, settings, task claims and run events; later, the
+                  other run operations
 crates/fab-cli    the `fab` binary, including what workflows and skills run:
                   `fab claim`, `fab status`, `fab gate`, `fab branch-pr`,
                   `fab release`, `fab review-depth`, `fab sequence`,
