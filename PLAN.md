@@ -49,7 +49,8 @@ a paid plan, so rulesets on `main` are enforced.
 - **One set of run operations, three drivers.** A core crate holds the
   operations: claim, start a step, record a result, mark ready, release. The
   daemon drives the fixed sequence in code. An agent such as Pi drives it
-  through the CLI or `fab mcp`. A person drives it with `/storm:` PR comments
+  through the CLI or `fab mcp`. A person drives it by asking the session,
+  with `/storm:ready` and `/storm:stop` PR comments the gate workflow reads,
   or through whatever a host builds on the same operations.
 - **Enforcement is server-side:** rulesets, required checks and the review
   workflow. There is no shell-command parsing or general token broker. Worker
@@ -81,9 +82,11 @@ a paid plan, so rulesets on `main` are enforced.
   input from one. Reviewers hand findings to the session that dispatched
   them, the reviser works from those, and the gates run locally. The loop
   still posts outward: each pass's review with its findings on the diff, the
-  answers, `Review finished` and the gate. What happens after hand-off, such
-  as CI failing later, the owner's review comments or a request to review
-  again, belongs to the harness or the person driving it. A larger loop that
+  answers and `Review finished`. What happens after hand-off, such as CI
+  failing later, the owner's review comments or a request to review again,
+  belongs to the harness or the person driving it. The Pi package's PR
+  status, which starts an orchestrator turn on a failed check or a requested
+  change, is such harness behaviour, outside the loop. A larger loop that
   watches pull requests and merges without a person needs projects that can
   run that hands-off, and its own planning; agents turning on auto-merge,
   since removed, was the first lesson there.
