@@ -58,9 +58,9 @@ settings in `.github/fabrial.toml`, unless `--owner`, `--trailer`,
 `--gates`, `--signoff` or `--assisted-by` changes one, and replaces the files
 with this build's. `--signoff ""` removes the sign-off. It refuses to install
 an older release over a newer one unless you pass `--force`. It deletes a
-file only older releases installed, such as `.github/storm/gate.sh`, when it
-is as a release wrote it, and keeps and names one you edited; `fab check`
-reports each still there. `CHANGELOG.md` says what each
+file only older releases installed, such as `.github/storm/gate.sh`, if you
+have not edited it. It keeps and lists an edited one, and `fab check`
+reports each one still there. `CHANGELOG.md` says what each
 release changes. A repository moving to this release from one that named
 its tracker in the skills adds a **Tasks** section to its `AGENTS.md`;
 without it the skills stop and ask when given a task ID.

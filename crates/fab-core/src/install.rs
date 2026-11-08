@@ -734,8 +734,81 @@ mod tests {
         assert!(owners.ends_with("* @desertthunder\n"));
     }
 
-    /// `.github/storm/squash-body.sh` as v0.5.0 installed it.
-    const SQUASH_BODY_0_5_0: &str = include_str!("testdata/squash-body-0.5.0.sh");
+    /// Every version of each [`RETIRED`] file a release wrote, from
+    /// `git show <tag>:<path>` at the first release that wrote it, with its
+    /// file name under `src/testdata`.
+    const RETIRED_VERSIONS: &[(&str, &str, &str)] = &[
+        (
+            ".github/storm/gate.sh",
+            "gate-0.2.0.sh",
+            include_str!("testdata/gate-0.2.0.sh"),
+        ),
+        (
+            ".github/storm/gate.sh",
+            "gate-0.3.0.sh",
+            include_str!("testdata/gate-0.3.0.sh"),
+        ),
+        (
+            ".github/storm/gate.sh",
+            "gate-0.3.1.sh",
+            include_str!("testdata/gate-0.3.1.sh"),
+        ),
+        (
+            ".github/storm/gate.sh",
+            "gate-0.3.2.sh",
+            include_str!("testdata/gate-0.3.2.sh"),
+        ),
+        (
+            ".github/storm/squash-body.sh",
+            "squash-body-0.2.0.sh",
+            include_str!("testdata/squash-body-0.2.0.sh"),
+        ),
+        (
+            ".github/storm/squash-body.sh",
+            "squash-body-0.3.2.sh",
+            include_str!("testdata/squash-body-0.3.2.sh"),
+        ),
+    ];
+
+    /// `.github/storm/squash-body.sh` as v0.3.2 to v0.5.0 installed it.
+    const SQUASH_BODY_0_5_0: &str = include_str!("testdata/squash-body-0.3.2.sh");
+
+    #[test]
+    fn retired_hashes_match_the_versions_in_testdata() {
+        for (path, hashes) in RETIRED {
+            let listed: BTreeSet<&str> = hashes.iter().copied().collect();
+            let found: BTreeSet<String> = RETIRED_VERSIONS
+                .iter()
+                .filter(|(p, _, _)| p == path)
+                .map(|(_, _, contents)| sha256_hex(contents.as_bytes()))
+                .collect();
+            let found: BTreeSet<&str> = found.iter().map(String::as_str).collect();
+            assert_eq!(listed, found, "{path}");
+        }
+        for (path, _, _) in RETIRED_VERSIONS {
+            assert!(RETIRED.iter().any(|(p, _)| p == path), "{path} is not retired");
+        }
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/testdata");
+        let on_disk: BTreeSet<String> = fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        let named: BTreeSet<String> = RETIRED_VERSIONS.iter().map(|(_, name, _)| name.to_string()).collect();
+        assert_eq!(on_disk, named);
+    }
+
+    #[test]
+    fn update_deletes_every_version_of_a_retired_file() {
+        for (path, name, contents) in RETIRED_VERSIONS {
+            let dir = tempfile::tempdir().unwrap();
+            install(dir.path(), &settings(), false).unwrap();
+            let target = dir.path().join(path);
+            fs::write(&target, contents).unwrap();
+            let report = update(dir.path(), |_| {}, false).unwrap();
+            assert_eq!(report.removed, vec![PathBuf::from(path)], "{name}");
+            assert!(!target.exists(), "{name}");
+        }
+    }
 
     #[test]
     fn retired_files_are_not_installed_and_list_sha256_hashes() {
