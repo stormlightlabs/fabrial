@@ -92,13 +92,28 @@ Answering the review at 4f2a91c · <model> · <effort>
 - 2214093388 · Not a defect: `parse_empty` covers the empty input.
 ```
 
+The model and effort are the ones your invoker gave you; write `not stated`
+for one you were not told.
+
 Each line becomes a reply on that finding's thread. Answer the findings in
 the review's body as lines without an id; they stay in the answers review's
 own body. When the findings have no ids, or `main`'s `comment.yml` has no
 `answers` input, post the same text as a plain comment, with lines that name
-no id. Keep the whole under 150 words. `Fixed in <sha>` is a complete
+no id. Keep the whole to 150 words at most; `fab pr-answer` refuses longer
+answers and prints the count. `Fixed in <sha>` is a complete
 outcome. A finding needs a sentence only where you did not act on it, or
 where the diff does not show what changed.
+
+When the answers address a person's review, add `reviewer` set to that
+person's login, as `-f reviewer=<login>` or `"reviewer": "<login>"` in
+`inputs`. Once the answers post, the bot requests their review again. Check
+first that `main`'s `comment.yml` has a `reviewer` input; when it has not,
+say in your report that the request is left to the driver. Answers to a
+review pass name no reviewer.
+
+Never dismiss a review, with the bot or with your own access. A person's
+review stands after the fixes, even when they make it stale: that person or
+the owner decides on it.
 
 Where a fix changes what the pull request does, or leaves the title or body
 describing something the branch no longer does, edit them. The text above the

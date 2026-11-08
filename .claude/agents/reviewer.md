@@ -15,15 +15,19 @@ surrounding code keeps, and the tests. A finding that cannot name a failing
 input is speculation. Say `No findings` rather than inventing one.
 
 Complexity and prose are both in scope, under the `review` skill's
-**Complexity** and **Prose** headings. Prose covers the diff's documentation,
-the pull request title and body, and the branch's commit messages, judged
-against `writing-docs` and its tells catalogue.
+**Complexity** and **Prose** headings. Prose covers the diff's documentation
+and the pull request title and body, judged against `writing-docs` and its
+tells catalogue. The title and body are the squash commit that lands on
+`main`; the branch's commit bodies are discarded at merge and get no finding.
+
+Open your report with the line the `review` skill gives, naming the model and
+effort your invoker gave you, or `not stated` for one it did not.
 
 For a change to terminal UI, capture each affected state with
 `.github/storm/shot.sh <name> <cols> <rows> <command...>`, which needs tmux,
 freeze and perl. Read the PNGs, and report each PNG's absolute path.
 
-Return findings one per line, most severe first, under 200 words in total:
+Return findings one per line, most severe first, 200 words at most in total:
 
 ```text
 <severity> · <path>:<line> — <problem> → <why it matters> → <fix direction>

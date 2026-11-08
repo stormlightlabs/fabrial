@@ -3,8 +3,10 @@
 //! on that line, and the rest of the report is the review's body.
 //! `fab pr-answer` posts a revise pass's answers as one bot review whose
 //! comments are replies on the findings' threads, then resolves the threads
-//! the answers close. One review is one notification, however many findings
-//! it holds.
+//! the answers close, and with `--reviewer` asks that person to review
+//! again. One review is one notification, however many findings it holds.
+//! Both refuse a body past its word limit, since a bot review cannot be
+//! edited once posted.
 
 use std::path::{Path, PathBuf};
 
@@ -17,6 +19,10 @@ use crate::run::{self, Result};
 /// The severities a finding line opens with: the `review` skill's five,
 /// plus `major` and `minor`, which reviewers also write.
 const SEVERITIES: &[&str] = &["blocker", "high", "major", "medium", "minor", "low", "nit"];
+/// The most words a review pass's report may hold, as the `review` skill says.
+const REVIEW_WORDS: usize = 200;
+/// The most words a revise pass's answers may hold, as the `revise` skill says.
+const ANSWER_WORDS: usize = 150;
 /// The outcomes that close a thread. A finding declined as not a defect
 /// stays open for the owner to judge.
 const CLOSING: &[&str] = &["Fixed", "Deferred"];
@@ -72,6 +78,10 @@ pub struct AnswerOptions {
     /// finding, and any other lines for the review's body.
     #[arg(long)]
     body_file: PathBuf,
+    /// The GitHub login of the person whose review the answers address. Once
+    /// the answers post, the bot requests that person's review again.
+    #[arg(long, env = "REVIEWER")]
+    reviewer: Option<String>,
     /// Print the writes instead of sending them. `DRY_RUN=1` sets it.
     #[arg(long, env = "DRY_RUN", action = clap::ArgAction::SetTrue, value_parser = FalseyValueParser::new())]
     dry_run: bool,
@@ -101,6 +111,7 @@ struct Answer {
 /// comment workflow.
 pub fn review(options: ReviewOptions) -> Result<()> {
     let report = read(&options.body_file)?;
+    within(&report, REVIEW_WORDS, "a review pass's report")?;
     if options.head.len() != 40 || !options.head.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(format!("`{}` is not a full commit SHA.", options.head));
     }
@@ -147,6 +158,12 @@ pub fn review(options: ReviewOptions) -> Result<()> {
 /// the threads a fix or a deferral closes, for the Bot comment workflow.
 pub fn answer(options: AnswerOptions) -> Result<()> {
     let text = read(&options.body_file)?;
+    within(&text, ANSWER_WORDS, "a revise pass's answers")?;
+    let reviewer = match options.reviewer.as_deref().map(str::trim) {
+        None | Some("") => None,
+        Some(login) if login.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') => Some(login),
+        Some(login) => return Err(format!("`{login}` is not a GitHub login.")),
+    };
     let (answers, body) = answers(&text);
     if answers.is_empty() {
         // Every finding was in the review's body, so the answers are too.
@@ -161,7 +178,7 @@ pub fn answer(options: AnswerOptions) -> Result<()> {
         )? {
             println!("Posted the answers as a review, with no thread to reply on.");
         }
-        return Ok(());
+        return rerequest(&options.repo, &options.pr, reviewer, options.dry_run);
     }
     let (owner, name) = options
         .repo
@@ -213,7 +230,7 @@ pub fn answer(options: AnswerOptions) -> Result<()> {
             );
         }
         eprintln!("DRY_RUN review body: {body:?}");
-        return Ok(());
+        return rerequest(&options.repo, &options.pr, reviewer, true);
     }
     // GitHub allows one pending review per author, so one a cancelled run
     // left would block this one.
@@ -277,7 +294,7 @@ pub fn answer(options: AnswerOptions) -> Result<()> {
         }
     }
     println!("Answered {} findings and resolved {resolved} threads.", targets.len());
-    Ok(())
+    rerequest(&options.repo, &options.pr, reviewer, false)
 }
 
 /// Posts a review through the REST API, or prints it with `dry_run`.
@@ -302,6 +319,28 @@ fn post(repo: &str, pr: &str, request: &Value, dry_run: bool) -> Result<bool> {
     }
     run::gh(&args)?;
     Ok(true)
+}
+
+/// Asks `reviewer`, when there is one, to review the pull request again, or
+/// prints the request with `dry_run`. It only requests: a review the person
+/// left stands until they or the owner decide on it. The answers are posted
+/// by then, so a failed request is a warning.
+fn rerequest(repo: &str, pr: &str, reviewer: Option<&str>, dry_run: bool) -> Result<()> {
+    let Some(login) = reviewer else {
+        return Ok(());
+    };
+    let path = format!("repos/{repo}/pulls/{pr}/requested_reviewers");
+    let field = format!("reviewers[]={login}");
+    let args = ["api", "-X", "POST", &path, "-f", &field];
+    if dry_run {
+        run::print_write(&args);
+        return Ok(());
+    }
+    match run::gh(&args) {
+        Ok(_) => println!("Requested {login}'s review again."),
+        Err(e) => eprintln!("warning: cannot request {login}'s review again; request it by hand: {e}"),
+    }
+    Ok(())
 }
 
 /// Deletes a pending review.
@@ -332,6 +371,41 @@ fn graphql(query: &str, vars: &[(&str, &str)], filter: &str) -> Result<String> {
         return Err(format!("GitHub returned nothing for `{filter}`."));
     }
     Ok(out.trim().to_string())
+}
+
+/// The words in `text`, counting only runs that hold a letter or a digit, so
+/// the `·` and `—` of a finding line are not words. Each Chinese or Japanese
+/// character counts as a word of its own, since those scripts put no spaces
+/// between words.
+fn words(text: &str) -> usize {
+    text.split_whitespace()
+        .map(|w| {
+            let wide = w.chars().filter(|c| ideographic(*c)).count();
+            let rest = w.chars().any(|c| c.is_alphanumeric() && !ideographic(c));
+            wide + usize::from(rest)
+        })
+        .sum()
+}
+
+/// Whether `c` is a CJK ideograph or a kana, a script written without spaces.
+fn ideographic(c: char) -> bool {
+    matches!(c,
+        '\u{3040}'..='\u{30FF}'
+        | '\u{3400}'..='\u{4DBF}'
+        | '\u{4E00}'..='\u{9FFF}'
+        | '\u{F900}'..='\u{FAFF}'
+        | '\u{20000}'..='\u{3FFFF}')
+}
+
+/// Refuses `text` when it holds more than `limit` words, naming the count.
+fn within(text: &str, limit: usize, what: &str) -> Result<()> {
+    let count = words(text);
+    if count > limit {
+        return Err(format!(
+            "{what} is {count} words, over its limit of {limit}; cut it and post again."
+        ));
+    }
+    Ok(())
 }
 
 fn read(path: &Path) -> Result<String> {
@@ -433,6 +507,24 @@ fn answers(text: &str) -> (Vec<Answer>, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn words_skip_punctuation_runs() {
+        assert_eq!(words("medium · src/a.rs:2 — on the diff"), 5);
+        assert_eq!(words(""), 0);
+        assert!(within(&"w ".repeat(150), 150, "x").is_ok());
+        let err = within(&"w ".repeat(151), 150, "answers").unwrap_err();
+        assert!(err.contains("151 words"), "{err}");
+    }
+
+    #[test]
+    fn words_count_each_ideograph() {
+        assert_eq!(words("修正了这个"), 5);
+        assert_eq!(words("abc漢字 ひらがな"), 7);
+        assert_eq!(words("中文。"), 2);
+        let err = within(&"字".repeat(2200), 200, "report").unwrap_err();
+        assert!(err.contains("2200 words"), "{err}");
+    }
 
     #[test]
     fn hunks_give_the_new_side_ranges() {

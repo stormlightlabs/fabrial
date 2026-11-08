@@ -52,8 +52,15 @@ review's body. A revise pass posts its answers with `answers` set to `true`:
 a line `<comment id> · <outcome>` per finding, where the id is the finding's
 review comment, and any other lines for the review's body. The answers post
 as replies on the findings' threads in one review, and each thread whose
-outcome starts with `Fixed` or `Deferred` is resolved. One review is one
-notification, whatever it holds. Both install `fab` as a section does.
+outcome starts with `Fixed` or `Deferred` is resolved. When the answers
+address a person's review, add `reviewer` set to that person's login, and
+the bot then requests their review again; answers to a review pass name no
+reviewer. One review is one notification, whatever it holds. Both install
+`fab` as a section does.
+
+`fab pr-review` refuses a report over 200 words and `fab pr-answer` answers
+over 150, so the run fails and nothing posts. Shorten the body and post it
+again.
 
 `comment.yml` runs from `main`, so a pull request that updates fabrial posts
 with the older release's inputs until it merges. Before a `section`, `review`
@@ -62,6 +69,9 @@ or `answers` post, check that `main`'s workflow has that input:
 ```sh
 git fetch origin main && git show origin/main:.github/workflows/comment.yml
 ```
+
+Do the same before a `reviewer` post; when `main` lacks the input, post the
+answers without it and report that the request is left to the driver.
 
 When it has not, post the same body as a plain comment, and confirm it as a
 comment, not a review. Findings posted that way have no review comment ids,
@@ -75,9 +85,14 @@ or `pull_request_read` method `get_comments` in a cloud session, should show a
 comment from `stormlight-thunderbot[bot]`, created after you dispatched, whose
 first line matches yours, or for a section, the status comment holding your
 text, or for a review or answers, a review from the bot created after you
-dispatched (`gh pr view <n> --json reviews`, or method `get_reviews`). If
-none appears, look for a failure among the newest `comment.yml` runs and
-report it. Do not retry in a loop.
+dispatched (`gh pr view <n> --json reviews`, or method `get_reviews`). A
+review or answers post is not done until that review appears; never go on to
+the next stage or to `Review finished` without it. If none appears, read the
+newest `comment.yml` run's result once it has finished (`gh run list
+--workflow comment.yml --limit 3` then `gh run view <id> --log-failed`, or
+the GitHub MCP tools' run and job logs in a cloud session). When it failed
+on a word limit, shorten and post again; otherwise report the failure. Do
+not retry in a loop.
 
 ## Implement
 
@@ -113,6 +128,9 @@ stage's line says:
   earlier stages' findings and replies when there are any.
 - A reviser gets the pull request, the task worktree and its review's
   findings, as the review the bot posted.
+- Every agent gets the model and effort you dispatched it with, for the
+  opening line of what it posts. An agent cannot see its own effort; one
+  that was not told writes `not stated`.
 - After each stage that pushes, pin the new head and run `fab sequence` on it
   again. When the depth rose, the run goes on to the stages it added. The
   depth never drops.

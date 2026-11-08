@@ -22,10 +22,16 @@ finding.
 Run the narrowest relevant test, then the gates (the command `gates` names in
 `.github/fabrial.toml`). Push to the pull request's branch and confirm it landed
 before writing a reply that names a commit. Post the answers, a line `<comment
-id> · <outcome>` per finding on the diff, under 150 words, through the Bot
+id> · <outcome>` per finding on the diff, 150 words at most, through the Bot
 comment workflow's `answers` mode, which replies on each thread and resolves
 the ones a fix or a deferral closes. When your invoker asks you to report back
 instead, return the answers to it. `Fixed in <sha>` is a complete outcome.
+Open them with the model and effort your invoker gave you, or `not stated`
+for one it did not.
+
+When the answers address a person's review, add the `reviewer` input with
+their login so the bot requests their review again. Never dismiss a review:
+the person or the owner decides on a stale one.
 
 The `revise` skill's stop conditions are yours too, and each stop is an
 escalation to your invoker.

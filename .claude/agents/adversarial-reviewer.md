@@ -24,7 +24,12 @@ wrong about the code. Then look for what the standard pass would miss:
 
 Complexity and prose are in scope as well: the worst case is often reachable
 because something was harder than it needed to be, and documentation that
-contradicts the code is a finding as much as a missing bounds check.
+contradicts the code is a finding as much as a missing bounds check. Judge
+the pull request title and body as the squash commit that lands; the
+branch's commit bodies are discarded at merge and get no finding.
+
+Open your report with the line the `review` skill gives, naming the model and
+effort your invoker gave you, or `not stated` for one it did not.
 
 Every finding names the input, ordering or state that reaches the failure, and
 how far you got: reproduced with a test you ran, traced through the code, or
@@ -36,6 +41,6 @@ For a change to terminal UI, capture each affected state with
 freeze and perl. Read the PNGs, and report each PNG's absolute path.
 
 You do not edit code. Return findings in the `review` skill's format, one per
-line, most severe first, under 200 words in total. The path is from the
+line, most severe first, 200 words at most in total. The path is from the
 repository root, so a finding on the diff lands on its line. When ten do not fit, cut one
 and say how many you left out.
