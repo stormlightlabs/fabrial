@@ -540,7 +540,7 @@ fn pulls(json: &str) -> Result<Vec<Pull>> {
 }
 
 /// Reads `gh api --paginate` output, one JSON array per page.
-fn pages(json: &str) -> Result<Vec<Value>> {
+pub(crate) fn pages(json: &str) -> Result<Vec<Value>> {
     let mut all = Vec::new();
     for page in serde_json::Deserializer::from_str(json).into_iter::<Vec<Value>>() {
         all.extend(page.map_err(|e| format!("cannot read the open pulls: {e}"))?);
@@ -550,7 +550,7 @@ fn pages(json: &str) -> Result<Vec<Value>> {
 
 /// Reads owner/name from a GitHub remote URL, in its HTTPS, SSH or scp
 /// form, or a proxy URL that ends with them.
-fn repo_from_url(url: &str) -> Option<String> {
+pub(crate) fn repo_from_url(url: &str) -> Option<String> {
     let url = url.trim().trim_end_matches('/');
     let url = url.strip_suffix(".git").unwrap_or(url);
     let mut parts = url.rsplit(['/', ':']);

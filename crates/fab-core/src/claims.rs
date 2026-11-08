@@ -190,6 +190,22 @@ pub struct Prepared {
     pub outcome: Outcome,
 }
 
+/// One `storm/` branch of a remote, as [`Store::list`] reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listed {
+    /// The branch, such as `storm/issue-12`.
+    pub branch: String,
+    /// The task the branch name encodes, or the name after `storm/` when it
+    /// encodes none.
+    pub task: String,
+    /// The branch's tip.
+    pub tip: String,
+    /// The newest claim on the task among the commits `main` lacks.
+    pub holder: Option<Claim>,
+    /// Whether the branch holds anything besides claim commits.
+    pub work: bool,
+}
+
 /// The claims of one remote, read and written through a local repository.
 #[derive(Debug, Clone)]
 pub struct Store {
@@ -286,6 +302,42 @@ impl Store {
                 )))
             }
         }
+    }
+
+    /// Every `storm/` branch of the remote, sorted by name, from one fetch
+    /// of `main` and those branches. The fetch prunes remote-tracking refs
+    /// of deleted `storm/` branches.
+    pub fn list(&self) -> Result<Vec<Listed>, Error> {
+        let tracking = format!("refs/remotes/{}/", self.remote);
+        let main = format!("+refs/heads/main:{tracking}main");
+        let storm = format!("+refs/heads/{PREFIX}*:{tracking}{PREFIX}*");
+        self.git(&[
+            "fetch",
+            "--quiet",
+            "--prune",
+            "--no-tags",
+            "--no-write-fetch-head",
+            &self.remote,
+            &main,
+            &storm,
+        ])?;
+        let main = self.git(&["rev-parse", "--verify", &format!("{tracking}main^{{commit}}")])?;
+        let refs = self.git(&[
+            "for-each-ref",
+            "--format=%(refname)%00%(objectname)",
+            &format!("{tracking}{PREFIX}"),
+        ])?;
+        let mut listed = Vec::new();
+        for line in refs.lines() {
+            let Some((name, tip)) = line.split_once('\0') else { continue };
+            let branch = name.trim_start_matches(&tracking).to_string();
+            let raw = &branch[PREFIX.len()..];
+            let task = task_of(&branch).unwrap_or_else(|| raw.to_string());
+            let read = self.read(&task, &main, tip.to_string())?;
+            listed.push(Listed { branch, task, tip: read.tip, holder: read.holder, work: read.work });
+        }
+        listed.sort_by(|a, b| a.branch.cmp(&b.branch));
+        Ok(listed)
     }
 
     /// Pushes `commit` to the prepared branch, or deletes it when `None`,
@@ -440,6 +492,26 @@ pub fn branch(task: &str) -> Result<String, Error> {
     Ok(name)
 }
 
+/// The task a claim branch names: the inverse of [`branch`], or `None` when
+/// `name` is not a branch [`branch`] would give.
+pub fn task_of(name: &str) -> Option<String> {
+    let escaped = name.strip_prefix(PREFIX)?.as_bytes();
+    let mut bytes = Vec::with_capacity(escaped.len());
+    let mut i = 0;
+    while i < escaped.len() {
+        if escaped[i] == b'%' {
+            let hex = std::str::from_utf8(escaped.get(i + 1..i + 3)?).ok()?;
+            bytes.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            bytes.push(escaped[i]);
+            i += 1;
+        }
+    }
+    let task = String::from_utf8(bytes).ok()?;
+    (branch(&task).ok()? == name).then_some(task)
+}
+
 /// The current time in UTC seconds.
 pub fn now() -> u64 {
     std::time::SystemTime::now()
@@ -532,6 +604,16 @@ mod tests {
             assert!(matches!(branch(bad), Err(Error::Invalid { .. })), "{bad:?}");
         }
         assert!(matches!(branch(&"/".repeat(100)), Err(Error::TooLong(_))));
+    }
+
+    #[test]
+    fn a_branch_gives_back_its_task() {
+        for task in ["issue-12", "a/b c.d", "a%2F", "é"] {
+            assert_eq!(task_of(&branch(task).unwrap()).as_deref(), Some(task));
+        }
+        for name in ["storm/a.b", "storm/%2f", "storm/%2", "storm/%zz", "storm/", "main"] {
+            assert_eq!(task_of(name), None, "{name}");
+        }
     }
 
     #[test]

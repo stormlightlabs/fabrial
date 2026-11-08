@@ -110,6 +110,13 @@ pub(super) fn registry(config: &Path) -> Result<PathBuf> {
     Ok(root)
 }
 
+/// Every worker record's metadata under the host configuration's
+/// `state_dir`, as `fab worker list` prints it.
+pub(crate) fn workers(config: &Path) -> Result<Vec<serde_json::Value>> {
+    let list = super::recovery::list(&registry(config)?)?;
+    Ok(list["workers"].as_array().cloned().unwrap_or_default())
+}
+
 pub(super) fn lookup(root: &Path, id: &str) -> Result<WorkerRecord> {
     if uuid::Uuid::parse_str(id)
         .map_err(|_| "invalid worker UUID")?

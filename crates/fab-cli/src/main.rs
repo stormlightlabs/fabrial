@@ -18,6 +18,7 @@ mod run;
 mod sequence;
 mod squash;
 mod status;
+mod task_status;
 
 use clap::{Args, Parser, Subcommand};
 use fab_core::install::{self, KeptReason, Report};
@@ -56,6 +57,10 @@ enum Command {
         #[command(subcommand)]
         operation: claim::Operation,
     },
+    /// List the claimed tasks on the remote's storm/ branches: each claim's
+    /// holder, run and expiry, its open pull request, and with --config the
+    /// step its latest worker is at.
+    Status(task_status::Options),
     /// Install fabrial's workflows, gate, skills and agents into a repository
     /// that does not have them yet.
     Init {
@@ -197,6 +202,7 @@ fn main() -> ExitCode {
         }),
         Command::Check { repo } => in_repo(&repo, check),
         Command::Claim { operation } => return operation.run(),
+        Command::Status(options) => return task_status::run(options),
         Command::Gate(options) => return in_workflow(gate::run(options)),
         Command::BranchPr(options) => return in_workflow(branch_pr::run(options)),
         Command::Cleanup(options) => return cleanup::run(options),
