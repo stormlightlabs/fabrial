@@ -19,7 +19,7 @@ const fits = (lines, width) => {
 };
 const pr = (overrides = {}) => ({
   status: "success", observedAt, key: `owner/repo#7@${head}`, branch: "storm/task",
-  pr: { repository: "owner/repo", number: 7, url: "https://github.com/owner/repo/pull/7", head, draft: true, state: "open", stopped: false },
+  pr: { repository: "owner/repo", number: 7, url: "https://github.com/owner/repo/pull/7", head, draft: true, state: "open" },
   checks: { total: 4, passed: 4, pending: 0, failed: 0, items: [] }, reviews: { approved: 0, changesRequested: 0 },
   ...overrides,
 });
@@ -61,6 +61,33 @@ test("a PR URL that is not a GitHub pull request is neither linked nor shown", (
 test("failed checks are red and labelled", () => {
   const [first] = render(state({ pr: pr({ status: "failed", checks: { total: 4, passed: 2, pending: 1, failed: 1, items: [] } }) }));
   assert.match(first, /<error>checks 2\/4 passed, 1 failed, 1 pending<\/error>/);
+});
+
+test("merged and closed PRs and requested changes show by word and color", () => {
+  const merged = render(state({ pr: pr({ pr: { ...pr().pr, state: "merged" } }) }))[0];
+  assert.match(merged, /<success>merged<\/success>/);
+  assert.match(render(state({ pr: pr({ pr: { ...pr().pr, state: "closed" } }) }))[0], /<error>closed<\/error>/);
+  const changes = pr({ status: "failed", checks: { total: 4, passed: 3, pending: 0, failed: 1, items: [] }, reviews: { approved: 0, changesRequested: 1 } });
+  const [first] = render(state({ pr: changes }), 70);
+  assert.equal(plain(first), "PR #7 · draft · checks 3/4 passed, 1 failed · changes requested");
+  assert.match(first, /<warning>changes requested<\/warning>/);
+  assert.match(plain(render(state({ pr: { ...changes, checks: { total: 0, passed: 0, pending: 0, failed: 0, items: [] } } }))[0]), /checks none · changes requested/);
+  // Reviews belong to the head they were read for, so a stale reading leaves them out.
+  assert.doesNotMatch(plain(render(state({ pr: { ...changes, status: "stale" } }))[0]), /changes requested/);
+  // A finished PR shows its state, not checks or reviews that no longer call for action.
+  for (const finished of ["merged", "closed"]) {
+    const line = plain(render(state({ pr: { ...changes, pr: { ...changes.pr, state: finished } } }), 70)[0]);
+    assert.match(line, new RegExp(`^PR #7 · ${finished} · `));
+    assert.doesNotMatch(line, /checks|changes requested/);
+  }
+});
+
+test("a kept field with no room after its separator leaves an ellipsis behind", () => {
+  const changes = pr({ status: "failed", checks: { total: 4, passed: 3, pending: 0, failed: 1, items: [] }, reviews: { approved: 0, changesRequested: 1 } });
+  for (let width = 45; width < 63; width++) {
+    assert.match(plain(render(state({ pr: changes }), width)[0]), /…$/, `width ${width}`);
+  }
+  assert.equal(plain(render(state({ pr: changes }), 45)[0]), "PR #7 · draft · checks 3/4 passed, 1 failed…");
 });
 
 test("ahead and behind outlast a long branch name, which Pi's footer already shows", () => {

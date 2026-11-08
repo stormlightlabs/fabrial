@@ -1,15 +1,13 @@
 import { notification } from "./workers.mjs";
 
-/** Messages the journal delivers; worker events are the default. */
-const EVENT_TYPES = ["fabrial.worker-event", "fabrial.pr-event"];
+/** The message type the journal delivers. */
+const EVENT_TYPE = "fabrial.worker-event";
+/** Message types whose replays the context folds, including one no longer sent. */
+const DEDUPED_TYPES = [EVENT_TYPE, "fabrial.pr-event"];
 
-/**
- * Session-local checkpoints and a durable outbox; queued messages are not delivery receipts.
- * Each extension keeps its own journal: it loads and delivers only outbox items of its
- * `customType`, `fabrial.worker-event` for workers and `fabrial.pr-event` for PR status.
- */
+/** Session-local checkpoints and a durable outbox; queued messages are not delivery receipts. */
 export class WorkerJournal {
-  constructor({ entries, append, send, customType = EVENT_TYPES[0] }) {
+  constructor({ entries, append, send }) {
     this.entries = entries;
     this.append = append;
     this.send = send;
@@ -17,11 +15,12 @@ export class WorkerJournal {
     this.outbox = new Map();
     this.seen = new Set();
     this.sent = new Set();
+    // An outbox item with its own `customType` was queued by an earlier PR status and is never delivered.
     for (const entry of entries()) {
       if (entry.type === "custom" && entry.customType === "fabrial.worker" && entry.data?.worker?.worker_id) {
         this.states.set(entry.data.worker.worker_id, entry.data);
       } else if (entry.type === "custom" && entry.customType === "fabrial.worker-outbox" && entry.data?.key &&
-        (entry.data.customType ?? EVENT_TYPES[0]) === customType) {
+        !entry.data.customType) {
         this.outbox.set(entry.data.key, entry.data);
       }
     }
@@ -43,12 +42,10 @@ export class WorkerJournal {
     return state;
   }
 
-  /** Queue a worker event, or a PR event that carries its own `content`. */
+  /** Queue a worker event. */
   enqueue(event) {
     if (!this.outbox.has(event.key)) {
-      const message = event.worker
-        ? { key: event.key, workerId: event.worker.worker_id, content: notification(event) }
-        : { key: event.key, customType: "fabrial.pr-event", content: event.content };
+      const message = { key: event.key, workerId: event.worker.worker_id, content: notification(event) };
       this.append("fabrial.worker-outbox", message);
       this.outbox.set(event.key, message);
     }
@@ -58,24 +55,27 @@ export class WorkerJournal {
   flush() {
     // A follow-up may have been committed since the preceding poll or during reload.
     for (const entry of this.entries()) {
-      if (entry.type === "custom_message" && EVENT_TYPES.includes(entry.customType) && entry.details?.eventKey) {
+      if (entry.type === "custom_message" && entry.customType === EVENT_TYPE && entry.details?.eventKey) {
         this.seen.add(entry.details.eventKey);
       }
     }
     for (const [key, message] of this.outbox) {
       if (this.seen.has(key) || this.sent.has(key)) continue;
-      this.send({ customType: message.customType ?? "fabrial.worker-event", content: message.content, display: true,
+      this.send({ customType: EVENT_TYPE, content: message.content, display: true,
         details: { eventKey: key, workerId: message.workerId } });
       this.sent.add(key);
     }
   }
 }
 
-/** Reload may replay an undelivered outbox item still in Pi's in-memory queue. */
+/**
+ * Reload may replay an undelivered outbox item still in Pi's in-memory queue.
+ * A session from an earlier PR status can hold such a replay as `fabrial.pr-event`.
+ */
 export function dedupeNotifications(messages) {
   const seen = new Set();
   return messages.filter((message) => {
-    if (message.role !== "custom" || !EVENT_TYPES.includes(message.customType)) return true;
+    if (message.role !== "custom" || !DEDUPED_TYPES.includes(message.customType)) return true;
     const key = message.details?.eventKey;
     if (!key) return true;
     if (seen.has(key)) return false;

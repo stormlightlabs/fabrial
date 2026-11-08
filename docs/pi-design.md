@@ -28,6 +28,9 @@ fail, and passes the resulting PR status to Pi sessions by its own means.
 Webhooks change the transport, not the state the
 [status area](pi.md#status-area) reads.
 
+Either way the status is something the person reads. The package starts no
+turn on a PR change; acting on one belongs to the person or to the host.
+
 ## Status area
 
 The [status area](pi.md#status-area) does not yet show:
