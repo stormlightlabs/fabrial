@@ -105,31 +105,56 @@ fn roles_tools_and_no_fallback() {
 fn each_role_gets_its_own_skills() {
     let base = ["review", "storm", "writing-docs"];
     for role in ["reviewer", "verifier", "adversarial-reviewer"] {
-        assert_eq!(role_skills(&root(), role), base);
+        assert_eq!(role_skills(&root(), role).unwrap(), base);
     }
     assert_eq!(
-        role_skills(&root(), "reviser"),
+        role_skills(&root(), "reviser").unwrap(),
         ["review", "storm", "writing-docs", "revise", "resync"]
     );
+    // fabrial's settings name arclightning as its tracker's skill.
     assert_eq!(
-        role_skills(&root(), "implementer"),
+        role_skills(&root(), "implementer").unwrap(),
         ["implement", "storm", "writing-docs", "arclightning"]
     );
     for role in ROLES {
-        for skill in role_skills(&root(), role) {
+        for skill in role_skills(&root(), role).unwrap() {
             assert!(
                 root().join(".claude/skills").join(&skill).join("SKILL.md").is_file(),
                 "{skill}"
             );
         }
     }
-    // A repository without an arcl workspace gives the implementer no arcl skill.
+    // The implementer's extra skill comes from the settings alone: a
+    // tracker's files and skill directory without the setting add nothing.
     let temp = tempfile::tempdir().unwrap();
-    fs::create_dir_all(temp.path().join(".claude/skills/arclightning")).unwrap();
+    let dir = temp.path().canonicalize().unwrap();
+    fs::create_dir_all(dir.join(".claude/skills/tracker")).unwrap();
+    fs::create_dir_all(dir.join(".arcl/workspace")).unwrap();
+    let implementer = || role_skills(&dir, "implementer");
+    assert_eq!(implementer().unwrap(), ["implement", "storm", "writing-docs"]);
+    let settings = "owner = \"o\"\ntrailer = \"O <o@example.com>\"\ngates = \"true\"\n";
+    let tasks = "[tasks]\nshow = \"t {id}\"\nstart = \"t {id}\"\n\
+                 complete = \"t {id} {evidence}\"\nhandoff = \"t {id} {file}\"\n";
+    fs::create_dir_all(dir.join(".github")).unwrap();
+    fs::write(dir.join(".github/fabrial.toml"), format!("{settings}{tasks}")).unwrap();
+    assert_eq!(implementer().unwrap(), ["implement", "storm", "writing-docs"]);
+    fs::write(
+        dir.join(".github/fabrial.toml"),
+        format!("{settings}{tasks}skill = \"tracker\"\n"),
+    )
+    .unwrap();
     assert_eq!(
-        role_skills(temp.path(), "implementer"),
-        ["implement", "storm", "writing-docs"]
+        implementer().unwrap(),
+        ["implement", "storm", "writing-docs", "tracker"]
     );
+    assert_eq!(role_skills(&dir, "reviewer").unwrap(), base);
+    // Settings that do not parse stop the dispatch.
+    fs::write(
+        dir.join(".github/fabrial.toml"),
+        format!("{settings}{tasks}skill = \"../x\"\n"),
+    )
+    .unwrap();
+    assert!(implementer().unwrap_err().contains("tasks.skill"));
 }
 
 #[test]

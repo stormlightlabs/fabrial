@@ -6,13 +6,17 @@ use crate::Error;
 
 /// Where the settings live, relative to the repository root.
 pub const SETTINGS_PATH: &str = ".github/fabrial.toml";
+/// Directories that hold workflows, settings or what agents read, in
+/// lowercase. Every file under one is configuration, so none can hold
+/// planning records.
+pub const CONFIG_DIRS: &[&str] = &[".github", ".claude", ".agents", ".codex"];
 
 /// The values the workflows, the gate and the skills read.
 ///
 /// The workflows read each value with `sed`, so every value is one line of
 /// the form `key = "value"` and may not hold a quote, a backslash or a line
-/// break. `disposable` is the one list, `key = ["a", "b"]` on one line, and
-/// no workflow reads it. [`Settings::validate`] enforces that.
+/// break. `disposable` and `planning` are lists, `key = ["a", "b"]` on one
+/// line, and no workflow reads them. [`Settings::validate`] enforces that.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Settings {
     /// GitHub login of the person who approves pull requests.
@@ -37,6 +41,14 @@ pub struct Settings {
     /// names a directory.
     #[serde(default)]
     pub disposable: Option<Vec<String>>,
+    /// Directories, relative to the repository root and each ending in `/`,
+    /// whose Markdown and TOML files are planning records, such as a
+    /// tracker's task files. `fab review-depth` gives a pull request that
+    /// changes only those, documentation and tests the standard pass. None
+    /// may sit under a directory [`CONFIG_DIRS`] names, and configuration
+    /// under one stays code.
+    #[serde(default)]
+    pub planning: Option<Vec<String>>,
     /// The fabrial version that last wrote the installed files.
     #[serde(default)]
     pub version: Option<String>,
@@ -58,6 +70,11 @@ pub struct Tasks {
     /// Takes no placeholders. `None` skips it.
     #[serde(default)]
     pub init: Option<String>,
+    /// The skill under `.claude/skills` that `fab dispatch` gives an
+    /// implementer for working the tracker, such as `arclightning`. A
+    /// plain directory name. `None` gives none.
+    #[serde(default)]
+    pub skill: Option<String>,
     /// Prints the task, given `{id}`.
     pub show: String,
     /// Starts the task, given `{id}`.
@@ -108,13 +125,24 @@ impl Settings {
             )));
         }
         for path in self.disposable.iter().flatten() {
-            let bad = path.is_empty()
-                || path.starts_with('/')
-                || path.split('/').any(|part| part == "..")
-                || path.contains(['"', '\\', '\n', '\r']);
-            if bad {
+            if !is_relative(path) {
                 return Err(Error::Settings(format!(
                     "`disposable` holds {path:?}; each path is relative to the worktree, without `..`, quotes or backslashes"
+                )));
+            }
+        }
+        for path in self.planning.iter().flatten() {
+            let parts = || path.strip_suffix('/').unwrap_or(path).split('/');
+            if !is_relative(path) || !path.ends_with('/') || parts().any(|part| part.is_empty() || part == ".") {
+                return Err(Error::Settings(format!(
+                    "`planning` holds {path:?}; each is a directory relative to the repository, ending in `/`, \
+                     without `.`, `..`, quotes or backslashes"
+                )));
+            }
+            if parts().any(|part| CONFIG_DIRS.contains(&part.to_ascii_lowercase().as_str())) {
+                return Err(Error::Settings(format!(
+                    "`planning` holds {path:?}; a directory under {} holds configuration, not planning records",
+                    CONFIG_DIRS.join(", ")
                 )));
             }
         }
@@ -142,6 +170,13 @@ impl Settings {
                 return Err(Error::Settings(
                     "`tasks.init` is empty or holds a quote, a backslash or a line break".into(),
                 ));
+            }
+        }
+        for skill in self.tasks.iter().filter_map(|t| t.skill.as_deref()) {
+            if !is_name(skill) {
+                return Err(Error::Settings(format!(
+                    "`tasks.skill` is {skill:?}; it names a skill directory: ASCII letters, digits, `-` and `_`"
+                )));
             }
         }
         for (step, command, needs) in self.tasks.iter().flat_map(Tasks::steps) {
@@ -197,18 +232,32 @@ impl Settings {
                  disposable = [{list}]\n"
             )
         });
+        let planning = self.planning.as_ref().map_or_else(String::new, |paths| {
+            let list = paths.iter().map(|p| format!("\"{p}\"")).collect::<Vec<_>>().join(", ");
+            format!(
+                "\n# Directories whose Markdown and TOML files are planning records, which\n\
+                 # fab review-depth reviews as it does documentation.\n\
+                 planning = [{list}]\n"
+            )
+        });
         let tasks = self.tasks.as_ref().map_or_else(String::new, |t| {
             let init = t
                 .init
                 .as_ref()
                 .map_or_else(String::new, |i| format!("init = \"{i}\"\n"));
+            let skill = t
+                .skill
+                .as_ref()
+                .map_or_else(String::new, |k| format!("skill = \"{k}\"\n"));
             format!(
                 "\n# The commands fab run uses for each step of a tracked task. Each is\n\
                  # split on spaces and run in the task's worktree; {{id}}, {{evidence}}\n\
                  # and {{file}} are replaced. init, when set, runs once in the new\n\
-                 # worktree before start.\n\
+                 # worktree before start. skill names the skill fab dispatch gives\n\
+                 # an implementer.\n\
                  [tasks]\n\
                  {init}\
+                 {skill}\
                  show = \"{}\"\n\
                  start = \"{}\"\n\
                  complete = \"{}\"\n\
@@ -232,6 +281,7 @@ impl Settings {
              {signoff}\
              {assisted}\
              {disposable}\
+             {planning}\
              \n\
              # The fabrial version that wrote the installed files. `fab check`\n\
              # compares it with its own.\n\
@@ -240,6 +290,24 @@ impl Settings {
             self.owner, self.trailer, self.gates, version
         )
     }
+}
+
+/// Whether a listed path is relative and stays inside the repository, with
+/// nothing the one-line form cannot hold.
+fn is_relative(path: &str) -> bool {
+    !(path.is_empty()
+        || path.starts_with('/')
+        || path.split('/').any(|part| part == "..")
+        || path.contains(['"', '\\', '\n', '\r']))
+}
+
+/// Whether a skill name is a plain directory name: ASCII letters, digits,
+/// `-` and `_`, so it cannot leave `.claude/skills`.
+fn is_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 /// Whether `owner` is a GitHub login: ASCII letters, digits and single
@@ -265,6 +333,7 @@ mod tests {
             signoff: None,
             assisted_by: None,
             disposable: None,
+            planning: None,
             version: None,
             tasks: None,
         }
@@ -273,6 +342,7 @@ mod tests {
     fn tasks() -> Tasks {
         Tasks {
             init: None,
+            skill: None,
             show: "arcl task show {id}".into(),
             start: "arcl task start {id}".into(),
             complete: "arcl task complete {id} --evidence {evidence}".into(),
@@ -298,6 +368,19 @@ mod tests {
             argv,
             ["arcl", "task", "complete", "t-1", "--evidence", "Done in #3 at abc"]
         );
+    }
+
+    #[test]
+    fn the_task_skill_renders_parses_back_and_is_a_plain_name() {
+        let with = Tasks { skill: Some("arclightning".into()), ..tasks() };
+        let text = Settings { tasks: Some(with.clone()), ..settings() }.render("0.9.0");
+        assert!(text.lines().any(|l| l == r#"skill = "arclightning""#), "{text}");
+        assert_eq!(Settings::parse(&text).unwrap().tasks, Some(with));
+        for bad in ["", "../x", "a/b", ".", "a b", "a\"b"] {
+            let tasks = Tasks { skill: Some(bad.into()), ..tasks() };
+            let err = Settings { tasks: Some(tasks), ..settings() }.validate().unwrap_err();
+            assert!(err.to_string().contains("tasks.skill"), "{bad:?}: {err}");
+        }
     }
 
     #[test]
@@ -373,6 +456,41 @@ mod tests {
         for bad in ["", "/etc/passwd", "../up", "a/../../b", "a\"b"] {
             let mut s = settings();
             s.disposable = Some(vec![bad.into()]);
+            assert!(s.validate().is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn planning_directories_round_trip_and_stay_inside_the_repository() {
+        assert!(!settings().render("0.1.0").contains("planning"));
+        let mut s = settings();
+        s.planning = Some(vec!["plans/".into(), ".tracker/tasks/".into()]);
+        let text = s.render("0.1.0");
+        assert!(
+            text.lines().any(|l| l == r#"planning = ["plans/", ".tracker/tasks/"]"#),
+            "{text}"
+        );
+        assert_eq!(Settings::parse(&text).unwrap().planning, s.planning);
+        for bad in [
+            "",
+            "/",
+            "plans",
+            "/plans/",
+            "../plans/",
+            "a/../b/",
+            "./plans/",
+            "plans//",
+            "a//b/",
+            "a\"b/",
+            ".github/",
+            ".GitHub/",
+            ".github/workflows/",
+            ".claude/",
+            "docs/.claude/",
+            ".agents/skills/",
+        ] {
+            let mut s = settings();
+            s.planning = Some(vec![bad.into()]);
             assert!(s.validate().is_err(), "{bad:?}");
         }
     }

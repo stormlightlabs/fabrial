@@ -2,9 +2,10 @@
 id = "arcl-t-01M5Z8MNF5YGPE0VXK5HQ4HPAR"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
 title = "Read a repository's planning paths for review depth from its settings"
-status = "pending"
+status = "completed"
 priority = "normal"
 position = 0
+evidence = "Done in #96 at 8db3429: review depth reads planning directories from the merge base's settings, never lightens configuration, and dispatch names its tracker skill through tasks.skill"
 +++
 
 ## Problem
