@@ -11,7 +11,8 @@ pub const SETTINGS_PATH: &str = ".github/fabrial.toml";
 ///
 /// The workflows read each value with `sed`, so every value is one line of
 /// the form `key = "value"` and may not hold a quote, a backslash or a line
-/// break. [`Settings::validate`] enforces that.
+/// break. `disposable` is the one list, `key = ["a", "b"]` on one line, and
+/// no workflow reads it. [`Settings::validate`] enforces that.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Settings {
     /// GitHub login of the person who approves pull requests.

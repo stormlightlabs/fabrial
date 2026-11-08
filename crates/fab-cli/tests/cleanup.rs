@@ -423,6 +423,24 @@ fn ignored_paths_the_settings_name_go_with_a_merged_worktree_and_others_keep_it(
 }
 
 #[test]
+fn settings_that_do_not_parse_warn_and_still_clean_target_only_worktrees() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.primary().join(".github")).unwrap();
+    f.commit(
+        &f.primary(),
+        ".github/fabrial.toml",
+        "owner = \"o\"\ndisposable = \".cache/db\"\n",
+    );
+    f.git(&f.primary(), &["push", "-q", "origin", "main"]);
+    let (dir, tip) = f.worktree("storm/plain");
+    f.pull("storm/plain", 1, "closed", true, &tip);
+    let output = f.cleanup(&[]);
+    let out = stdout(&output);
+    assert!(out.contains("settings: warning:"), "{out}");
+    assert!(out.contains("removed storm/plain at") && !dir.exists(), "{out}");
+}
+
+#[test]
 fn a_branch_that_cannot_be_deleted_keeps_its_worktree() {
     let f = Fixture::new();
     let (merged, tip) = f.worktree("storm/merged");

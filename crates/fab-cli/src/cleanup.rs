@@ -7,8 +7,8 @@
 //! `gh api`, so it needs no record from the run that made the worktrees and
 //! works after a restart. A worktree is removed only when its pull request
 //! merged, `git status --porcelain --ignored` lists nothing but Cargo's
-//! `target/` and the paths `disposable` in main's `.github/fabrial.toml`
-//! names, and its branch tip equals the pull request's head. The branch
+//! `target/` and the paths `disposable` in the primary checkout's
+//! `.github/fabrial.toml` names, and its branch tip equals the pull request's head. The branch
 //! is deleted only at that tip. A local agent branch that no worktree has
 //! checked out, or is rebasing or bisecting, is deleted when its pull request
 //! merged at its tip. A deleted branch takes its `branch.<name>` settings
@@ -79,7 +79,6 @@ struct Pull {
     head: String,
 }
 
-/// What one run found, for its exit code.
 /// What every worktree in one cleanup is checked against.
 #[derive(Clone, Copy)]
 struct Context<'a> {
@@ -93,6 +92,7 @@ struct Context<'a> {
     disposable: &'a [String],
 }
 
+/// What one run found, for its exit code.
 #[derive(Default)]
 struct Tally {
     kept: bool,
@@ -135,7 +135,7 @@ fn cleanup(options: &Options) -> Result<ExitCode> {
     };
     let primary_dir = primary.path.clone();
     let here = here.canonicalize().unwrap_or(here);
-    let disposable = disposable(&primary_dir)?;
+    let disposable = disposable(&primary_dir);
     let mut tally = Tally::default();
     for worktree in &worktrees[1..] {
         let Some(branch) = worktree.branch.as_deref().filter(|b| is_agent(b)) else {
@@ -171,14 +171,24 @@ fn cleanup(options: &Options) -> Result<ExitCode> {
 }
 
 /// The ignored paths the primary checkout's `.github/fabrial.toml` lets
-/// cleanup delete, none when the file or the setting is missing.
-fn disposable(primary: &Path) -> Result<Vec<String>> {
+/// cleanup delete: none when the file or the setting is missing, and none,
+/// with a warning, when the file does not parse, so a worktree holding other
+/// ignored files stays while everything else is still cleaned.
+fn disposable(primary: &Path) -> Vec<String> {
     let path = primary.join(fab_core::settings::SETTINGS_PATH);
     let Ok(text) = std::fs::read_to_string(&path) else {
-        return Ok(Vec::new());
+        return Vec::new();
     };
-    let settings = fab_core::settings::Settings::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(settings.disposable.unwrap_or_default())
+    match fab_core::settings::Settings::parse(&text) {
+        Ok(settings) => settings.disposable.unwrap_or_default(),
+        Err(e) => {
+            println!(
+                "settings: warning: {}: {e}; no ignored path but target/ is disposable",
+                path.display()
+            );
+            Vec::new()
+        }
+    }
 }
 
 /// The files under the ignored path git reported that no disposable path
