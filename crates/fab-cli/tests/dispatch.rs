@@ -84,7 +84,8 @@ impl Fixture {
             "credential_cleanup": "pending", "result_file": null, "error": null,
             "resources": {"private_state": private, "tmux_session": "fab-worker-one", "supervisor_pid": null, "worker_pid": null}
         }).to_string()).unwrap();
-        let push = writer.then(|| json!({"branch": "storm/task", "git_dir": p.join(".git")}));
+        let push = writer
+            .then(|| json!({"branch": "storm/task", "git_dir": p.join(".git"), "objects": p.join(".git/objects")}));
         fs::write(private.join("request.json"), json!({"record": record_dir.join("worker.json"), "config": config, "role": role, "worktree": p, "timeout": if mode == "deadline" {1} else {15}, "model": "openai/gpt-6-sol", "thinking": "low", "tools": ["bash", "read"], "skills": [], "session_bus": [["DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/test-bus"], ["XDG_RUNTIME_DIR", "/run/test-runtime"]], "push": push}).to_string()).unwrap();
         if writer {
             // The worktree is the fixture directory on storm/task, one commit
@@ -110,6 +111,24 @@ impl Fixture {
             git(&p, &["commit", "-q", "--allow-empty", "-m", "work"]);
             if mode == "push-branch" {
                 git(&p, &["switch", "-q", "-c", "feature"]);
+            }
+            // The worker can write its repository's config and hooks. If the
+            // host's push read them, the pre-push hooks would refuse it and
+            // the URL rewrites would send it to another repository.
+            let elsewhere = p.join("elsewhere.git");
+            git(&p, &["init", "-q", "--bare", elsewhere.to_str().unwrap()]);
+            let hooks = p.join("planted-hooks");
+            fs::create_dir(&hooks).unwrap();
+            let hook = format!("touch {}\nexit 1", quote(&p.join("hook-ran")));
+            script(&hooks.join("pre-push"), &hook);
+            script(&p.join(".git/hooks/pre-push"), &hook);
+            let (from, to) = (origin.to_str().unwrap(), elsewhere.to_str().unwrap());
+            for (key, value) in [
+                ("core.hooksPath", hooks.to_str().unwrap()),
+                (&format!("url.{to}.insteadOf"), from),
+                (&format!("url.{to}.pushInsteadOf"), from),
+            ] {
+                git(&p, &["config", key, value]);
             }
             let real = String::from_utf8(
                 Command::new("sh")
@@ -413,6 +432,9 @@ fn writers_get_read_tokens_and_the_host_pushes_with_its_own() {
         let head = git(f.temp.path(), &["rev-parse", "HEAD"]);
         let origin = f.temp.path().join("origin.git");
         assert_eq!(git(&origin, &["rev-parse", "refs/heads/storm/task"]), head, "{role}");
+        let elsewhere = f.temp.path().join("elsewhere.git");
+        assert_eq!(git(&elsewhere, &["for-each-ref"]), "", "{role}");
+        assert!(!f.temp.path().join("hook-ran").exists(), "{role}");
         let pushes = fs::read_to_string(f.temp.path().join("pushes")).unwrap();
         assert!(pushes.contains(&format!("{head}:refs/heads/storm/task")), "{pushes}");
         let logs = f.logs();
@@ -434,9 +456,14 @@ fn host_refuses_a_push_off_the_branch_or_not_a_fast_forward() {
         let before = git(&origin, &["rev-parse", "refs/heads/storm/task"]);
         assert!(!f.run().status.success(), "{mode}");
         assert_eq!(git(&origin, &["rev-parse", "refs/heads/storm/task"]), before, "{mode}");
-        assert!(!f.temp.path().join("pushes").exists(), "{mode}");
+        // Git refuses the non-fast-forward; a wrong branch never reaches it.
+        assert_eq!(f.temp.path().join("pushes").exists(), mode == "push-diverged", "{mode}");
         let logs = f.logs();
-        let expected = if mode == "push-diverged" { "is not an ancestor" } else { "no longer on storm/task" };
+        let expected = if mode == "push-diverged" {
+            "origin refused storm/task: [rejected] (non-fast-forward)"
+        } else {
+            "no longer on storm/task"
+        };
         assert!(logs.contains(expected), "{mode}: {logs}");
         let record = f.record();
         assert_eq!(record["state"], "failed", "{mode}");

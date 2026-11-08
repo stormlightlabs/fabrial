@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -35,9 +35,9 @@ const GRACE: Duration = Duration::from_secs(120);
 const RECORD_LIMIT: usize = 4 * 1024 * 1024;
 /// What libsecret needs to find the session bus on Linux.
 const SESSION_BUS: &[&str] = &["DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"];
-/// Git settings for the host's push, which override what the worker could
-/// write into the repository's config: no hooks or fsmonitor, HTTPS only,
-/// TLS verified, no signing program, and only the push token as credential.
+/// Git settings for the host's push, on top of reading no configuration
+/// the worker can write: no hooks or fsmonitor, HTTPS only, TLS verified, no
+/// signing program, and only the push token as credential.
 const PUSH_CONFIG: &[&str] = &[
     "core.hooksPath=/dev/null",
     "core.fsmonitor=false",
@@ -47,8 +47,10 @@ const PUSH_CONFIG: &[&str] = &[
     "http.sslVerify=true",
     "push.gpgSign=false",
     "credential.helper=",
-    "credential.helper=!f() { test \"$1\" = get || exit 0; ok=; while read -r l; do test \"$l\" = host=github.com && ok=1; done; test -n \"$ok\" && printf 'username=x-access-token\\npassword=%s\\n' \"$FAB_PUSH_TOKEN\"; }; f",
 ];
+/// The push's credential helper: it answers `get` for `github.com` alone,
+/// with the token from `FAB_PUSH_TOKEN`, and answers nothing otherwise.
+const CREDENTIAL_HELPER: &str = "f() { test \"$1\" = get || exit 0; ok=; while read -r l; do test \"$l\" = host=github.com && ok=1; done; test -n \"$ok\" && printf 'username=x-access-token\\npassword=%s\\n' \"$FAB_PUSH_TOKEN\"; }; f";
 type Result<T> = std::result::Result<T, String>;
 
 /// Explicit operator-selected dispatch inputs. No model or credential fallback.
@@ -105,13 +107,15 @@ struct Request {
     push: Option<Push>,
 }
 
-/// A writer's branch and Git directory, read on the host before the worker
-/// starts. The host pushes through this Git directory, never through the
-/// worktree's `.git` file, which the worker can rewrite.
+/// A writer's branch, Git directory and object store, read on the host
+/// before the worker starts, so the worker cannot redirect them.
 #[derive(Debug, Serialize, Deserialize)]
 struct Push {
     branch: String,
+    /// Where the host reads the branch and head after the worker exits.
     git_dir: PathBuf,
+    /// The object store the host's empty push repository borrows from.
+    objects: PathBuf,
 }
 
 /// Owns a subprocess group; even a normally exited leader may leave children.
@@ -335,8 +339,8 @@ fn host_command(name: impl AsRef<std::ffi::OsStr>) -> Result<Command> {
 }
 
 /// Refuse a writer role unless the worktree is on an agent branch, and
-/// return where the host pushes once the worker exits: that branch and the
-/// worktree's Git directory. Other roles push nothing.
+/// return where the host pushes once the worker exits: that branch, the
+/// worktree's Git directory and its object store. Other roles push nothing.
 fn writer_branch(worktree: &Path, role: &str) -> Result<Option<Push>> {
     if !WRITERS.contains(&role) {
         return Ok(None);
@@ -353,28 +357,26 @@ fn writer_branch(worktree: &Path, role: &str) -> Result<Option<Push>> {
         return Err(refused());
     }
     let git_dir = canonical(Path::new(&git(&["rev-parse", "--absolute-git-dir"])?))?;
-    Ok(Some(Push { branch, git_dir }))
+    let objects = git(&["rev-parse", "--path-format=absolute", "--git-path", "objects"])?;
+    let objects = canonical(Path::new(&objects))?;
+    Ok(Some(Push { branch, git_dir, objects }))
 }
 
 /// Push a writer's branch after its worker has exited, and return the head
 /// pushed. It pushes only while the Git directory recorded at dispatch is
-/// still on the writer's branch and the push fast-forwards that branch on
-/// origin. Git runs with hooks off and without system or global config,
-/// against an explicit `github.com` URL, and gets a token minted for this
-/// push alone through an environment variable, which only a credential
-/// helper scoped to `github.com` hands out. The token is revoked after.
+/// still on the writer's branch. The push itself runs from an empty bare
+/// repository the host creates in its private state, whose only link to the
+/// worktree is its object store: objects are data, so nothing the worker
+/// wrote is read as config or run as a hook. Git refuses a push that does
+/// not fast-forward the branch on origin. The token is minted for this push
+/// alone, reaches Git through a credential helper scoped to `github.com`, and
+/// is revoked after.
 fn push(request: &Request, private: &Path) -> Result<String> {
     let target = request.push.as_ref().ok_or("writer has no recorded branch")?;
     let branch = &target.branch;
-    let git = |args: &[&str], token: Option<&str>| -> Result<(bool, String)> {
-        let mut git = host_command("git")?;
-        git.env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .arg("--git-dir")
-            .arg(&target.git_dir)
-            .args(PUSH_CONFIG.iter().flat_map(|c| ["-c", *c]))
-            .args(args);
+    let home = private_dir(&private.join("push-home"))?;
+    let run = |mut git: Command, args: &[&str], token: Option<&str>| -> Result<(bool, String)> {
+        git.args(args);
         if let Some(token) = token {
             git.env("FAB_PUSH_TOKEN", token);
         }
@@ -382,14 +384,31 @@ fn push(request: &Request, private: &Path) -> Result<String> {
         let text = String::from_utf8(bytes).map_err(|_| "invalid Git output")?;
         Ok((status.success(), text.trim().to_string()))
     };
-    let current = git(&["symbolic-ref", "--quiet", "--short", "HEAD"], None)?;
+    // These two local reads load the worktree's repository config, which
+    // can run no hook, helper or transport for them. The sha read here is
+    // the one pushed, whatever the worktree holds afterwards.
+    let worktree = || push_git(&home, &target.git_dir);
+    let current = run(worktree()?, &["symbolic-ref", "--quiet", "--short", "HEAD"], None)?;
     if !current.0 || current.1 != *branch {
         return Err(format!("not pushed: the worktree is no longer on {branch}"));
     }
-    let (found, head) = git(&["rev-parse", "--verify", "HEAD^{commit}"], None)?;
+    let (found, head) = run(worktree()?, &["rev-parse", "--verify", "HEAD^{commit}"], None)?;
     if !found {
         return Err(format!("not pushed: {branch} has no commit"));
     }
+    let bare = private_dir(&private.join("push.git"))?;
+    if !run(
+        push_git(&home, &bare)?,
+        &["init", "--quiet", "--bare", "--template="],
+        None,
+    )?
+    .0
+    {
+        return Err("cannot create the push repository".into());
+    }
+    let info = bare.join("objects/info");
+    fs::create_dir_all(&info).map_err(|_| "cannot create the push repository")?;
+    write(&info.join("alternates"), format!("{}\n", target.objects.display()))?;
     let token = issue(
         &request.config,
         &request.session_bus,
@@ -397,31 +416,55 @@ fn push(request: &Request, private: &Path) -> Result<String> {
         &json!({"contents": "write"}),
     )?;
     let url = format!("https://github.com/{}.git", request.config.repository);
-    let pushed = (|| {
-        let (listed, remote) = git(&["ls-remote", &url, &format!("refs/heads/{branch}")], Some(&token))?;
-        if !listed {
-            return Err(format!("not pushed: cannot read {branch} on origin"));
+    let refspec = format!("{head}:refs/heads/{branch}");
+    let pushed = run(
+        push_git(&home, &bare)?,
+        &["push", "--porcelain", &url, &refspec],
+        Some(&token),
+    )
+    .and_then(|(ok, report)| {
+        if ok {
+            return Ok(());
         }
-        if let Some(remote) = remote.split_whitespace().next() {
-            if remote == head {
-                return Ok(());
-            }
-            if !git(&["merge-base", "--is-ancestor", remote, &head], None)?.0 {
-                return Err(format!(
-                    "not pushed: {branch} on origin is not an ancestor of the worktree head"
-                ));
-            }
-        }
-        let refspec = format!("{head}:refs/heads/{branch}");
-        if !git(&["push", "--quiet", &url, &refspec], Some(&token))?.0 {
-            return Err(format!("the push to {branch} failed"));
-        }
-        Ok(())
-    })();
+        // `--porcelain` prints a refused ref as `!<TAB>src:dst<TAB>reason`.
+        let reason = report
+            .lines()
+            .find(|l| l.starts_with('!'))
+            .and_then(|l| l.rsplit('\t').next())
+            .unwrap_or("the push failed");
+        Err(format!("not pushed: origin refused {branch}: {reason}"))
+    });
     let revoked = revoke(private, &token);
     pushed?;
     revoked?;
     Ok(head)
+}
+
+/// A Git command for `git_dir` that reads no system or global config: HOME
+/// and XDG_CONFIG_HOME are `home`, an empty private directory, and the
+/// host's push settings come last on the command line.
+fn push_git(home: &Path, git_dir: &Path) -> Result<Command> {
+    let mut git = host_command("git")?;
+    git.env("HOME", home)
+        .env("XDG_CONFIG_HOME", home)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .arg("--git-dir")
+        .arg(git_dir)
+        .args(PUSH_CONFIG.iter().flat_map(|c| ["-c", *c]))
+        .arg("-c")
+        .arg(format!("credential.helper=!{CREDENTIAL_HELPER}"));
+    Ok(git)
+}
+
+/// Create a directory only the host user can enter.
+fn private_dir(path: &Path) -> Result<PathBuf> {
+    fs::DirBuilder::new()
+        .mode(0o700)
+        .create(path)
+        .map_err(|_| "cannot create private push state")?;
+    Ok(path.to_path_buf())
 }
 
 /// Capture both pipes concurrently, discard diagnostics, and impose a host-tool deadline.

@@ -90,24 +90,29 @@ comment workflow, Contents read and Pull requests read, so no worker can push.
 An App token with Contents write reaches every branch and tag the rulesets
 leave open, and cannot be narrowed to one branch. Dispatch rejects a token
 with wider permissions or another repository, and accepts no personal access
-token. Keep the App out of ruleset bypass lists, and require
-the owner's approval and checks on `main`, so workers cannot approve or merge.
+token. Keep the App out of ruleset bypass lists, and require the owner's
+approval and checks on `main`, so workers cannot approve or merge.
 
 The BWS token and App key stay on the host. A worker gets its token in its
 environment, and the host revokes it when the worker finishes, fails, times
-out or is cancelled.
+out or is cancelled. A failed revocation fails the worker, and the host keeps
+the token's recovery state, so restrict access to the state directory. A host
+crash during revocation can leave a token valid until its one-hour expiry.
 
 The implementer and reviser commit in their worktree, and the host pushes
 their branch after the worker exits successfully. It pushes only while the
-worktree is still on the branch dispatch recorded and the push fast-forwards
-that branch on origin; otherwise the worker fails with the reason and nothing
-is pushed. The host revokes the worker's token, mints a token with Contents
-write alone for the push, and revokes it after. Git runs with hooks off and
-without system or global config, through the Git directory dispatch recorded,
-to an explicit `github.com` URL, and takes the token from its environment
-through a credential helper that answers only for `github.com`. A failed revocation fails the worker, and the host keeps
-the token's recovery state, so restrict access to the state directory. A host
-crash during revocation can leave a token valid until its one-hour expiry.
+worktree is still on the branch dispatch recorded, and Git refuses a push
+that does not fast-forward that branch on origin; either way the worker fails
+with the reason and nothing is pushed. The host revokes the worker's token,
+mints a token with Contents write alone for the push, and revokes it after.
+
+The worker can write its repository's config and hooks, so the host reads
+none of them when it pushes. It reads the branch and head commit from the
+worktree, then pushes that commit from an empty bare repository in its
+private state, which borrows the worktree's objects and nothing else. Git
+runs there without system or global config, with hooks off, to an explicit
+`github.com` URL, and takes the token through a credential helper that
+answers only for `github.com`.
 
 ## Run a role
 
@@ -200,7 +205,8 @@ argument. `init` is optional and takes no placeholders: it runs once in the
 new worktree, before `start`, for a tracker that needs each checkout set up.
 The run claims the task, adds the worktree `../<repo>-worktrees/<task>` on
 `storm/<task>`, starts the task and dispatches the implementer. If the start
-fails, the run removes that worktree and branch and releases the claim. Once dispatch pushes the implementer's commits, the run reads the pull request
+fails, the run removes that worktree and branch and releases the claim. Once
+dispatch pushes the implementer's commits, the run reads the pull request
 Branch PR opened, then runs each stage `fab sequence` gives: a reviewer in a
 detached worktree at the pinned head, a reviser in the task's worktree. A
 review ends with `Above nit: yes` or `no`, which decides whether its revise
