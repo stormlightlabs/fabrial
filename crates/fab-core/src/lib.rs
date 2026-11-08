@@ -1,13 +1,16 @@
 //! The core of fabrial. It installs fabrial into a repository ([`install`]),
 //! reads a repository's settings ([`settings`]) and the checks that cover
-//! its paths ([`gates`]), and claims tasks for runs ([`claims`]). The other
-//! run operations every driver shares (start a step, record its result and
-//! mark the pull request ready) are under active development, alongside
+//! its paths ([`gates`]), claims tasks for runs ([`claims`]) and reads run
+//! events from dispatch's records (`runs`, on Unix). The other run
+//! operations every driver shares (start a step, record its result and mark
+//! the pull request ready) are under active development, alongside
 //! [arclightning](https://github.com/stormlightlabs/arclightning).
 
 pub mod claims;
 pub mod gates;
 pub mod install;
+#[cfg(unix)]
+pub mod runs;
 pub mod settings;
 
 use std::path::PathBuf;

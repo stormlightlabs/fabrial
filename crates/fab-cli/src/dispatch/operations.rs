@@ -1,19 +1,18 @@
 //! Host operations on persistent worker identities, independent of an open tool call.
 
-use std::fs::{self, DirBuilder, File};
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::fs::{self, DirBuilder};
 use std::os::unix::fs::DirBuilderExt;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use clap::{Args, Subcommand};
+use fab_core::runs;
 use serde_json::json;
 
 use super::state::{WorkerRecord, atomic_write};
-use super::{Result, canonical, emit, read, signals};
+use super::{Result, emit, read, signals};
 
 /// Explicit local worker operations. None starts a replacement worker.
 #[derive(Subcommand)]
@@ -89,25 +88,7 @@ pub struct Wait {
 
 /// Read only the registry setting: inspection does not require live OAuth or a sandbox build.
 pub(super) fn registry(config: &Path) -> Result<PathBuf> {
-    let config: toml::Value = toml::from_str(&read(config)?).map_err(|_| "invalid host configuration")?;
-    let root = config
-        .get("state_dir")
-        .and_then(toml::Value::as_str)
-        .ok_or("state_dir missing")?;
-    if !Path::new(root).is_absolute() {
-        return Err("state_dir must be absolute".into());
-    }
-    let root = canonical(Path::new(root))?;
-    if fs::metadata(&root)
-        .map_err(|_| "cannot inspect registry")?
-        .permissions()
-        .mode()
-        & 0o077
-        != 0
-    {
-        return Err("state_dir must be private (mode 0700)".into());
-    }
-    Ok(root)
+    runs::registry(config).map_err(|e| e.to_string())
 }
 
 pub(super) fn lookup(root: &Path, id: &str) -> Result<WorkerRecord> {
@@ -122,47 +103,8 @@ pub(super) fn lookup(root: &Path, id: &str) -> Result<WorkerRecord> {
 }
 
 pub(super) fn events(worker: &WorkerRecord, after: u64) -> Result<serde_json::Value> {
-    let path = worker.directory().join("events.jsonl");
-    let mut cursor = after;
-    let mut events = Vec::new();
-    if path.exists() {
-        let mut file = File::open(path).map_err(|_| "cannot open worker events")?;
-        let length = file.metadata().map_err(|_| "cannot inspect events")?.len();
-        if after > length {
-            return Err("event cursor exceeds stream length".into());
-        }
-        if after > 0 {
-            file.seek(SeekFrom::Start(after - 1))
-                .map_err(|_| "cannot seek event cursor")?;
-            let mut last = [0];
-            file.read_exact(&mut last).map_err(|_| "cannot validate event cursor")?;
-            if last[0] != b'\n' {
-                return Err("event cursor is not a record boundary".into());
-            }
-        }
-        file.seek(SeekFrom::Start(after)).map_err(|_| "cannot seek events")?;
-        let mut reader = BufReader::new(file);
-        for _ in 0..64 {
-            let mut line = Vec::new();
-            reader
-                .by_ref()
-                .take((super::RECORD_LIMIT * 2 + 1) as u64)
-                .read_until(b'\n', &mut line)
-                .map_err(|_| "cannot read worker events")?;
-            if line.len() > super::RECORD_LIMIT * 2 {
-                return Err("worker event exceeds limit".into());
-            }
-            if !line.ends_with(b"\n") {
-                break;
-            }
-            let event: serde_json::Value = serde_json::from_slice(&line).map_err(|_| "invalid worker event")?;
-            cursor += line.len() as u64;
-            events.push(json!({"sequence": cursor, "event": event}));
-        }
-    } else if after != 0 {
-        return Err("event stream missing for cursor".into());
-    }
-    Ok(json!({"worker": worker.snapshot()?, "events": events, "cursor": cursor}))
+    let batch = runs::read_events(worker.directory(), after, runs::BATCH).map_err(|e| e.to_string())?;
+    Ok(json!({"worker": worker.snapshot()?, "events": batch.events, "cursor": batch.cursor}))
 }
 
 fn operate(operation: Operation) -> Result<u8> {

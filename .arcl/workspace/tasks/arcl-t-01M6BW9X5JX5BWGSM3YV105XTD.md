@@ -2,7 +2,7 @@
 id = "arcl-t-01M6BW9X5JX5BWGSM3YV105XTD"
 phase = "arcl-ph-01M5S4SCJ1A54Z514HCP508F9X"
 title = "Offer the run operations as a library and a JSON event stream"
-status = "pending"
+status = "in_progress"
 priority = "high"
 position = 0
 blocked-by = ["arcl-t-01M5S4SCNKRK07FF2PEBNVZKVX"]
