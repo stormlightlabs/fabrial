@@ -40,6 +40,47 @@ pub struct Settings {
     /// The fabrial version that last wrote the installed files.
     #[serde(default)]
     pub version: Option<String>,
+    /// The commands `fab run` uses to reach the repository's task source.
+    /// `None` leaves a run to GitHub issues and description files.
+    #[serde(default)]
+    pub tasks: Option<Tasks>,
+}
+
+/// The commands for each step of a tracked task, in a `[tasks]` table. Each
+/// is split on whitespace and run without a shell in the task's worktree,
+/// after `{id}`, `{evidence}` and `{file}` in a word are replaced. A
+/// replacement stays one argument, whatever it holds.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Tasks {
+    /// Prints the task, given `{id}`.
+    pub show: String,
+    /// Starts the task, given `{id}`.
+    pub start: String,
+    /// Completes the task, given `{id}` and `{evidence}`.
+    pub complete: String,
+    /// Records a handoff note, given `{id}` and the note's `{file}`.
+    pub handoff: String,
+}
+
+impl Tasks {
+    /// Each step's name, command and the placeholders it must hold.
+    pub fn steps(&self) -> [(&'static str, &str, &'static [&'static str]); 4] {
+        [
+            ("show", &self.show, &["{id}"]),
+            ("start", &self.start, &["{id}"]),
+            ("complete", &self.complete, &["{id}", "{evidence}"]),
+            ("handoff", &self.handoff, &["{id}", "{file}"]),
+        ]
+    }
+
+    /// The argument list for a command, with each placeholder replaced.
+    pub fn argv(command: &str, values: &[(&str, &str)]) -> Vec<String> {
+        command
+            .split_whitespace()
+            .map(|word| values.iter().fold(word.to_string(), |w, (k, v)| w.replace(k, v)))
+            .collect()
+    }
 }
 
 impl Settings {
@@ -90,6 +131,16 @@ impl Settings {
                 )));
             }
         }
+        for (step, command, needs) in self.tasks.iter().flat_map(Tasks::steps) {
+            if command.contains(['"', '\\', '\n', '\r']) {
+                return Err(Error::Settings(format!(
+                    "`tasks.{step}` holds a quote, a backslash or a line break"
+                )));
+            }
+            if let Some(missing) = needs.iter().find(|p| !command.contains(*p)) {
+                return Err(Error::Settings(format!("`tasks.{step}` does not use {missing}")));
+            }
+        }
         if self.owner.starts_with('@') {
             return Err(Error::Settings("`owner` is a login without the `@`".into()));
         }
@@ -133,6 +184,19 @@ impl Settings {
                  disposable = [{list}]\n"
             )
         });
+        let tasks = self.tasks.as_ref().map_or_else(String::new, |t| {
+            format!(
+                "\n# The commands fab run uses for each step of a tracked task. Each is\n\
+                 # split on spaces and run in the task's worktree; {{id}}, {{evidence}}\n\
+                 # and {{file}} are replaced.\n\
+                 [tasks]\n\
+                 show = \"{}\"\n\
+                 start = \"{}\"\n\
+                 complete = \"{}\"\n\
+                 handoff = \"{}\"\n",
+                t.show, t.start, t.complete, t.handoff
+            )
+        });
         format!(
             "# fabrial's settings for this repository. The Branch PR workflow, the Review\n\
              # gate and the skills read them. Each value is one line: key = \"value\".\n\
@@ -152,7 +216,8 @@ impl Settings {
              \n\
              # The fabrial version that wrote the installed files. `fab check`\n\
              # compares it with its own.\n\
-             version = \"{}\"\n",
+             version = \"{}\"\n\
+             {tasks}",
             self.owner, self.trailer, self.gates, version
         )
     }
@@ -182,7 +247,42 @@ mod tests {
             assisted_by: None,
             disposable: None,
             version: None,
+            tasks: None,
         }
+    }
+
+    fn tasks() -> Tasks {
+        Tasks {
+            show: "arcl task show {id}".into(),
+            start: "arcl task start {id}".into(),
+            complete: "arcl task complete {id} --evidence {evidence}".into(),
+            handoff: "arcl task handoff {id} --note-file {file}".into(),
+        }
+    }
+
+    #[test]
+    fn task_commands_render_parse_back_and_keep_each_value_one_argument() {
+        let with = Settings { tasks: Some(tasks()), ..settings() };
+        let parsed = Settings::parse(&with.render("0.9.0")).unwrap();
+        assert_eq!(parsed.tasks, Some(tasks()));
+        assert_eq!(parsed.version.as_deref(), Some("0.9.0"));
+        let argv = Tasks::argv(
+            &tasks().complete,
+            &[("{id}", "t-1"), ("{evidence}", "Done in #3 at abc")],
+        );
+        assert_eq!(
+            argv,
+            ["arcl", "task", "complete", "t-1", "--evidence", "Done in #3 at abc"]
+        );
+    }
+
+    #[test]
+    fn task_commands_need_their_placeholders() {
+        let missing = Tasks { complete: "arcl task complete {id}".into(), ..tasks() };
+        let err = Settings { tasks: Some(missing), ..settings() }.validate().unwrap_err();
+        assert!(err.to_string().contains("tasks.complete"), "{err}");
+        let text = format!("{}[tasks]\nshow = \"x {{id}}\"\n", settings().render("0.9.0"));
+        assert!(Settings::parse(&text).is_err());
     }
 
     #[test]

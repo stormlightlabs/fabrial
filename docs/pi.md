@@ -161,6 +161,43 @@ private state, and neither holds raw tool output. The worker's installation
 token and OAuth access and refresh tokens are redacted; any other secret in
 the answer is kept as written.
 
+## Run a task
+
+`fab run` takes one task through the whole sequence with Pi workers. Run it
+from the primary checkout, on `main`:
+
+```sh
+fab run <task> --trusted-checkout /trusted/fabrial --config /private/issuer.toml
+```
+
+`<task>` is an ID, an issue as `#<n>` or a file holding a description. An ID
+needs a `[tasks]` table in `.github/fabrial.toml`, naming the command for each
+step of the repository's tracker:
+
+```toml
+[tasks]
+show = "arcl task show {id}"
+start = "arcl task start {id}"
+complete = "arcl task complete {id} --evidence {evidence}"
+handoff = "arcl task handoff {id} --note-file {file}"
+```
+
+Each command is split on spaces and run on the host, without a shell, in the
+task's worktree; a value put in for `{id}`, `{evidence}` or `{file}` stays one
+argument. The run claims the task, adds the worktree
+`../<repo>-worktrees/<task>` on `storm/<task>`, starts the task and
+dispatches the implementer. Once it pushes, the run reads the pull request
+Branch PR opened, then runs each stage `fab sequence` gives: a reviewer in a
+detached worktree at the pinned head, a reviser in the task's worktree. A
+review ends with `Above nit: yes` or `no`, which decides whether its revise
+runs. The run then completes the task, runs the gates on the host, checks the
+pull request merges and posts `Review finished`. A failed step records a
+handoff and stops.
+
+The run reads GitHub a bounded number of times, never waiting on an event: up
+to ten reads for the pull request, asking Branch PR to open it once halfway,
+and up to ten for whether it merges.
+
 ## Detached workers
 
 Add `--detach` to return a `started` record with the run and worker IDs once

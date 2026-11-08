@@ -57,38 +57,79 @@ struct Finish {
     posts: String,
 }
 
+/// The stages a depth gives, in order, as `fab run` drives them.
+pub struct Plan {
+    /// The diff's depth, or the one given.
+    pub depth: Depth,
+    /// Why the diff has that depth.
+    pub reason: String,
+    /// The stages to run, in order.
+    pub steps: Vec<Step>,
+}
+
+/// One stage of a [`Plan`].
+pub struct Step {
+    /// The stage's name, such as `standard review`.
+    pub name: String,
+    /// The agent role that runs it.
+    pub role: String,
+    /// Whether it runs only when the stage before it found anything above
+    /// nit.
+    pub conditional: bool,
+    /// What it posts.
+    pub posts: String,
+}
+
 /// Prints the depth and the stages it gives, numbered, then the finish.
 pub fn run(options: Options) -> Result<()> {
-    let here = Path::new(".");
-    // The file and the roles come from the merge base, as the gate comes
-    // from main: a pull request's change to them applies to later pull
-    // requests, never to its own review.
-    let base = run::git(here, &["merge-base", &options.diff.base, &options.diff.head])?;
-    let at_base = |path: &str| run::git(here, &["cat-file", "-e", &format!("{base}:{path}")]).is_ok();
-    let agent = |role: &str| format!(".claude/agents/{role}.md");
-    // A pull request that installs fabrial, or updates it to the release
-    // that adds the file, has none at the base: it gets the sequence and
-    // roles this release installs, and the output says so.
-    let mut note = String::new();
-    let sequence = if at_base(SEQUENCE_PATH) {
-        let text = run::git(here, &["show", &format!("{base}:{SEQUENCE_PATH}")])
-            .map_err(|e| format!("cannot read {SEQUENCE_PATH} at the base {base}: {e}"))?;
-        parse(&text, |role| at_base(&agent(role)))?
-    } else {
-        let text = install::embedded(SEQUENCE_PATH).ok_or(format!("fab installs no {SEQUENCE_PATH}."))?;
-        note = format!(
-            "Sequence: the one fabrial {} installs, since the base {} has no {SEQUENCE_PATH}.\n\n",
-            fab_core::VERSION,
-            &base[..base.len().min(7)]
-        );
-        parse(text, |role| install::embedded(&agent(role)).is_some())?
-    };
+    let (sequence, note) = load(&options.diff)?;
     let (depth, reason) = match options.depth {
         Some(depth) => (depth, "given with --depth".to_string()),
         None => depth::of_diff(&options.diff)?,
     };
     print!("{note}{}", render(&sequence, depth, &reason));
     Ok(())
+}
+
+/// The plan for a diff: its depth and the stages that depth gives.
+pub fn plan(diff: &depth::Options) -> Result<Plan> {
+    let (sequence, _) = load(diff)?;
+    let (depth, reason) = depth::of_diff(diff)?;
+    let steps = sequence
+        .stage
+        .into_iter()
+        .filter(|s| s.depth <= depth && depth != Depth::None)
+        .map(|s| Step { name: s.name, role: s.role, conditional: s.when.is_some(), posts: s.posts })
+        .collect();
+    Ok(Plan { depth, reason, steps })
+}
+
+/// Reads the sequence from the merge base, or the one this release installs
+/// when the base has none, with a note saying which.
+fn load(diff: &depth::Options) -> Result<(Sequence, String)> {
+    let here = Path::new(".");
+    // The file and the roles come from the merge base, as the gate comes
+    // from main: a pull request's change to them applies to later pull
+    // requests, never to its own review.
+    let base = run::git(here, &["merge-base", &diff.base, &diff.head])?;
+    let at_base = |path: &str| run::git(here, &["cat-file", "-e", &format!("{base}:{path}")]).is_ok();
+    let agent = |role: &str| format!(".claude/agents/{role}.md");
+    // A pull request that installs fabrial, or updates it to the release
+    // that adds the file, has none at the base: it gets the sequence and
+    // roles this release installs, and the output says so.
+    if at_base(SEQUENCE_PATH) {
+        let text = run::git(here, &["show", &format!("{base}:{SEQUENCE_PATH}")])
+            .map_err(|e| format!("cannot read {SEQUENCE_PATH} at the base {base}: {e}"))?;
+        Ok((parse(&text, |role| at_base(&agent(role)))?, String::new()))
+    } else {
+        let text = install::embedded(SEQUENCE_PATH).ok_or(format!("fab installs no {SEQUENCE_PATH}."))?;
+        let note = format!(
+            "Sequence: the one fabrial {} installs, since the base {} has no {SEQUENCE_PATH}.\n\n",
+            fab_core::VERSION,
+            &base[..base.len().min(7)]
+        );
+        Ok((parse(text, |role| install::embedded(&agent(role)).is_some())?, note))
+    }
 }
 
 /// Reads a sequence and checks it: at least one stage, and every stage's

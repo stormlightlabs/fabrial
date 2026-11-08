@@ -622,6 +622,7 @@ mod tests {
             signoff: None,
             assisted_by: None,
             disposable: None,
+            tasks: None,
             gates: "npm test".into(),
             version: None,
         }
