@@ -7,7 +7,8 @@
 //! `gh api`, so it needs no record from the run that made the worktrees and
 //! works after a restart. A worktree is removed only when its pull request
 //! merged, `git status --porcelain --ignored` lists nothing but Cargo's
-//! `target/`, and its branch tip equals the pull request's head. The branch
+//! `target/` and the paths `disposable` in main's `.github/fabrial.toml`
+//! names, and its branch tip equals the pull request's head. The branch
 //! is deleted only at that tip. A local agent branch that no worktree has
 //! checked out, or is rebasing or bisecting, is deleted when its pull request
 //! merged at its tip. A deleted branch takes its `branch.<name>` settings
@@ -29,8 +30,9 @@ use crate::run::{self, Result};
 /// The branch prefixes agents push, as AGENTS.md names them.
 const AGENT_PREFIXES: [&str; 3] = ["claude/", "codex/", "storm/"];
 
-/// The ignored paths `git worktree remove` may delete with the worktree:
-/// Cargo's build output at the worktree's root, which a build recreates.
+/// The ignored paths `git worktree remove` may delete with any worktree:
+/// Cargo's build output at the worktree's root, which a build recreates. A
+/// repository adds its own with `disposable` in `.github/fabrial.toml`.
 /// Every other ignored file, such as an `.env` or a Nix `result` link, keeps
 /// the worktree.
 const DISPOSABLE: [&str; 1] = ["target/"];
@@ -78,6 +80,19 @@ struct Pull {
 }
 
 /// What one run found, for its exit code.
+/// What every worktree in one cleanup is checked against.
+#[derive(Clone, Copy)]
+struct Context<'a> {
+    /// The GitHub repository, as owner/name.
+    repo: &'a str,
+    /// The primary checkout.
+    primary: &'a Path,
+    /// The directory cleanup runs from, which it never removes.
+    here: &'a Path,
+    /// The ignored paths the settings let cleanup delete.
+    disposable: &'a [String],
+}
+
 #[derive(Default)]
 struct Tally {
     kept: bool,
@@ -120,6 +135,7 @@ fn cleanup(options: &Options) -> Result<ExitCode> {
     };
     let primary_dir = primary.path.clone();
     let here = here.canonicalize().unwrap_or(here);
+    let disposable = disposable(&primary_dir)?;
     let mut tally = Tally::default();
     for worktree in &worktrees[1..] {
         let Some(branch) = worktree.branch.as_deref().filter(|b| is_agent(b)) else {
@@ -133,15 +149,8 @@ fn cleanup(options: &Options) -> Result<ExitCode> {
             tally.kept = true;
             continue;
         }
-        if let Err(e) = one_worktree(
-            &repo,
-            &primary_dir,
-            &here,
-            worktree,
-            branch,
-            options.dry_run,
-            &mut tally,
-        ) {
+        let context = Context { repo: &repo, primary: &primary_dir, here: &here, disposable: &disposable };
+        if let Err(e) = one_worktree(&context, worktree, branch, options.dry_run, &mut tally) {
             println!("error {branch} at {}: {e}", worktree.path.display());
             tally.failed = true;
         }
@@ -161,22 +170,67 @@ fn cleanup(options: &Options) -> Result<ExitCode> {
     Ok(tally.code())
 }
 
+/// The ignored paths the primary checkout's `.github/fabrial.toml` lets
+/// cleanup delete, none when the file or the setting is missing.
+fn disposable(primary: &Path) -> Result<Vec<String>> {
+    let path = primary.join(fab_core::settings::SETTINGS_PATH);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(Vec::new());
+    };
+    let settings = fab_core::settings::Settings::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(settings.disposable.unwrap_or_default())
+}
+
+/// The files under the ignored path git reported that no disposable path
+/// covers. Git reports a wholly ignored directory as one path, so one that
+/// holds a disposable path is listed file by file; `target/` and directories
+/// no disposable path reaches into stay one path.
+fn undisposable(worktree: &Path, path: &str, disposable: &[String]) -> Result<Vec<String>> {
+    if DISPOSABLE.contains(&path) || disposable.iter().any(|d| covers(d, path)) {
+        return Ok(Vec::new());
+    }
+    if !path.ends_with('/') || !disposable.iter().any(|d| d.starts_with(path)) {
+        return Ok(vec![path.to_string()]);
+    }
+    let files = run::git(
+        worktree,
+        &[
+            "status",
+            "--porcelain",
+            "--ignored",
+            "--untracked-files=all",
+            "--",
+            path,
+        ],
+    )?;
+    Ok(files
+        .lines()
+        .filter_map(|l| l.strip_prefix("!! "))
+        .filter(|f| !disposable.iter().any(|d| covers(d, f)))
+        .map(String::from)
+        .collect())
+}
+
+/// Whether the disposable path `entry` covers the ignored path git reports:
+/// the same path, or one inside it when `entry` names a directory.
+fn covers(entry: &str, ignored: &str) -> bool {
+    ignored == entry || (entry.ends_with('/') && ignored.starts_with(entry))
+}
+
 /// Removes one agent worktree and its branch when its pull request merged
 /// at its tip, and reports what it did or why not.
-fn one_worktree(
-    repo: &str, primary: &Path, here: &Path, worktree: &Worktree, branch: &str, dry_run: bool, tally: &mut Tally,
-) -> Result<()> {
+fn one_worktree(context: &Context, worktree: &Worktree, branch: &str, dry_run: bool, tally: &mut Tally) -> Result<()> {
+    let Context { repo, primary, here, disposable } = *context;
     let at = worktree.path.display();
     let pulls = branch_pulls(repo, branch)?;
     let tip = run::git(primary, &["rev-parse", &format!("refs/heads/{branch}")])?;
     let status = run::git(&worktree.path, &["status", "--porcelain", "--ignored"])?;
     let (ignored, changed): (Vec<&str>, Vec<&str>) = status.lines().partition(|l| l.starts_with("!! "));
     let mut plan = plan(&pulls, &tip, !changed.is_empty());
-    let kept: Vec<&str> = ignored
-        .iter()
-        .map(|l| &l[3..])
-        .filter(|p| !DISPOSABLE.contains(p))
-        .collect();
+    let mut kept: Vec<String> = Vec::new();
+    for path in ignored.iter().map(|l| &l[3..]) {
+        kept.extend(undisposable(&worktree.path, path, disposable)?);
+    }
     let inside = here.starts_with(worktree.path.canonicalize().unwrap_or(worktree.path.clone()));
     if matches!(plan, Plan::Remove(_)) {
         if inside {

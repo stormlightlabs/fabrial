@@ -621,6 +621,7 @@ mod tests {
             trailer: "Owais <desertthunder.dev@gmail.com>".into(),
             signoff: None,
             assisted_by: None,
+            disposable: None,
             gates: "npm test".into(),
             version: None,
         }

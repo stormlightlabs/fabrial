@@ -2,7 +2,7 @@
 id = "arcl-t-01M5ZRKVC2HRV18MN9TKQEH12J"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
 title = "Let fab cleanup remove ignored caches a repository names"
-status = "pending"
+status = "in_progress"
 priority = "normal"
 position = 0
 +++

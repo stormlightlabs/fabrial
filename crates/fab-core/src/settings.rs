@@ -30,6 +30,12 @@ pub struct Settings {
     /// keeps model names off `main`.
     #[serde(default)]
     pub assisted_by: Option<String>,
+    /// Ignored paths, relative to a worktree's root, that `fab cleanup` may
+    /// delete with a merged worktree beside Cargo's `target/`: caches a tool
+    /// rebuilds, such as a tracker's local database. A path ending in `/`
+    /// names a directory.
+    #[serde(default)]
+    pub disposable: Option<Vec<String>>,
     /// The fabrial version that last wrote the installed files.
     #[serde(default)]
     pub version: Option<String>,
@@ -53,6 +59,17 @@ impl Settings {
             return Err(Error::Settings(format!(
                 "`assisted_by` is {value:?}, not \"on\" or \"off\""
             )));
+        }
+        for path in self.disposable.iter().flatten() {
+            let bad = path.is_empty()
+                || path.starts_with('/')
+                || path.split('/').any(|part| part == "..")
+                || path.contains(['"', '\\', '\n', '\r']);
+            if bad {
+                return Err(Error::Settings(format!(
+                    "`disposable` holds {path:?}; each path is relative to the worktree, without `..`, quotes or backslashes"
+                )));
+            }
         }
         let signoff = self.signoff.as_ref().map(|s| ("signoff", s));
         for (key, value) in [
@@ -107,6 +124,14 @@ impl Settings {
                  assisted_by = \"{a}\"\n"
             )
         });
+        let disposable = self.disposable.as_ref().map_or_else(String::new, |paths| {
+            let list = paths.iter().map(|p| format!("\"{p}\"")).collect::<Vec<_>>().join(", ");
+            format!(
+                "\n# Ignored paths fab cleanup may delete with a merged worktree, beside\n\
+                 # target/: caches a tool rebuilds.\n\
+                 disposable = [{list}]\n"
+            )
+        });
         format!(
             "# fabrial's settings for this repository. The Branch PR workflow, the Review\n\
              # gate and the skills read them. Each value is one line: key = \"value\".\n\
@@ -122,6 +147,7 @@ impl Settings {
              gates = \"{}\"\n\
              {signoff}\
              {assisted}\
+             {disposable}\
              \n\
              # The fabrial version that wrote the installed files. `fab check`\n\
              # compares it with its own.\n\
@@ -153,6 +179,7 @@ mod tests {
             gates: "just check".into(),
             signoff: None,
             assisted_by: None,
+            disposable: None,
             version: None,
         }
     }
@@ -202,6 +229,24 @@ mod tests {
         let mut bad = settings();
         bad.assisted_by = Some("yes".into());
         assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn disposable_paths_round_trip_and_stay_inside_the_worktree() {
+        assert!(!settings().render("0.1.0").contains("disposable"));
+        let mut s = settings();
+        s.disposable = Some(vec![".cache/db".into(), "tmp/".into()]);
+        let text = s.render("0.1.0");
+        assert!(
+            text.lines().any(|l| l == r#"disposable = [".cache/db", "tmp/"]"#),
+            "{text}"
+        );
+        assert_eq!(Settings::parse(&text).unwrap().disposable, s.disposable);
+        for bad in ["", "/etc/passwd", "../up", "a/../../b", "a\"b"] {
+            let mut s = settings();
+            s.disposable = Some(vec![bad.into()]);
+            assert!(s.validate().is_err(), "{bad:?}");
+        }
     }
 
     #[test]

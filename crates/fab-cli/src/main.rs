@@ -148,7 +148,7 @@ struct Repo {
 fn main() -> ExitCode {
     let result = match Cli::parse().command {
         Command::Init { repo, owner, trailer, gates, signoff, assisted_by, force } => in_repo(&repo, |dir| {
-            let settings = Settings { owner, trailer, gates, signoff, assisted_by, version: None };
+            let settings = Settings { owner, trailer, gates, signoff, assisted_by, disposable: None, version: None };
             install::install(dir, &settings, force).map(|r| written(&r, "installed"))
         }),
         Command::Update { repo, owner, trailer, gates, signoff, assisted_by, force } => in_repo(&repo, |dir| {

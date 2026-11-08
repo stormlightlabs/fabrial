@@ -389,6 +389,40 @@ fn a_merged_worktree_with_only_target_ignored_is_removed() {
 }
 
 #[test]
+fn ignored_paths_the_settings_name_go_with_a_merged_worktree_and_others_keep_it() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.primary().join(".github")).unwrap();
+    let settings = "owner = \"o\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\n\
+        disposable = [\".cache/db\", \".cache/db.lock\", \"tmp/\"]\n";
+    f.commit(&f.primary(), ".github/fabrial.toml", settings);
+    f.git(&f.primary(), &["push", "-q", "origin", "main"]);
+    for (branch, extra) in [("storm/caches", None), ("storm/env", Some(".env"))] {
+        let (dir, _) = f.worktree(branch);
+        fs::write(dir.join(".gitignore"), ".cache/\ntmp/\n.env\n").unwrap();
+        f.git(&dir, &["add", ".gitignore"]);
+        f.git(&dir, &["commit", "-q", "-m", "ignore"]);
+        let tip = f.git(&dir, &["rev-parse", "HEAD"]);
+        f.pull(branch, if extra.is_some() { 2 } else { 1 }, "closed", true, &tip);
+        fs::create_dir_all(dir.join(".cache")).unwrap();
+        fs::write(dir.join(".cache/db"), "cache").unwrap();
+        fs::write(dir.join(".cache/db.lock"), "").unwrap();
+        fs::create_dir_all(dir.join("tmp/a")).unwrap();
+        if let Some(file) = extra {
+            fs::write(dir.join(file), "SECRET=1\n").unwrap();
+        }
+    }
+    let output = f.cleanup(&[]);
+    let out = stdout(&output);
+    assert!(out.contains("removed storm/caches at"), "{out}");
+    assert!(!f.path("storm-caches").exists() && !f.has_branch("storm/caches"));
+    assert!(
+        out.contains("kept storm/env at") && out.contains("removal would delete ignored files: .env"),
+        "{out}"
+    );
+    assert!(f.path("storm-env").join(".env").exists());
+}
+
+#[test]
 fn a_branch_that_cannot_be_deleted_keeps_its_worktree() {
     let f = Fixture::new();
     let (merged, tip) = f.worktree("storm/merged");
