@@ -153,7 +153,17 @@ export function observe(raw, observedAt) {
   };
 }
 
-/** Reviews of the current head; a push leaves earlier reviews behind. */
+/**
+ * Each author's latest verdict on the current head; a push leaves earlier
+ * reviews behind. An approval replaces the same author's request for changes,
+ * and the reverse; a comment-only review replaces neither, as on GitHub.
+ */
 function currentReviews(raw) {
-  return (raw.reviews ?? []).filter((r) => r.commit?.oid === raw.headRefOid);
+  const latest = new Map();
+  const verdicts = (raw.reviews ?? [])
+    .filter((r) => r.commit?.oid === raw.headRefOid && ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(r.state))
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => String(a.r.submittedAt ?? "").localeCompare(String(b.r.submittedAt ?? "")) || a.i - b.i);
+  for (const { r } of verdicts) latest.set(r.author?.login ?? r.id, r);
+  return [...latest.values()];
 }

@@ -280,8 +280,8 @@ extensions under `packages/pi/extensions/`:
 They share code in `packages/pi/lib/` and talk only through Pi extension
 events: `fabrial:worker` for worker progress and `fabrial:pr` for each PR
 reading. Each one also loads alone. The status area without the others shows
-`PR unknown` and no workers. To leave one out,
-filter it in the package entry of your Pi settings, such as
+`PR unknown` and no workers. To leave one out, filter it in the package entry
+of your Pi settings, such as
 `"extensions": ["!packages/pi/extensions/status-area.ts"]`.
 
 Set these before starting Pi:
@@ -328,21 +328,21 @@ without a model call.
 
 The status is for the person to read. A merge, a closure, a failed check or
 a requested change shows in the [status area](#status-area) and starts no
-turn; the package sends no message about it. Acting on it, such as cleaning
-up after a merge or fixing a failed check, belongs to the person or to a host
-that reads PR status itself. The package reads no labels or comments, and
-readings carry no comment text, review text or `gh` errors, and no
-credentials.
+turn. Acting on it, such as cleaning up after a merge or fixing a failed
+check, belongs to the person or to a host that reads PR status itself. The
+package reads no labels or comments, and readings carry no comment text,
+review text or `gh` errors, and no credentials.
 
 ### Status area
 
 In the terminal UI, two rows below the editor show the session's pull request
 and run. The first shows the PR number and state (`draft`, `ready`, `merged`
-or `closed`), its checks, `changes requested` when a review of the head asks
-for changes, the PR link, the repository, the branch with ahead and behind
-counts, and the diff against the fetched base. The second shows the current step, the workers active of total
-with blocked and failed, and the run ID. Pi's own footer stays under them with
-the worktree, context, cost and model.
+or `closed`), its checks, `changes requested` when a reviewer's latest review
+of the head asks for changes, the PR link, the repository, the branch with
+ahead and behind counts, and the diff against the fetched base. The second
+shows the current step, the workers active of total with blocked and failed,
+and the run ID. Pi's own footer stays under them with the worktree, context,
+cost and model.
 
 Checks count only for the head they were read for. After a push, a branch
 change, a failed read or a local head that differs from the PR's, they show as
@@ -351,7 +351,8 @@ stale, never as passed. A stale result names its cause (`rate limited`,
 failed, pending and passed counts, followed by the time of the last good read,
 the next retry and that head, and leaves out requested changes. A lookup
 that has not succeeded shows `PR unknown` with the reason, such as a rate
-limit and when the next read is due. `no PR` means GitHub has none for the branch.
+limit and when the next read is due. `no PR` means GitHub has none for the
+branch.
 
 The step comes from the roles of active workers, such as `review` or
 `revise`; with none it shows `unknown`. A widget above the editor lists each

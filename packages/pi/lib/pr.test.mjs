@@ -112,6 +112,28 @@ test("a failed first read and a branch with no PR are unknown", async (t) => {
   collector.stop();
 });
 
+test("only each author's latest review on the head counts", async (t) => {
+  const h = host(t);
+  const review = (id, state, login, submittedAt) => ({ id, state, author: { login }, submittedAt, commit: { oid: oldHead } });
+  h.set({ ...base, reviews: [
+    review("R1", "CHANGES_REQUESTED", "owner", "2026-10-25T11:00:00Z"),
+    review("R2", "APPROVED", "owner", "2026-10-25T12:00:00Z"),
+    review("R3", "APPROVED", "member", "2026-10-25T11:00:00Z"),
+    review("R4", "COMMENTED", "member", "2026-10-25T12:00:00Z"),
+  ] });
+  const collector = h.make();
+  await collector.poll();
+  assert.deepEqual(collector.get().reviews, { approved: 2, changesRequested: 0 });
+
+  h.set({ ...base, reviews: [
+    review("R1", "APPROVED", "owner", "2026-10-25T11:00:00Z"),
+    review("R2", "CHANGES_REQUESTED", "owner", "2026-10-25T12:00:00Z"),
+  ] });
+  h.advance(MIN_INTERVAL); await collector.poll();
+  assert.deepEqual(collector.get().reviews, { approved: 0, changesRequested: 1 });
+  collector.stop();
+});
+
 test("merges, closures, failed checks and requested changes are readings only", async (t) => {
   const h = host(t);
   h.set({ ...base,
