@@ -64,6 +64,11 @@ release changes. A repository moving to this release from one that named
 its tracker in the skills adds a **Tasks** section to its `AGENTS.md`;
 without it the skills stop and ask when given a task ID.
 
+`fab cleanup` keeps a merged worktree that holds ignored files, other than
+Cargo's `target/`, so nothing local is lost. A repository whose tools leave
+caches in each worktree names them in `.github/fabrial.toml`, for example
+`disposable = [".cache/db"]`; a path ending in `/` names a directory.
+
 `fab check` lists files that differ from this build's and an installed version
 that differs from it, and exits 1 when there is any drift.
 

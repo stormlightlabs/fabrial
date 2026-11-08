@@ -15,6 +15,10 @@ gates = "just check"
 # model its pull request's commits name.
 assisted_by = "on"
 
+# Ignored paths fab cleanup may delete with a merged worktree, beside
+# target/: caches a tool rebuilds.
+disposable = [".arcl/arcl.db", ".arcl/arcl.db-sync.lock", ".arcl/arcl.db-wal", ".arcl/arcl.db-shm"]
+
 # The fabrial version that wrote the installed files. `fab check`
 # compares it with its own.
 version = "0.8.0"
