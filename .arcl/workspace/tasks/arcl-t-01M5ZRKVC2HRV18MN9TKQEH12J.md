@@ -2,9 +2,10 @@
 id = "arcl-t-01M5ZRKVC2HRV18MN9TKQEH12J"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
 title = "Let fab cleanup remove ignored caches a repository names"
-status = "in_progress"
+status = "completed"
 priority = "normal"
 position = 0
+evidence = "Done in #88 at c9ac427: fab cleanup deletes the ignored paths disposable in .github/fabrial.toml names; any other ignored file still keeps the worktree"
 +++
 
 Seen after #72 merged.
@@ -19,7 +20,7 @@ not know about arcl itself.
 
 Acceptance criteria:
 
-- [ ] `fab cleanup` removes a merged task's worktree whose only ignored files
+- [x] `fab cleanup` removes a merged task's worktree whose only ignored files
       are paths the repository names as safe to delete
-- [ ] Without that setting, it keeps refusing ignored files other than
+- [x] Without that setting, it keeps refusing ignored files other than
       `target/`
