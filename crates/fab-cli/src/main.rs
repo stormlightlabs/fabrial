@@ -19,7 +19,7 @@ mod squash;
 mod status;
 
 use clap::{Args, Parser, Subcommand};
-use fab_core::install::{self, Report};
+use fab_core::install::{self, KeptReason, Report};
 use fab_core::settings::Settings;
 
 /// fabrial: a software factory that takes tasks to reviewed pull requests.
@@ -77,7 +77,8 @@ enum Command {
         force: bool,
     },
     /// Replace an installed copy's files with this build's, keeping its
-    /// settings unless a flag changes one.
+    /// settings unless a flag changes one. Exits 1 when a file this release
+    /// no longer installs could not be removed.
     Update {
         #[command(flatten)]
         repo: Repo,
@@ -242,13 +243,35 @@ fn written(report: &Report, done: &str) -> ExitCode {
     for path in &report.written {
         println!("wrote {}", path.display());
     }
+    for path in &report.removed {
+        println!("removed {}, which this release no longer installs", path.display());
+    }
+    let mut failed = false;
+    for kept in &report.kept {
+        let path = kept.path.display();
+        match &kept.reason {
+            KeptReason::Edited => println!(
+                "kept {path}: no release wrote it as it is, and this one no longer installs it; delete it once nothing uses it"
+            ),
+            KeptReason::Symlink => println!(
+                "kept {path}: it is a symlink, which fab never follows or deletes, and this release no longer installs it"
+            ),
+            KeptReason::NotAFile => {
+                println!("kept {path}: it is not a regular file, and this release no longer installs it")
+            }
+            KeptReason::Failed(error) => {
+                failed = true;
+                eprintln!("fab: could not remove {path}, which this release no longer installs: {error}");
+            }
+        }
+    }
     println!(
         "fabrial {} {done}: {} written, {} unchanged.",
         fab_core::VERSION,
         report.written.len(),
         report.unchanged.len()
     );
-    ExitCode::SUCCESS
+    if failed { ExitCode::from(1) } else { ExitCode::SUCCESS }
 }
 
 #[cfg(test)]
