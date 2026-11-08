@@ -56,16 +56,18 @@ git push --force-with-lease origin <branch>
 ```
 
 When only the base moved, the Review gate keeps `storm/review` green.
-Otherwise the check goes back to pending and the change needs `/storm:review`.
-If it stays pending after a push that only moved the base, the previous
-head's check was not yet green when the gate read it: wait for that check,
-then rerun this push's Review gate run, or ask for `/storm:review`.
+Otherwise the check goes back to pending and the change needs another review
+sequence, which the driver asks a `storm` run for. Read the check once after
+the push and do not wait on it. If it is pending after a push that only moved
+the base, the previous head's check was not yet green when the gate read it:
+say so, and that the driver can rerun this push's Review gate run once that
+check is green, or ask for another sequence.
 
 ## Report
 
 Report the pull request, the old and new heads, whether the change is the same
-or differs, and the gates and their result. A stop names its reason and the
-files.
+or differs, the gates and their result, and `storm/review`'s state after the
+push. A stop names its reason and the files.
 
 ## Do not
 

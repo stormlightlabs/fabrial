@@ -387,30 +387,19 @@ fn a_copy_of_the_message_from_someone_else_does_not_stop_the_bots() {
 }
 
 #[test]
-fn a_stopped_pull_request_gets_the_success_and_no_merge_settings() {
-    let run = gate(
-        &with(&finished(), &[]),
-        json!({"labels": [{"name": "storm:stopped"}]}),
-        None,
-    );
-    assert_eq!(run.code, Some(0));
-    assert!(run.succeeded_check());
-    assert!(!run.calls.iter().any(|c| c.is("pr", "ready")
-        || c.is("pr", "merge")
-        || c.is("pr", "comment")
-        || c.is("api", "-X") && c.has("PATCH")));
-}
-
-#[test]
-fn storm_stop_turns_auto_merge_off() {
+fn storm_stop_is_no_longer_a_command() {
     let env = [
         ("EVENT", "comment"),
         ("AUTHOR", "desertthunder"),
         ("BODY", "/storm:stop"),
     ];
     let run = gate(&env, json!({}), None);
-    assert_eq!(run.code, Some(0));
-    assert!(run.calls.iter().any(|c| c.is("pr", "merge") && c.has("--disable-auto")));
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(
+        !run.calls
+            .iter()
+            .any(|c| c.is("label", "create") || c.is("pr", "edit") || c.is("pr", "merge") || c.is("api", "-X"))
+    );
 }
 
 #[test]
@@ -642,22 +631,25 @@ fn a_rebase_that_only_moves_the_base_keeps_the_review_and_a_new_change_does_not(
 }
 
 #[test]
-fn storm_ready_accepts_the_head_and_posts_the_squash_message() {
-    let body = format!("/storm:ready {}", &HEAD[..7]);
-    let run = gate(
-        &[("EVENT", "comment"), ("AUTHOR", "desertthunder"), ("BODY", &body)],
-        json!({}),
-        None,
-    );
-    assert_eq!(run.code, Some(0), "{}", run.stderr);
-    assert!(run.calls.iter().any(|c| c.is("pr", "ready")));
-    assert!(
-        run.calls
-            .iter()
-            .any(|c| c.has("conclusion=success") && c.has("output[title]=Marked ready by @desertthunder"))
-    );
-    assert_eq!(run.posts().len(), 1);
-    assert!(run.posts()[0].contains("Test change (#1)\n"));
+fn storm_ready_and_storm_done_accept_the_head_and_post_the_squash_message() {
+    for command in ["/storm:ready", "/storm:done"] {
+        let body = format!("{command} {}", &HEAD[..7]);
+        let run = gate(
+            &[("EVENT", "comment"), ("AUTHOR", "desertthunder"), ("BODY", &body)],
+            json!({}),
+            None,
+        );
+        assert_eq!(run.code, Some(0), "{command}: {}", run.stderr);
+        assert!(run.calls.iter().any(|c| c.is("pr", "ready")), "{command}");
+        assert!(
+            run.calls.iter().any(|c| c.has("conclusion=success")
+                && c.has("output[title]=Marked ready by @desertthunder")
+                && c.args.iter().any(|a| a.contains(&format!("with `{command}`")))),
+            "{command}"
+        );
+        assert_eq!(run.posts().len(), 1, "{command}");
+        assert!(run.posts()[0].contains("Test change (#1)\n"), "{command}");
+    }
 }
 
 #[test]
@@ -666,6 +658,7 @@ fn a_command_naming_another_commit_asks_again_and_accepts_nothing() {
         "Review finished at bbbbbbb",
         "/storm:ready bbbbbbb",
         "/storm:ready",
+        "/storm:done bbbbbbb",
         "Review finished at aaaa",
     ] {
         let author = if body.starts_with('/') { "desertthunder" } else { BOT };
@@ -679,8 +672,13 @@ fn a_command_naming_another_commit_asks_again_and_accepts_nothing() {
         assert!(!run.calls.iter().any(|c| c.is("pr", "ready")), "{body}");
         let asks = run.calls.iter().filter(|c| c.is("pr", "comment")).collect::<Vec<_>>();
         assert_eq!(asks.len(), 1, "{body}");
+        let command = if body.starts_with('/') { body.split_whitespace().next().unwrap() } else { "Review finished" };
+        let expected = format!("`{command}` names");
         assert!(
-            asks[0].args.iter().any(|a| a.contains("but the head is `aaaaaaa`")),
+            asks[0]
+                .args
+                .iter()
+                .any(|a| a.contains(&expected) && a.contains("but the head is `aaaaaaa`")),
             "{body}"
         );
     }
@@ -707,27 +705,6 @@ fn a_reopened_head_keeps_its_own_success_and_otherwise_waits() {
 
     let run = gate(&[("EVENT", "push"), ("ACTION", "reopened")], json!({}), None);
     assert!(run.calls.iter().any(|c| c.has("status=in_progress")));
-}
-
-#[test]
-fn storm_stop_labels_the_pull_request() {
-    let env = [
-        ("EVENT", "comment"),
-        ("AUTHOR", "desertthunder"),
-        ("BODY", "/storm:stop now"),
-    ];
-    let run = gate(&env, json!({}), None);
-    assert_eq!(run.code, Some(0));
-    assert!(
-        run.calls
-            .iter()
-            .any(|c| c.is("label", "create") && c.has("storm:stopped"))
-    );
-    assert!(
-        run.calls
-            .iter()
-            .any(|c| c.is("pr", "edit") && c.has("--add-label") && c.has("storm:stopped"))
-    );
 }
 
 #[test]

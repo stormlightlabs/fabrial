@@ -49,7 +49,7 @@ a paid plan, so rulesets on `main` are enforced.
   operations: claim, start a step, record a result, mark ready, release.
   `fab run` drives the fixed sequence in code. An agent such as Pi drives it
   through the CLI or `fab mcp`. A person drives it by asking the session,
-  with `/storm:ready` and `/storm:stop` PR comments the gate workflow reads,
+  with a `/storm:ready` PR comment the gate workflow reads,
   or through whatever a host builds on the same operations.
 - **Enforcement is server-side:** rulesets, required checks and the review
   workflow. There is no shell-command parsing or general token broker. Worker

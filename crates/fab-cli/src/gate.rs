@@ -10,15 +10,14 @@
 //! - `comment`: `BODY` from `AUTHOR`. `Review finished at <sha>` or
 //!   `/storm:ready <sha>` naming the head sets it to success, marks a draft
 //!   ready and sets the squash message in the status comment (see
-//!   `status.rs`); the owner merges, by hand or with
-//!   auto-merge. `/storm:stop` labels the pull request and turns off
-//!   auto-merge.
+//!   `status.rs`). `/storm:done <sha>` is another name for `/storm:ready`.
+//!   A person or an outer loop merges, by hand or with auto-merge.
 //! - `edit`: `SENDER` changed the title or body. On a ready pull request whose
 //!   head passed review, it sets the new squash message. Edits from anyone
 //!   without write access are ignored.
 //!
 //! A command word ends at whitespace or the end of the line, so
-//! `/storm:readyish` and `/storm:stopwatch` do nothing.
+//! `/storm:readyish` and `/storm:doneness` do nothing.
 //!
 //! It runs from a checkout of main with the pull request's head in
 //! `HEAD_DIR` and `origin/main` fetched there, and talks to GitHub through
@@ -39,7 +38,6 @@ use crate::status::Status;
 
 const CHECK_NAME: &str = "storm/review";
 const BOT_SLUG: &str = "stormlight-thunderbot";
-const STOP_LABEL: &str = "storm:stopped";
 const INTRO: &str = "When you merge, by hand or with auto-merge, squash with this message:";
 const AUTO_MERGE_NOTE: &str = "Auto-merge is on and squashes with the message it was turned on with. \
                                To use this one, turn auto-merge off and on again with it.";
@@ -214,11 +212,11 @@ impl Gate {
     /// Marks a draft pull request ready once its head has passed review.
     /// Merging, by hand or with auto-merge, is the owner's choice: the gate
     /// never turns auto-merge on or changes a request the owner set. A
-    /// stopped or closed pull request is left alone. A failed call stops the
+    /// closed pull request is left alone. A failed call stops the
     /// run before the success is posted.
     fn mark_ready(&self) -> Result<()> {
-        let info = self.view("state,isDraft,labels")?;
-        if info["state"] != "OPEN" || stopped(&info) {
+        let info = self.view("state,isDraft")?;
+        if info["state"] != "OPEN" {
             return Ok(());
         }
         if info["isDraft"] == true {
@@ -244,11 +242,11 @@ impl Gate {
 
     /// Sets the squash message built from the pull request as it is now in
     /// the status comment's `Squash message` section, and says whether it
-    /// wrote. Writes nothing when the pull request is closed or stopped, or
+    /// wrote. Writes nothing when the pull request is closed, or
     /// when the section already says the same.
     fn squash_message(&self) -> Result<bool> {
-        let info = self.view("state,title,body,headRefName,labels,autoMergeRequest")?;
-        if info["state"] != "OPEN" || stopped(&info) {
+        let info = self.view("state,title,body,headRefName,autoMergeRequest")?;
+        if info["state"] != "OPEN" {
             return Ok(false);
         }
         // The gate reads the commits rather than Branch PR, so commits pushed
@@ -371,33 +369,21 @@ impl Gate {
             // After the success, so an edit from here on finds the head
             // reviewed and posts its own message.
             self.post_squash_message()
-        } else if is_command(&line, "/storm:ready") {
+        } else if let Some(command) = ["/storm:ready", "/storm:done"]
+            .into_iter()
+            .find(|c| is_command(&line, c))
+        {
             let named = named_sha(&line, 2);
             if !self.names_head(&named) {
-                return self.wrong_sha("/storm:ready", &named);
+                return self.wrong_sha(command, &named);
             }
             self.mark_ready()?;
             let summary = format!(
-                "@{author} accepted {short} with `/storm:ready`.{}",
+                "@{author} accepted {short} with `{command}`.{}",
                 self.marker(&self.head)
             );
             self.check(&self.head, "success", &format!("Marked ready by @{author}"), &summary)?;
             self.post_squash_message()
-        } else if is_command(&line, "/storm:stop") {
-            self.gh_write(&[
-                "label",
-                "create",
-                STOP_LABEL,
-                "--repo",
-                &self.repo,
-                "--force",
-                "--description",
-                "No auto-merge or agent work until a person removes this label",
-            ])?;
-            self.gh_write(&["pr", "edit", &self.pr, "--repo", &self.repo, "--add-label", STOP_LABEL])?;
-            // Turning off auto-merge that is already off fails; that is fine.
-            let _ = self.gh_write(&["pr", "merge", &self.pr, "--repo", &self.repo, "--disable-auto"]);
-            Ok(())
         } else {
             Ok(())
         }
@@ -457,15 +443,6 @@ pub fn run(options: Options) -> Result<()> {
             &given(options.author).unwrap_or_else(|| "someone".into()),
         ),
     }
-}
-
-/// Whether a pull request carries the stop label.
-fn stopped(info: &Value) -> bool {
-    info["labels"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .any(|l| l["name"] == STOP_LABEL)
 }
 
 /// Whether a line is a command word, alone or followed by whitespace.
@@ -554,9 +531,9 @@ mod tests {
     #[test]
     fn commands_end_at_whitespace() {
         assert!(is_command("/storm:ready abc1234", "/storm:ready"));
-        assert!(is_command("/storm:stop", "/storm:stop"));
+        assert!(is_command("/storm:done", "/storm:done"));
         assert!(!is_command("/storm:readyish abc1234", "/storm:ready"));
-        assert!(!is_command("/storm:stopwatch", "/storm:stop"));
+        assert!(!is_command("/storm:doneness", "/storm:done"));
     }
 
     #[test]
