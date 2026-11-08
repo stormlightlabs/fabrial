@@ -3,6 +3,32 @@
 use super::*;
 use crate::dispatch::{operations, quote, state::WorkerRecord};
 
+/// Calls `controls` until it returns something other than an empty batch.
+/// A test that spawns a child process can hold the submission lock for a
+/// moment through the inherited file, and `controls` then reads nothing, as
+/// it would for a concurrent submitter; retrying makes the outcome the one the
+/// mailbox decides.
+fn claimed(directory: &Path, identity: &Value) -> Result<Vec<Value>> {
+    for _ in 0..200 {
+        match controls(directory, identity) {
+            Ok(batch) if batch.is_empty() => std::thread::sleep(std::time::Duration::from_millis(5)),
+            other => return other,
+        }
+    }
+    controls(directory, identity)
+}
+
+/// Takes the submission lock, waiting out a child process that inherited it.
+fn hold_lock(directory: &Path) -> std::fs::File {
+    for _ in 0..200 {
+        if let Some(file) = crate::dispatch::state::control_lock(directory).unwrap() {
+            return file;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    panic!("the control submission lock stayed busy");
+}
+
 #[test]
 fn event_cursor_replays_complete_records_only() {
     let temp = tempfile::tempdir().unwrap();
@@ -53,13 +79,13 @@ fn mailbox_is_claimed_once_and_checks_the_task_head() {
     request["message"] = json!("driver instruction");
     let path = mailbox.join(format!("{id}.json"));
     fs::write(&path, request.to_string()).unwrap();
-    let batch = controls(worker.directory(), &identity).unwrap();
+    let batch = claimed(worker.directory(), &identity).unwrap();
     assert_eq!(batch.len(), 1);
     assert_eq!(batch[0]["type"], "steer");
     assert!(controls(worker.directory(), &identity).unwrap().is_empty());
     request["task_head"] = json!("b".repeat(40));
     fs::write(&path, request.to_string()).unwrap();
-    assert!(controls(worker.directory(), &identity).is_err());
+    assert!(claimed(worker.directory(), &identity).is_err());
 }
 
 #[test]
@@ -87,12 +113,10 @@ fn mailbox_preserves_submission_order_instead_of_uuid_order() {
         request["message"] = json!("instruction");
         fs::write(mailbox.join(format!("{id}.json")), request.to_string()).unwrap();
     }
-    let lock = crate::dispatch::state::control_lock(worker.directory())
-        .unwrap()
-        .unwrap();
+    let lock = hold_lock(worker.directory());
     assert!(controls(worker.directory(), &identity).unwrap().is_empty());
     drop(lock);
-    let batch = controls(worker.directory(), &identity).unwrap();
+    let batch = claimed(worker.directory(), &identity).unwrap();
     assert_eq!(batch[0]["id"], "22222222-2222-4222-8222-222222222222");
     assert_eq!(batch[1]["id"], "11111111-1111-4111-8111-111111111111");
 }
