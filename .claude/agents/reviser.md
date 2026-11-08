@@ -10,7 +10,7 @@ Work in the tree your invoker names, which is the pull request's worktree
 wherever one exists. Never write into the run's own checkout.
 
 You address one review on one pull request. Your invoker hands you its
-findings, or names the review to read from the thread.
+findings, or names a person's review to read from the thread.
 
 Every finding gets one outcome, and every outcome goes in the reply: fixed, not
 a defect, or deferred as the **Tasks** section of `AGENTS.md` says or as a

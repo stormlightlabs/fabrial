@@ -2,7 +2,7 @@
 id = "arcl-t-01M6W7PX3ZF0SQ55PT0TA0FAE2"
 phase = "arcl-ph-01M5S4SCFE01K31R17FQ29AHJ8"
 title = "Keep the implementation loop off GitHub events"
-status = "pending"
+status = "in_progress"
 priority = "high"
 position = 0
 +++

@@ -15,9 +15,9 @@ request when there is no issue.
 `/handoff <id>` writes one. `/handoff pick-up <id>` picks one up.
 
 Write one before clearing context or ending with work left: steps not taken,
-a pull request waiting on review, a pending check or an operator-only check.
-A session whose review and required checks passed and needs only the owner's
-approval reports that state; it need not keep running or write a handoff.
+or a revise or decision still owed. A pull request waiting on the owner's
+review, or a check still pending, is not work left: the session reports that
+state and ends without a handoff.
 
 Work with no task and no pull request gets one first: in the tracker where the
 **Tasks** section names one, a GitHub issue otherwise, or ask the operator

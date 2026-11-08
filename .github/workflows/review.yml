@@ -3,8 +3,8 @@
 # skill and ends with `Review finished at <sha>`, posted as the bot through the
 # Bot comment workflow (or by the owner, a member or a collaborator). It runs
 # no model: `fab gate` marks each new head pending, turns the check green on
-# that comment or on `/storm:ready <sha>`, and answers `/storm:stop`. An edit
-# to the title or body sets the squash message again, in the status comment.
+# that comment or on `/storm:ready <sha>` (or `/storm:done <sha>`). An edit to
+# the title or body sets the squash message again, in the status comment.
 #
 # pull_request_target runs this file from main, and `fab` is the release
 # .github/fabrial.toml names (in fabrial itself, built from main), so a change
@@ -36,7 +36,7 @@ jobs:
          github.event.comment.user.login == 'stormlight-thunderbot[bot]') ||
         ((startsWith(github.event.comment.body, 'Review finished at ') ||
           startsWith(github.event.comment.body, '/storm:ready') ||
-          startsWith(github.event.comment.body, '/storm:stop')) &&
+          startsWith(github.event.comment.body, '/storm:done')) &&
          github.event.comment.user.type != 'Bot' &&
          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association))))
     runs-on: ubuntu-latest
