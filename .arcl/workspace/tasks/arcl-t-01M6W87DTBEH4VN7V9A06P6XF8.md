@@ -2,7 +2,7 @@
 id = "arcl-t-01M6W87DTBEH4VN7V9A06P6XF8"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Stop the Pi package starting turns on pull request events"
-status = "pending"
+status = "in_progress"
 priority = "high"
 position = 0
 +++

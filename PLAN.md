@@ -84,8 +84,8 @@ a paid plan, so rulesets on `main` are enforced.
   answers and `Review finished`. What happens after hand-off, such as CI
   failing later, the owner's review comments or a request to review again,
   belongs to the harness or the person driving it. The Pi package's PR
-  status, which starts an orchestrator turn on a failed check or a requested
-  change, is such harness behaviour, outside the loop. A larger loop that
+  status shows a failed check or a requested change for the person to read
+  and starts no turn. A larger loop that
   watches pull requests and merges without a person needs projects that can
   run that hands-off, and its own planning; agents turning on auto-merge,
   since removed, was the first lesson there.

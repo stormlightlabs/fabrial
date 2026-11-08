@@ -19,7 +19,7 @@ const fits = (lines, width) => {
 };
 const pr = (overrides = {}) => ({
   status: "success", observedAt, key: `owner/repo#7@${head}`, branch: "storm/task",
-  pr: { repository: "owner/repo", number: 7, url: "https://github.com/owner/repo/pull/7", head, draft: true, state: "open", stopped: false },
+  pr: { repository: "owner/repo", number: 7, url: "https://github.com/owner/repo/pull/7", head, draft: true, state: "open" },
   checks: { total: 4, passed: 4, pending: 0, failed: 0, items: [] }, reviews: { approved: 0, changesRequested: 0 },
   ...overrides,
 });
@@ -61,6 +61,19 @@ test("a PR URL that is not a GitHub pull request is neither linked nor shown", (
 test("failed checks are red and labelled", () => {
   const [first] = render(state({ pr: pr({ status: "failed", checks: { total: 4, passed: 2, pending: 1, failed: 1, items: [] } }) }));
   assert.match(first, /<error>checks 2\/4 passed, 1 failed, 1 pending<\/error>/);
+});
+
+test("merged and closed PRs and requested changes show by word and color", () => {
+  const merged = render(state({ pr: pr({ pr: { ...pr().pr, state: "merged" } }) }))[0];
+  assert.match(merged, /<success>merged<\/success>/);
+  assert.match(render(state({ pr: pr({ pr: { ...pr().pr, state: "closed" } }) }))[0], /<error>closed<\/error>/);
+  const changes = pr({ status: "failed", checks: { total: 4, passed: 3, pending: 0, failed: 1, items: [] }, reviews: { approved: 0, changesRequested: 1 } });
+  const [first] = render(state({ pr: changes }), 70);
+  assert.equal(plain(first), "PR #7 · draft · checks 3/4 passed, 1 failed · changes requested");
+  assert.match(first, /<warning>changes requested<\/warning>/);
+  assert.match(plain(render(state({ pr: { ...changes, checks: { total: 0, passed: 0, pending: 0, failed: 0, items: [] } } }))[0]), /checks none · changes requested/);
+  // Reviews belong to the head they were read for, so a stale reading leaves them out.
+  assert.doesNotMatch(plain(render(state({ pr: { ...changes, status: "stale" } }))[0]), /changes requested/);
 });
 
 test("ahead and behind outlast a long branch name, which Pi's footer already shows", () => {

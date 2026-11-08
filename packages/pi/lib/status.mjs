@@ -206,7 +206,7 @@ function prFields(state, s) {
     const [label, color] = { merged: ["merged", "success"], closed: ["closed", "error"] }[pr.state]
       ?? (pr.draft ? ["draft", "muted"] : ["ready", "accent"]);
     fields.push({ text: `PR #${pr.number}`, keep: true, paint: (t) => s.link(s.bold(t), pr.url) });
-    fields.push({ text: pr.stopped ? `${label}, stopped` : label, keep: true, paint: (t) => s.fg(pr.stopped ? "warning" : color, t) });
+    fields.push({ text: label, keep: true, paint: (t) => s.fg(color, t) });
     fields.push(...checks({ ...snapshot, pr }, local, s));
     if (pr.url) fields.push({ text: pr.url, priority: 2, paint: (t) => s.link(s.fg("dim", t), pr.url) });
   }
@@ -229,7 +229,8 @@ function prFields(state, s) {
  * Checks belong to the head they were read for; anything else is stale or
  * unknown, never green. A stale result keeps its cause, then its failed,
  * pending and passed counts, dropping the word "checks" when the row is
- * narrow. The head, then the retry time, then the read time drop first.
+ * narrow. The head, then the retry time, then the read time drop first. A
+ * current reading also shows requested changes, which a stale one leaves out.
  */
 function checks(snapshot, local, s) {
   const { pr, checks: c } = snapshot;
@@ -249,9 +250,11 @@ function checks(snapshot, local, s) {
       { text: `head ${pr.head.slice(0, 7)}`, priority: 6, paint: (t) => s.fg("muted", t) },
     ];
   }
-  if (!c?.total) return [{ text: "checks none", keep: true, paint: (t) => s.fg("muted", t) }];
+  const changes = snapshot.reviews?.changesRequested
+    ? [{ text: "changes requested", keep: true, paint: (t) => s.fg("warning", t) }] : [];
+  if (!c?.total) return [{ text: "checks none", keep: true, paint: (t) => s.fg("muted", t) }, ...changes];
   const color = c.failed ? "error" : c.pending ? "warning" : "success";
-  return [{ text: `checks ${[passed, ...open].join(", ")}`, keep: true, paint: (t) => s.fg(color, t) }];
+  return [{ text: `checks ${[passed, ...open].join(", ")}`, keep: true, paint: (t) => s.fg(color, t) }, ...changes];
 }
 
 function runFields(state, s) {
