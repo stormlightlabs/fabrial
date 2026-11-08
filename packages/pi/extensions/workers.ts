@@ -75,7 +75,7 @@ export default function (pi: ExtensionAPI) {
     name: "agent", label: "Agent",
     description: "Start one fresh isolated Pi worker and return its ID promptly. Completion or a blocker arrives later. Do not poll with model calls or repeat stages.",
     parameters: Type.Object({
-      role: StringEnum(["reviewer", "verifier", "adversarial-reviewer", "reviser"] as const),
+      role: StringEnum(["implementer", "reviewer", "verifier", "adversarial-reviewer", "reviser"] as const),
       taskFile: Type.String({ description: "Absolute path to a task file" }),
       worktree: Type.String({ description: "Absolute path to the worker's linked Git worktree" }),
     }),

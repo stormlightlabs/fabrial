@@ -66,14 +66,17 @@ fn roles_tools_and_no_fallback() {
         for tool in ["bash", "read", "find", "ls"] {
             assert!(tools.contains(&tool.to_string()));
         }
-        assert_eq!(tools.contains(&"write".into()), *role == "reviser");
+        assert_eq!(tools.contains(&"write".into()), WRITERS.contains(role));
         assert!(unmapped.contains(&"Skill".into()));
-        assert!(unmapped.contains(&"mcp__github__pull_request_read".into()));
+        assert_eq!(
+            unmapped.contains(&"mcp__github__pull_request_read".into()),
+            *role != "implementer"
+        );
         assert!(!body.is_empty());
         let (model, thinking) = role_config(&root(), role).unwrap();
         assert_eq!(
             thinking,
-            if ["reviewer", "adversarial-reviewer"].contains(role) { "medium" } else { "low" }
+            if ["implementer", "reviewer", "adversarial-reviewer"].contains(role) { "medium" } else { "low" }
         );
         assert_eq!(
             model,
@@ -96,6 +99,37 @@ fn roles_tools_and_no_fallback() {
     fs::create_dir(&skills).unwrap();
     symlink(root().join("AGENTS.md"), skills.join("escape")).unwrap();
     assert!(copy_tree(temp.path(), &skills, &temp.path().join("copy")).is_err());
+}
+
+#[test]
+fn each_role_gets_its_own_skills() {
+    let base = ["review", "storm", "writing-docs"];
+    for role in ["reviewer", "verifier", "adversarial-reviewer"] {
+        assert_eq!(role_skills(&root(), role), base);
+    }
+    assert_eq!(
+        role_skills(&root(), "reviser"),
+        ["review", "storm", "writing-docs", "revise", "resync"]
+    );
+    assert_eq!(
+        role_skills(&root(), "implementer"),
+        ["implement", "storm", "writing-docs", "arclightning"]
+    );
+    for role in ROLES {
+        for skill in role_skills(&root(), role) {
+            assert!(
+                root().join(".claude/skills").join(&skill).join("SKILL.md").is_file(),
+                "{skill}"
+            );
+        }
+    }
+    // A repository without an arcl workspace gives the implementer no arcl skill.
+    let temp = tempfile::tempdir().unwrap();
+    fs::create_dir_all(temp.path().join(".claude/skills/arclightning")).unwrap();
+    assert_eq!(
+        role_skills(temp.path(), "implementer"),
+        ["implement", "storm", "writing-docs"]
+    );
 }
 
 #[test]
@@ -275,4 +309,52 @@ fn dispatch_hands_the_session_bus_to_the_recorder() {
         ]
     );
     assert!(session_bus(|_| None).is_empty());
+}
+
+#[test]
+fn writers_need_a_worktree_on_an_agent_branch() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    let git = |dir: &Path, args: &[&str]| {
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args([
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    };
+    fs::create_dir(&repo).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    git(&repo, &["commit", "-q", "--allow-empty", "-m", "init"]);
+    let tree = |name: &str, args: &[&str]| {
+        let path = temp.path().join(name);
+        let mut all = vec!["worktree", "add", "-q"];
+        all.extend_from_slice(args);
+        all.push(path.to_str().unwrap());
+        git(&repo, &all);
+        path
+    };
+    let agent = tree("agent", &["-b", "storm/task"]);
+    let other = tree("other", &["-b", "feature"]);
+    let detached = tree("detached", &["--detach"]);
+    for role in WRITERS {
+        assert!(writer_branch(&agent, role).is_ok());
+        for refused in [&other, &detached, &repo] {
+            assert!(writer_branch(refused, role).unwrap_err().contains("storm/ branch"));
+        }
+    }
+    for refused in [&other, &detached] {
+        assert!(writer_branch(refused, "reviewer").is_ok());
+    }
 }

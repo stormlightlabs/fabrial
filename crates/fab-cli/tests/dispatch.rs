@@ -43,13 +43,13 @@ impl Fixture {
         fs::create_dir_all(&record_dir).unwrap();
         fs::write(record_dir.join("worker.json"), json!({
             "version": 1, "run_id": "run-one", "worker_id": "worker-one",
-            "task_head": "1".repeat(40), "role": if mode == "reviser" { "reviser" } else { "reviewer" },
+            "task_head": "1".repeat(40), "role": if ["reviser", "implementer"].contains(&mode) { mode } else { "reviewer" },
             "repository": "org/repo", "worktree": p,
             "created_at": now, "updated_at": now, "state": "prepared",
             "credential_cleanup": "pending", "result_file": null, "error": null,
             "resources": {"private_state": private, "tmux_session": "fab-worker-one", "supervisor_pid": null, "worker_pid": null}
         }).to_string()).unwrap();
-        fs::write(private.join("request.json"), json!({"record": record_dir.join("worker.json"), "config": config, "role": if mode == "reviser" { "reviser" } else { "reviewer" }, "worktree": p, "timeout": if mode == "deadline" {1} else {15}, "model": "openai/gpt-6-sol", "thinking": "low", "tools": ["bash", "read"], "skills": [], "session_bus": [["DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/test-bus"], ["XDG_RUNTIME_DIR", "/run/test-runtime"]]}).to_string()).unwrap();
+        fs::write(private.join("request.json"), json!({"record": record_dir.join("worker.json"), "config": config, "role": if ["reviser", "implementer"].contains(&mode) { mode } else { "reviewer" }, "worktree": p, "timeout": if mode == "deadline" {1} else {15}, "model": "openai/gpt-6-sol", "thinking": "low", "tools": ["bash", "read"], "skills": [], "session_bus": [["DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/test-bus"], ["XDG_RUNTIME_DIR", "/run/test-runtime"]]}).to_string()).unwrap();
         script(
             &bin.join("security"),
             "test \"$*\" = 'find-generic-password -s local-service -a local-account -w'\nprintf 'machine-secret\\n'",
@@ -92,7 +92,7 @@ impl Fixture {
         } else {
             format!("touch {}", quote(&p.join("revoked")))
         };
-        let perms = if ["widened", "reviser"].contains(&mode) { "write" } else { "read" };
+        let perms = if ["widened", "reviser", "implementer"].contains(&mode) { "write" } else { "read" };
         script(
             &bin.join("curl"),
             &format!(
@@ -274,15 +274,19 @@ fn recorder_issues_restricted_token_launches_and_revokes() {
 }
 
 #[test]
-fn reviser_requests_contents_write_only_for_its_repository() {
-    let f = Fixture::new("reviser");
-    assert!(f.run().status.success(), "{}", f.logs());
-    let body: Value = serde_json::from_str(&fs::read_to_string(f.temp.path().join("token-request")).unwrap()).unwrap();
-    assert_eq!(
-        body,
-        json!({"repositories": ["repo"], "permissions": {"actions": "write", "contents": "write", "pull_requests": "read"}})
-    );
-    assert!(f.temp.path().join("revoked").exists());
+fn writers_request_contents_write_only_for_their_repository() {
+    for role in ["reviser", "implementer"] {
+        let f = Fixture::new(role);
+        assert!(f.run().status.success(), "{role}: {}", f.logs());
+        let body: Value =
+            serde_json::from_str(&fs::read_to_string(f.temp.path().join("token-request")).unwrap()).unwrap();
+        assert_eq!(
+            body,
+            json!({"repositories": ["repo"], "permissions": {"actions": "write", "contents": "write", "pull_requests": "read"}}),
+            "{role}"
+        );
+        assert!(f.temp.path().join("revoked").exists(), "{role}");
+    }
 }
 
 #[test]

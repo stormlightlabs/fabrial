@@ -129,6 +129,11 @@ test("worker events set the step, the counts and the widget, and keep report tex
   assert.deepEqual(renderWorkers(s, 20, theme).map(plain), ["reviewer · working", "reviser · blocked"]);
 });
 
+test("an active implementer sets the implement step", () => {
+  const s = applyWorker(state(), { workerId: "w1-0000000000", worker: { role: "implementer", state: "running" } });
+  assert.match(plain(render(s)[1]), /^step implement · workers 1 active of 1/);
+});
+
 test("wide characters count as two columns", () => {
   const s = applyWorker(state(), { workerId: "w1-0000000000", worker: { role: "審査者🔍", state: "running" },
     event: { type: "progress", event: "tool_execution_start" } });

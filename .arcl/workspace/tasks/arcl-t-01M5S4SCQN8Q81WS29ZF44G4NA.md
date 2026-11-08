@@ -2,7 +2,7 @@
 id = "arcl-t-01M5S4SCQN8Q81WS29ZF44G4NA"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Add an implementer role to Pi dispatch"
-status = "pending"
+status = "in_progress"
 priority = "low"
 position = 3
 +++
@@ -47,12 +47,12 @@ dispatch"):
 
 Acceptance criteria:
 
-- [ ] Pi dispatch accepts an `implementer` role, using
+- [x] Pi dispatch accepts an `implementer` role, using
       `.claude/agents/implementer.md`, with Contents write and the
       `implement` skill
-- [ ] `.github/fabrial-roles.toml` has an owner-chosen implementer model, and
+- [x] `.github/fabrial-roles.toml` has an owner-chosen implementer model, and
       `fab check` reports no drift
 - [ ] A Pi worker can run the implement stage on a small real task and push a
       branch, or reports the gate blocker above without pushing
-- [ ] Tests cover the new role, its token permissions and its skills
-- [ ] `docs/pi.md` lists the role and its permissions
+- [x] Tests cover the new role, its token permissions and its skills
+- [x] `docs/pi.md` lists the role and its permissions

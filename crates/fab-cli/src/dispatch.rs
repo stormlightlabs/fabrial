@@ -27,7 +27,9 @@ mod state;
 
 use state::WorkerRecord;
 
-const ROLES: &[&str] = &["reviewer", "verifier", "adversarial-reviewer", "reviser"];
+const ROLES: &[&str] = &["implementer", "reviewer", "verifier", "adversarial-reviewer", "reviser"];
+/// The roles that push commits, so their token gets Contents write.
+const WRITERS: &[&str] = &["implementer", "reviser"];
 const GRACE: Duration = Duration::from_secs(120);
 const RECORD_LIMIT: usize = 4 * 1024 * 1024;
 /// What libsecret needs to find the session bus on Linux.
@@ -37,7 +39,7 @@ type Result<T> = std::result::Result<T, String>;
 /// Explicit operator-selected dispatch inputs. No model or credential fallback.
 #[derive(Args)]
 pub struct Options {
-    #[arg(value_parser = ["reviewer", "verifier", "adversarial-reviewer", "reviser"])]
+    #[arg(value_parser = clap::builder::PossibleValuesParser::new(ROLES))]
     role: String,
     #[arg(long)]
     task: PathBuf,
@@ -205,6 +207,27 @@ fn role_input(root: &Path, role: &str) -> Result<(Vec<String>, Vec<String>, Stri
     Ok((mapped.into_iter().collect(), unmapped, body))
 }
 
+/// The skills a role's worker gets as read-only input. The implementer gets
+/// `implement` in place of `review`, and `arclightning` where the repository
+/// commits an arcl workspace and carries that skill; the reviser adds
+/// `revise` and `resync`.
+fn role_skills(root: &Path, role: &str) -> Vec<String> {
+    let mut skills: Vec<String> = match role {
+        "implementer" => vec!["implement".into(), "storm".into(), "writing-docs".into()],
+        _ => vec!["review".into(), "storm".into(), "writing-docs".into()],
+    };
+    if role == "implementer"
+        && root.join(".arcl/workspace").is_dir()
+        && root.join(".claude/skills/arclightning").is_dir()
+    {
+        skills.push("arclightning".into());
+    }
+    if role == "reviser" {
+        skills.extend(["revise".into(), "resync".into()]);
+    }
+    skills
+}
+
 fn role_config(root: &Path, role: &str) -> Result<(String, String)> {
     let text = read(&trusted(root, ".github/fabrial-roles.toml")?)?;
     let config: toml::Value = toml::from_str(&text).map_err(|_| "invalid role configuration")?;
@@ -282,6 +305,24 @@ fn host_command(name: impl AsRef<std::ffi::OsStr>) -> Result<Command> {
         .env("PATH", std::env::var_os("PATH").ok_or("host PATH missing")?)
         .env("HOME", home()?);
     Ok(c)
+}
+
+/// Refuse a writer role unless the worktree is on an agent branch, so a
+/// token with Contents write is not handed to a worker whose checkout would
+/// push to `main`, a detached head or another branch by mistake. The token
+/// still reaches every branch; this limits mistakes, not a hostile worker.
+fn writer_branch(worktree: &Path, role: &str) -> Result<()> {
+    if !WRITERS.contains(&role) {
+        return Ok(());
+    }
+    let mut git = host_command("git")?;
+    git.arg("-C")
+        .arg(worktree)
+        .args(["symbolic-ref", "--quiet", "--short", "HEAD"]);
+    let refused = || format!("{role} needs a worktree on a claude/, codex/ or storm/ branch");
+    let branch = execute(git, None, Duration::from_secs(30)).map_err(|_| refused())?;
+    let branch = String::from_utf8(branch).map_err(|_| refused())?;
+    if crate::cleanup::is_agent(branch.trim()) { Ok(()) } else { Err(refused()) }
 }
 
 /// Capture both pipes concurrently, discard diagnostics, and impose a host-tool deadline.
@@ -486,8 +527,7 @@ fn issue(c: &Config, session_bus: &[(String, String)], private: &Path, role: &st
         return Err("installation does not match repository".into());
     }
     let repo = c.repository.split('/').nth(1).unwrap();
-    let permissions =
-        json!({"actions": "write", "contents": if role == "reviser" {"write"} else {"read"}, "pull_requests": "read"});
+    let permissions = json!({"actions": "write", "contents": if WRITERS.contains(&role) {"write"} else {"read"}, "pull_requests": "read"});
     let response = app_api(
         "POST",
         &format!("/app/installations/{installation}/access_tokens"),
@@ -917,13 +957,11 @@ fn dispatch(options: Options) -> Result<u8> {
     if home()?.starts_with(&worktree) {
         return Err("worktree exposes owner home".into());
     }
+    writer_branch(&worktree, &options.role)?;
     let (model, thinking) = role_config(&root, &options.role)?;
     let (tools, unmapped, body) = role_input(&root, &options.role)?;
     emit(&json!({"type": "progress", "event": format!("unmapped tools: {}", unmapped.join(", "))}));
-    let mut skills = vec!["review".to_string(), "storm".into(), "writing-docs".into()];
-    if options.role == "reviser" {
-        skills.extend(["revise".into(), "resync".into()]);
-    }
+    let skills = role_skills(&root, &options.role);
     if fs::metadata(&config.state_dir)
         .map_err(|_| "cannot inspect state directory")?
         .permissions()
@@ -946,7 +984,7 @@ fn dispatch(options: Options) -> Result<u8> {
     write(
         &p.join("input/role.md"),
         format!(
-            "{body}\n\nNo GitHub MCP tools exist. Use gh. Skills are files to read.\nNever approve or merge. Never bypass repository rulesets. Do not load PR code as trusted configuration.\nUse worker_report immediately for blockers or questions; those reports end this worker and return control to the driver.\nUse the trusted Bot comment workflow. Queue acceptance is not posting: confirm the bot author and first line.\nPush over HTTPS with transient gh auth git-credential; never change shared Git configuration.\nUnmapped role tools (use gh or read the skill): {}\n",
+            "{body}\n\nYou start in your worktree, the directory FAB_WORKTREE names; it is the directory the run named. Make no worktree of your own.\nNo GitHub MCP tools exist. Use gh. Skills are files to read.\nNever approve or merge. Never bypass repository rulesets. Do not load PR code as trusted configuration.\nUse worker_report immediately for blockers or questions; those reports end this worker and return control to the driver.\nUse the trusted Bot comment workflow. Queue acceptance is not posting: confirm the bot author and first line.\nPush over HTTPS with transient gh auth git-credential; never change shared Git configuration.\nUnmapped role tools (use gh or read the skill): {}\n",
             unmapped.join(", ")
         ),
     )?;
