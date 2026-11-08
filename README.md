@@ -70,6 +70,12 @@ Cargo's `target/`, so nothing local is lost. A repository whose tools leave
 caches in each worktree names them in `.github/fabrial.toml`, for example
 `disposable = [".cache/db"]`; a path ending in `/` names a directory.
 
+`fab review-depth` gives a pull request that changes only documentation,
+tests and planning records the standard review rather than the full one.
+Planning records are the Markdown and TOML files under the directories
+`planning` names in the base's `.github/fabrial.toml`, for example
+`planning = ["plans/"]`.
+
 `fab run` takes a task through implement and review with Pi workers;
 [docs/pi.md](docs/pi.md#run-a-task) covers it, and the `[tasks]` table it
 reads from `.github/fabrial.toml` to reach a tracker.

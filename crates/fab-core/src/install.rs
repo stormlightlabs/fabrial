@@ -752,6 +752,7 @@ mod tests {
             signoff: None,
             assisted_by: None,
             disposable: None,
+            planning: None,
             tasks: None,
             gates: "npm test".into(),
             version: None,
@@ -1059,9 +1060,11 @@ mod tests {
         assert!(toml.contains(r#"owner = "desertthunder""#));
         assert_eq!(check(dir.path()).unwrap(), vec![]);
         update(dir.path(), |s| s.signoff = Some("Owais <o@x>".into()), false).unwrap();
+        update(dir.path(), |s| s.planning = Some(vec!["plans/".into()]), false).unwrap();
         update(dir.path(), |_| {}, false).unwrap();
         let toml = fs::read_to_string(dir.path().join(SETTINGS_PATH)).unwrap();
         assert!(toml.contains(r#"signoff = "Owais <o@x>""#), "{toml}");
+        assert!(toml.contains(r#"planning = ["plans/"]"#), "{toml}");
     }
 
     #[test]

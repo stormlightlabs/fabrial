@@ -11,8 +11,8 @@ pub const SETTINGS_PATH: &str = ".github/fabrial.toml";
 ///
 /// The workflows read each value with `sed`, so every value is one line of
 /// the form `key = "value"` and may not hold a quote, a backslash or a line
-/// break. `disposable` is the one list, `key = ["a", "b"]` on one line, and
-/// no workflow reads it. [`Settings::validate`] enforces that.
+/// break. `disposable` and `planning` are lists, `key = ["a", "b"]` on one
+/// line, and no workflow reads them. [`Settings::validate`] enforces that.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Settings {
     /// GitHub login of the person who approves pull requests.
@@ -37,6 +37,12 @@ pub struct Settings {
     /// names a directory.
     #[serde(default)]
     pub disposable: Option<Vec<String>>,
+    /// Directories, relative to the repository root and each ending in `/`,
+    /// whose Markdown and TOML files are planning records, such as a
+    /// tracker's task files. `fab review-depth` gives a pull request that
+    /// changes only those, documentation and tests the standard pass.
+    #[serde(default)]
+    pub planning: Option<Vec<String>>,
     /// The fabrial version that last wrote the installed files.
     #[serde(default)]
     pub version: Option<String>,
@@ -108,13 +114,17 @@ impl Settings {
             )));
         }
         for path in self.disposable.iter().flatten() {
-            let bad = path.is_empty()
-                || path.starts_with('/')
-                || path.split('/').any(|part| part == "..")
-                || path.contains(['"', '\\', '\n', '\r']);
-            if bad {
+            if !is_relative(path) {
                 return Err(Error::Settings(format!(
                     "`disposable` holds {path:?}; each path is relative to the worktree, without `..`, quotes or backslashes"
+                )));
+            }
+        }
+        for path in self.planning.iter().flatten() {
+            if !is_relative(path) || !path.ends_with('/') || path.split('/').any(|part| part == ".") {
+                return Err(Error::Settings(format!(
+                    "`planning` holds {path:?}; each is a directory relative to the repository, ending in `/`, \
+                     without `.`, `..`, quotes or backslashes"
                 )));
             }
         }
@@ -197,6 +207,14 @@ impl Settings {
                  disposable = [{list}]\n"
             )
         });
+        let planning = self.planning.as_ref().map_or_else(String::new, |paths| {
+            let list = paths.iter().map(|p| format!("\"{p}\"")).collect::<Vec<_>>().join(", ");
+            format!(
+                "\n# Directories whose Markdown and TOML files are planning records, which\n\
+                 # fab review-depth reviews as it does documentation.\n\
+                 planning = [{list}]\n"
+            )
+        });
         let tasks = self.tasks.as_ref().map_or_else(String::new, |t| {
             let init = t
                 .init
@@ -232,6 +250,7 @@ impl Settings {
              {signoff}\
              {assisted}\
              {disposable}\
+             {planning}\
              \n\
              # The fabrial version that wrote the installed files. `fab check`\n\
              # compares it with its own.\n\
@@ -240,6 +259,15 @@ impl Settings {
             self.owner, self.trailer, self.gates, version
         )
     }
+}
+
+/// Whether a listed path is relative and stays inside the repository, with
+/// nothing the one-line form cannot hold.
+fn is_relative(path: &str) -> bool {
+    !(path.is_empty()
+        || path.starts_with('/')
+        || path.split('/').any(|part| part == "..")
+        || path.contains(['"', '\\', '\n', '\r']))
 }
 
 /// Whether `owner` is a GitHub login: ASCII letters, digits and single
@@ -265,6 +293,7 @@ mod tests {
             signoff: None,
             assisted_by: None,
             disposable: None,
+            planning: None,
             version: None,
             tasks: None,
         }
@@ -373,6 +402,24 @@ mod tests {
         for bad in ["", "/etc/passwd", "../up", "a/../../b", "a\"b"] {
             let mut s = settings();
             s.disposable = Some(vec![bad.into()]);
+            assert!(s.validate().is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn planning_directories_round_trip_and_stay_inside_the_repository() {
+        assert!(!settings().render("0.1.0").contains("planning"));
+        let mut s = settings();
+        s.planning = Some(vec!["plans/".into(), ".tracker/tasks/".into()]);
+        let text = s.render("0.1.0");
+        assert!(
+            text.lines().any(|l| l == r#"planning = ["plans/", ".tracker/tasks/"]"#),
+            "{text}"
+        );
+        assert_eq!(Settings::parse(&text).unwrap().planning, s.planning);
+        for bad in ["", "plans", "/plans/", "../plans/", "a/../b/", "./plans/", "a\"b/"] {
+            let mut s = settings();
+            s.planning = Some(vec![bad.into()]);
             assert!(s.validate().is_err(), "{bad:?}");
         }
     }

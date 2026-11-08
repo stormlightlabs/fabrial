@@ -2,7 +2,7 @@
 id = "arcl-t-01M5Z8MNF5YGPE0VXK5HQ4HPAR"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
 title = "Read a repository's planning paths for review depth from its settings"
-status = "pending"
+status = "in_progress"
 priority = "normal"
 position = 0
 +++
