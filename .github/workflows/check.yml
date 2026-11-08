@@ -2,7 +2,8 @@
 # the job named `check`, so the job always runs and reports. On a pull request
 # that changes only documentation, nothing here reads those files, so it
 # passes without building. Documentation is docs/ and every Markdown file at
-# the root but AGENTS.md and CLAUDE.md. A newer push to the same
+# the root but agent instructions: any whose name starts with agents or
+# claude in any case, such as AGENTS.md or CLAUDE.local.md. A newer push to the same
 # pull request cancels the run still going. The run on main builds the cache
 # that pull requests restore.
 name: Check
@@ -40,7 +41,7 @@ jobs:
             files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" \
               --jq '.[] | .filename, (.previous_filename // empty)') || files=
             if [[ -n $files ]] && (( $(wc -l <<<"$files") < 3000 )) && ! grep -qvE '^([^/]+\.md|docs/.+)$' <<<"$files" \
-              && ! grep -qxE '(AGENTS|CLAUDE)\.md' <<<"$files"; then
+              && ! grep -qiE '^(agents|claude)[^/]*\.md$' <<<"$files"; then
               build=false
               echo "Only documentation changed; nothing to build."
             fi
