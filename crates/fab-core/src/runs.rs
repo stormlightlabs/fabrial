@@ -16,7 +16,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
 use std::ops::ControlFlow;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -57,8 +57,9 @@ pub enum Error {
 pub enum Item {
     /// The next event.
     Event(Event),
-    /// A worker whose record or events cannot be read. Its events stop
-    /// before the bad line until the next poll; the other workers go on.
+    /// A worker whose record, events or cursor position cannot be read. Its
+    /// events stop before the bad line until the next poll; the other
+    /// workers go on.
     Skipped(Skipped),
 }
 
@@ -66,7 +67,8 @@ pub enum Item {
 /// supervisor writes the record; this view reads it.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Worker {
-    /// The worker's UUID, also the name of its record directory.
+    /// The worker's UUID, also the name of its record directory. A record
+    /// naming another ID does not read.
     pub worker_id: String,
     /// The UUID of the run that dispatched it.
     pub run_id: String,
@@ -136,11 +138,17 @@ impl Worker {
     }
 
     fn load(directory: &Path) -> Result<Self, Error> {
-        let text = fs::read_to_string(directory.join("worker.json"))
+        let mut text = String::new();
+        open_regular(&directory.join("worker.json"))?
+            .ok_or(Error::Record("cannot read worker record"))?
+            .read_to_string(&mut text)
             .map_err(|_| Error::Record("cannot read worker record"))?;
         let mut worker: Self = serde_json::from_str(&text).map_err(|_| Error::Record("invalid worker record"))?;
         if worker.version != RECORD_VERSION {
             return Err(Error::Record("unsupported worker record version"));
+        }
+        if directory.file_name().and_then(|n| n.to_str()) != Some(worker.worker_id.as_str()) {
+            return Err(Error::Record("worker record names another worker ID"));
         }
         worker.directory = directory.into();
         Ok(worker)
@@ -284,7 +292,7 @@ pub fn registry(config: &Path) -> Result<PathBuf, Error> {
 /// written is left for the next read. `after` must be 0 or the offset just
 /// after a line.
 pub fn read_events(directory: &Path, after: u64, limit: usize) -> Result<Batch, Error> {
-    match read_partial(directory, after, limit)? {
+    match read_partial(directory, after, limit) {
         (batch, None) => Ok(batch),
         (_, Some(error)) => Err(error),
     }
@@ -292,10 +300,15 @@ pub fn read_events(directory: &Path, after: u64, limit: usize) -> Result<Batch, 
 
 /// Reads every complete event after `cursor` from every worker under the
 /// registry `root`, oldest worker first, handing each to `handle` as it is
-/// read and moving `cursor` past it first. A worker whose record or events
-/// do not read is handed over as [`Item::Skipped`] and the rest go on. It
-/// stops early when `handle` breaks, and returns what `handle` last
-/// returned. A cursor off a line boundary or past a stream's end fails it.
+/// read. `cursor` moves past an event only once `handle` returns
+/// [`ControlFlow::Continue`] for it: an event `handle` breaks on stays
+/// pending, and the next poll from `cursor` hands it over again.
+///
+/// A worker whose record or events do not read, or whose position in
+/// `cursor` is off a line boundary or past its stream's end, is handed over
+/// as [`Item::Skipped`], and the rest go on. Its position stays where it
+/// was. The poll stops early when `handle` breaks, and returns what
+/// `handle` last returned. Only an unlistable registry fails it.
 pub fn poll(
     root: &Path, cursor: &mut Cursor, mut handle: impl FnMut(Item) -> ControlFlow<()>,
 ) -> Result<ControlFlow<()>, Error> {
@@ -307,10 +320,10 @@ pub fn poll(
     }
     for worker in workers {
         loop {
-            let (batch, error) = read_partial(worker.directory(), cursor.position(&worker.worker_id), BATCH)?;
+            let (batch, error) = read_partial(worker.directory(), cursor.position(&worker.worker_id), BATCH);
             let done = batch.events.is_empty() || error.is_some();
             for recorded in batch.events {
-                cursor.advance(&worker.worker_id, recorded.sequence);
+                let sequence = recorded.sequence;
                 let flow = handle(Item::Event(Event {
                     format: FORMAT,
                     cursor: format!("{}:{}", worker.worker_id, recorded.sequence),
@@ -323,6 +336,7 @@ pub fn poll(
                 if flow.is_break() {
                     return Ok(flow);
                 }
+                cursor.advance(&worker.worker_id, sequence);
             }
             if let Some(error) = error {
                 let flow = handle(Item::Skipped(Skipped { worker_id: worker.worker_id.clone(), error }));
@@ -339,14 +353,12 @@ pub fn poll(
 }
 
 /// Reads as [`read_events`] does, but hands back the events before an
-/// unreadable stream or line with the error that stopped it. Only a cursor
-/// error fails it.
-fn read_partial(directory: &Path, after: u64, limit: usize) -> Result<(Batch, Option<Error>), Error> {
+/// unreadable stream, line or cursor with the error that stopped it.
+fn read_partial(directory: &Path, after: u64, limit: usize) -> (Batch, Option<Error>) {
     let mut batch = Batch { events: Vec::new(), cursor: after };
     match read_into(directory, limit, &mut batch) {
-        Ok(()) => Ok((batch, None)),
-        Err(error @ Error::Cursor(_)) => Err(error),
-        Err(error) => Ok((batch, Some(error))),
+        Ok(()) => (batch, None),
+        Err(error) => (batch, Some(error)),
     }
 }
 
@@ -354,14 +366,12 @@ fn read_partial(directory: &Path, after: u64, limit: usize) -> Result<(Batch, Op
 /// moving its cursor past each.
 fn read_into(directory: &Path, limit: usize, batch: &mut Batch) -> Result<(), Error> {
     let after = batch.cursor;
-    let path = directory.join("events.jsonl");
-    if !path.exists() {
+    let Some(mut file) = open_regular(&directory.join("events.jsonl"))? else {
         if after != 0 {
             return Err(Error::Cursor("event stream missing for cursor"));
         }
         return Ok(());
-    }
-    let mut file = File::open(path).map_err(|_| Error::Record("cannot open worker events"))?;
+    };
     let length = file
         .metadata()
         .map_err(|_| Error::Record("cannot inspect events"))?
@@ -400,6 +410,25 @@ fn read_into(directory: &Path, limit: usize, batch: &mut Batch) -> Result<(), Er
         batch.events.push(Recorded { sequence: batch.cursor, event });
     }
     Ok(())
+}
+
+/// Opens `path` for reading if it is a regular file, or gives `None` when
+/// nothing is there. Anything else, such as a FIFO, a device or a symbolic
+/// link, is refused before it is opened, so a read cannot block on it. The
+/// registry is private to its owner, so only the owner could swap the path
+/// between the check and the open.
+fn open_regular(path: &Path) -> Result<Option<File>, Error> {
+    let kind = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata.file_type(),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(Error::Record("cannot inspect worker file")),
+    };
+    if !kind.is_file() {
+        return Err(Error::Record("worker file is not a regular file"));
+    }
+    File::open(path)
+        .map(Some)
+        .map_err(|_| Error::Record("cannot open worker file"))
 }
 
 /// Whether `id` is a UUID in canonical form: 36 lowercase hex digits and

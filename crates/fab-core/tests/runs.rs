@@ -183,17 +183,92 @@ fn a_reader_restarted_from_any_cursor_sees_each_event_once() {
 }
 
 #[test]
-fn a_cursor_off_a_line_boundary_or_past_the_end_is_refused() {
+fn a_cursor_off_a_line_boundary_or_past_the_end_skips_only_its_worker() {
     let registry = Registry::new();
     let a = registry.worker(A, "implementer", 1);
+    let b = registry.worker(B, "reviewer", 2);
     append(&a, &line(1));
+    append(&b, &line(2));
     for position in [1, 9999] {
         let mut cursor: Cursor = format!("{A}:{position}").parse().unwrap();
-        assert!(matches!(poll(&registry.root, &mut cursor), Err(Error::Cursor(_))));
+        let (events, skipped) = poll(&registry.root, &mut cursor).unwrap();
+        assert_eq!(numbers(&events), expect(&[(B, 2)]));
+        assert_eq!(skipped.len(), 1);
+        assert_eq!(skipped[0].worker_id, A);
+        assert!(matches!(skipped[0].error, Error::Cursor(_)));
+        assert_eq!(cursor.position(A), position);
+        assert!(matches!(
+            runs::read_events(&a, position, runs::BATCH),
+            Err(Error::Cursor(_))
+        ));
     }
     let batch = runs::read_events(&a, 0, runs::BATCH).unwrap();
     assert_eq!(batch.cursor, line(1).len() as u64);
     assert_eq!(batch.events[0].sequence, batch.cursor);
+
+    // A truncated or removed stream skips its worker too.
+    let saved = format!("{A}:{}", batch.cursor);
+    fs::write(a.join("events.jsonl"), "").unwrap();
+    let mut cursor: Cursor = saved.parse().unwrap();
+    let (events, skipped) = poll(&registry.root, &mut cursor).unwrap();
+    assert_eq!(numbers(&events), expect(&[(B, 2)]));
+    assert_eq!(skipped[0].error.to_string(), "event cursor exceeds stream length");
+    fs::remove_file(a.join("events.jsonl")).unwrap();
+    let mut cursor: Cursor = saved.parse().unwrap();
+    let (events, skipped) = poll(&registry.root, &mut cursor).unwrap();
+    assert_eq!(numbers(&events), expect(&[(B, 2)]));
+    assert_eq!(skipped[0].error.to_string(), "event stream missing for cursor");
+}
+
+#[test]
+fn a_record_naming_another_worker_is_skipped() {
+    let registry = Registry::new();
+    let a = registry.worker(A, "implementer", 1);
+    let b = registry.worker(B, "reviewer", 2);
+    // B's directory holds a copy of A's record, so both would share A's
+    // cursor slot.
+    fs::copy(a.join("worker.json"), b.join("worker.json")).unwrap();
+    append(&a, &line(1));
+    append(&b, &line(2));
+    let mut cursor = Cursor::default();
+    let (events, skipped) = poll(&registry.root, &mut cursor).unwrap();
+    assert_eq!(numbers(&events), expect(&[(A, 1)]));
+    assert_eq!(skipped.len(), 1);
+    assert_eq!(skipped[0].worker_id, B);
+    assert_eq!(skipped[0].error.to_string(), "worker record names another worker ID");
+    assert!(Worker::open(&registry.root, B).is_err());
+    assert!(Worker::list(&registry.root).is_err());
+}
+
+#[test]
+fn a_worker_file_that_is_not_regular_is_skipped_without_blocking() {
+    let registry = Registry::new();
+    let a = registry.worker(A, "implementer", 1);
+    let b = registry.worker(B, "reviewer", 2);
+    let c = registry.worker("33333333-3333-4333-8333-333333333333", "reviewer", 3);
+    for fifo in [a.join("events.jsonl"), c.join("worker.json")] {
+        fs::remove_file(&fifo).ok();
+        let status = std::process::Command::new("mkfifo").arg(&fifo).status().unwrap();
+        assert!(status.success());
+    }
+    append(&b, &line(2));
+    let mut cursor = Cursor::default();
+    let (events, skipped) = poll(&registry.root, &mut cursor).unwrap();
+    assert_eq!(numbers(&events), expect(&[(B, 2)]));
+    let skipped: Vec<_> = skipped
+        .iter()
+        .map(|s| (s.worker_id.as_str(), s.error.to_string()))
+        .collect();
+    assert_eq!(
+        skipped,
+        [
+            (
+                "33333333-3333-4333-8333-333333333333",
+                "worker file is not a regular file".to_owned()
+            ),
+            (A, "worker file is not a regular file".to_owned()),
+        ]
+    );
 }
 
 #[test]
@@ -231,7 +306,7 @@ fn an_unreadable_worker_is_skipped_and_the_others_go_on() {
 }
 
 #[test]
-fn a_reader_that_breaks_stops_the_poll_after_that_event() {
+fn a_reader_that_breaks_leaves_that_event_pending() {
     let registry = Registry::new();
     let a = registry.worker(A, "implementer", 1);
     append(&a, &(line(1) + &line(2)));
@@ -246,5 +321,10 @@ fn a_reader_that_breaks_stops_the_poll_after_that_event() {
     .unwrap();
     assert!(flow.is_break());
     assert_eq!(numbers(&seen), expect(&[(A, 1)]));
-    assert_eq!(cursor, fold(&seen));
+    assert_eq!(cursor, Cursor::default(), "the event broken on stays pending");
+    assert_eq!(
+        numbers(&events(&registry.root, &mut cursor).unwrap()),
+        expect(&[(A, 1), (A, 2)])
+    );
+    assert_eq!(cursor.position(A), (line(1).len() + line(2).len()) as u64);
 }

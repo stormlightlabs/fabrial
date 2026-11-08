@@ -117,3 +117,38 @@ fn an_unreadable_worker_is_named_on_stderr_and_the_others_print() {
         "{stderr}"
     );
 }
+
+#[test]
+fn a_cursor_past_a_truncated_stream_skips_only_that_worker() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("state");
+    let truncated = root.join("records").join(WORKER);
+    let other_id = "22222222-2222-4222-8222-222222222222";
+    let other = root.join("records").join(other_id);
+    for (directory, id) in [(&truncated, WORKER), (&other, other_id)] {
+        fs::create_dir_all(directory).unwrap();
+        let record = json!({"version": 1, "worker_id": id, "run_id": "r", "role": "reviewer",
+            "repository": "org/repo", "task_head": "a".repeat(40), "created_at": 1});
+        fs::write(directory.join("worker.json"), record.to_string()).unwrap();
+        append(directory, 1);
+    }
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+    let config = temp.path().join("host.toml");
+    fs::write(&config, format!("state_dir = {:?}\n", root.to_str().unwrap())).unwrap();
+    let length = fs::metadata(truncated.join("events.jsonl")).unwrap().len();
+    fs::write(truncated.join("events.jsonl"), "").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_fab"))
+        .args(["events", "--config", config.to_str().unwrap()])
+        .args(["--after", &format!("{WORKER}:{length}")])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let line: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(line["worker_id"], other_id);
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains(&format!("skipping worker {WORKER}: event cursor exceeds stream length")),
+        "{stderr}"
+    );
+}

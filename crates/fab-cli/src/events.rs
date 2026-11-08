@@ -34,7 +34,8 @@ pub struct Options {
 /// reads it. A worker whose record or events do not read is named on
 /// standard error and the others go on. Exits 0 when done or interrupted,
 /// or when the reader closes the pipe, and 1 with the error on standard
-/// error when the registry or the cursor is bad.
+/// error when the registry is bad or `--after` does not parse. A cursor
+/// position a worker's stream does not hold skips that worker.
 pub fn run(options: Options) -> u8 {
     match stream(&options) {
         Ok(()) => 0,
@@ -64,7 +65,12 @@ fn stream(options: &Options) -> Result<(), String> {
     let mut failure = None;
     loop {
         let mut out = std::io::stdout().lock();
+        // Breaking leaves the item undelivered, so check for an interrupt
+        // before printing rather than after.
         let flow = runs::poll(&root, &mut cursor, |item| {
+            if stop.load(Ordering::Relaxed) {
+                return ControlFlow::Break(());
+            }
             match item {
                 Item::Event(event) => {
                     skipped.remove(&event.worker_id);
@@ -87,7 +93,7 @@ fn stream(options: &Options) -> Result<(), String> {
                     }
                 }
             }
-            if stop.load(Ordering::Relaxed) { ControlFlow::Break(()) } else { ControlFlow::Continue(()) }
+            ControlFlow::Continue(())
         })
         .map_err(|e| e.to_string())?;
         if let Some(failure) = failure {

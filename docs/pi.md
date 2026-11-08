@@ -271,9 +271,9 @@ cursor when reconnecting. An unchanged cursor means nothing new.
 `fab events --config <config> --follow` prints the events of every worker
 under `state_dir` as JSON, one object per line, oldest worker first, as it
 reads them, and keeps reading until interrupted. Without `--follow` it prints
-what is recorded and exits. A worker whose record or events do not read is
-named on standard error, once per reason, and the others go on. Each line has
-these fields:
+what is recorded and exits. A worker whose record or events do not read, or
+whose `--after` position its stream no longer holds, is named on standard
+error, once per reason, and the others go on. Each line has these fields:
 
 | Field       | Value                                                         |
 | ----------- | ------------------------------------------------------------- |
