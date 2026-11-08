@@ -2,7 +2,7 @@
 id = "arcl-t-01M5Z573DC6D9C3MHQZSKA2EP2"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
 title = "Remove files a fabrial release no longer installs"
-status = "pending"
+status = "in_progress"
 priority = "normal"
 position = 5
 +++

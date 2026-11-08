@@ -154,6 +154,30 @@ const EMBEDDED: &[(&str, &str, bool)] = &[
     ),
 ];
 
+/// Files an earlier release installed and this one does not, each with the
+/// SHA-256 of every version a release wrote there. [`update`] deletes one
+/// that matches a version and keeps one edited since.
+const RETIRED: &[(&str, &[&str])] = &[
+    (
+        // v0.2.0 to v0.4.0.
+        ".github/storm/gate.sh",
+        &[
+            "a8944659524249837e4aa9575052f8b8e166eab9264127aa51c8ab0fc2c0ba3f",
+            "d7a33b56985918ef94c989a24ca3b6c9adbfe2136b9d0755c9a16fdf8c5165fb",
+            "1f94766941b2386f1f47061553e3943310638ea49bf4e30794224da0f39c0d5c",
+            "f3335b91195d494aad0b47b9836e3d61f147d05608eab056594a1d7d7439d12d",
+        ],
+    ),
+    (
+        // v0.2.0 to v0.5.0.
+        ".github/storm/squash-body.sh",
+        &[
+            "ee2768dd437672877b423386500b4f099ff56cad73305e89c7ec1031a0946a91",
+            "dd4e5f5185cae70d21e15ef3a5b45a86da1350e7f2bab3059112a3b18b687a31",
+        ],
+    ),
+];
+
 /// One way an installed copy differs from this build.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Drift {
@@ -168,6 +192,9 @@ pub enum Drift {
     SkillsLink,
     /// The settings name another fabrial version, or none.
     Version { installed: Option<String>, running: String },
+    /// A file an earlier release installed and this one does not is still
+    /// there.
+    Retired(PathBuf),
 }
 
 impl std::fmt::Display for Drift {
@@ -181,6 +208,7 @@ impl std::fmt::Display for Drift {
                 Some(installed) => write!(f, "version: installed {installed}, this build {running}"),
                 None => write!(f, "version: none recorded, this build {running}"),
             },
+            Drift::Retired(path) => write!(f, "retired: {}", path.display()),
         }
     }
 }
@@ -207,13 +235,18 @@ enum Kind {
     Dir,
 }
 
-/// What [`init`] wrote.
+/// What [`init`] or [`update`] wrote.
 #[derive(Debug, Default)]
 pub struct Report {
     /// Files created or replaced, relative to the repository root.
     pub written: Vec<PathBuf>,
     /// Files already as this build would write them.
     pub unchanged: Vec<PathBuf>,
+    /// Retired files [`update`] deleted, each as a release wrote it.
+    pub removed: Vec<PathBuf>,
+    /// Retired files [`update`] kept: edited since a release wrote them, or
+    /// a symlink or an entry of another kind.
+    pub kept: Vec<PathBuf>,
 }
 
 /// The text this build installs at `path`, relative to the repository root,
@@ -262,7 +295,8 @@ pub fn install(root: &Path, settings: &Settings, force: bool) -> Result<Report, 
 /// edits the installed settings first, for a new owner, trailer or gate
 /// command. An install that records a newer release than this build, or a
 /// version that is not a release, is refused unless `downgrade` is set; one
-/// with no recorded version is not.
+/// with no recorded version is not. A file only an earlier release installed
+/// is deleted when it is as a release wrote it, and kept otherwise.
 pub fn update(root: &Path, change: impl FnOnce(&mut Settings), downgrade: bool) -> Result<Report, Error> {
     let mut settings = read_settings(root)?.ok_or(Error::NotInstalled)?;
     if let Some(installed) = settings.version.take()
@@ -277,7 +311,9 @@ pub fn update(root: &Path, change: impl FnOnce(&mut Settings), downgrade: bool) 
         }
     }
     change(&mut settings);
-    init(root, &settings, false)
+    let mut report = init(root, &settings, false)?;
+    remove_retired(root, &mut report)?;
+    Ok(report)
 }
 
 /// Writes fabrial's files into the repository at `root`.
@@ -410,6 +446,16 @@ pub fn check(root: &Path) -> Result<Vec<Drift>, Error> {
     if !blocked(Path::new(SKILLS_LINK)) && skills_link_state(root) != LinkState::Ok {
         drift.push(Drift::SkillsLink);
     }
+    let retired_bad = unmanageable(root, retired_paths())?;
+    for (path, _) in RETIRED {
+        let path = Path::new(path);
+        if blocked(path) || under_refused(path, &retired_bad) {
+            continue;
+        }
+        if retired_bad.iter().any(|b| b == path) || fs::symlink_metadata(root.join(path)).is_ok() {
+            drift.push(Drift::Retired(path.into()));
+        }
+    }
     Ok(drift)
 }
 
@@ -459,6 +505,50 @@ fn unmanageable(root: &Path, paths: impl IntoIterator<Item = (PathBuf, Kind)>) -
         }
     }
     Ok(found.into_iter().collect())
+}
+
+/// Every path in [`RETIRED`], as a file.
+fn retired_paths() -> Vec<(PathBuf, Kind)> {
+    RETIRED.iter().map(|(path, _)| ((*path).into(), Kind::File)).collect()
+}
+
+/// Whether a directory above `path` is among the `refused` entries, so
+/// nothing at `path` can be looked at without following a symlink.
+fn under_refused(path: &Path, refused: &[PathBuf]) -> bool {
+    refused.iter().any(|b| b != path && path.starts_with(b))
+}
+
+/// Deletes each retired file that matches a version a release wrote, and
+/// records the rest in `report.kept`. A symlink or another kind of entry at
+/// a retired path is kept, and nothing is followed through one.
+fn remove_retired(root: &Path, report: &mut Report) -> Result<(), Error> {
+    let bad = unmanageable(root, retired_paths())?;
+    for (path, hashes) in RETIRED {
+        let rel = Path::new(path);
+        if under_refused(rel, &bad) {
+            continue;
+        }
+        if bad.iter().any(|b| b == rel) {
+            report.kept.push(rel.into());
+            continue;
+        }
+        let full = root.join(rel);
+        let Some(bytes) = read_bytes(&full)? else {
+            continue;
+        };
+        if hashes.contains(&sha256_hex(&bytes).as_str()) {
+            fs::remove_file(&full).map_err(|source| Error::Io { path: full, source })?;
+            report.removed.push(rel.into());
+        } else {
+            report.kept.push(rel.into());
+        }
+    }
+    Ok(())
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Every file `init` writes, with its contents and whether it is executable.
@@ -642,6 +732,96 @@ mod tests {
         assert!(toml.contains(r#"gates = "npm test""#));
         let owners = fs::read_to_string(dir.path().join(".github/CODEOWNERS")).unwrap();
         assert!(owners.ends_with("* @desertthunder\n"));
+    }
+
+    /// `.github/storm/squash-body.sh` as v0.5.0 installed it.
+    const SQUASH_BODY_0_5_0: &str = include_str!("testdata/squash-body-0.5.0.sh");
+
+    #[test]
+    fn retired_files_are_not_installed_and_list_sha256_hashes() {
+        for (path, hashes) in RETIRED {
+            assert!(embedded(path).is_none(), "{path} is still installed");
+            assert!(!hashes.is_empty(), "{path} lists no version");
+            for hash in *hashes {
+                assert!(
+                    hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()),
+                    "{path}: {hash}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn update_deletes_a_retired_file_as_a_release_wrote_it() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let path = dir.path().join(".github/storm/squash-body.sh");
+        fs::write(&path, SQUASH_BODY_0_5_0).unwrap();
+        assert_eq!(
+            check(dir.path()).unwrap(),
+            vec![Drift::Retired(".github/storm/squash-body.sh".into())]
+        );
+        let report = update(dir.path(), |_| {}, false).unwrap();
+        assert_eq!(report.removed, vec![PathBuf::from(".github/storm/squash-body.sh")]);
+        assert!(report.kept.is_empty());
+        assert!(!path.exists());
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn update_keeps_and_reports_an_edited_retired_file() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let edited = format!("{SQUASH_BODY_0_5_0}# mine\n");
+        let path = dir.path().join(".github/storm/squash-body.sh");
+        fs::write(&path, &edited).unwrap();
+        fs::write(dir.path().join(".github/storm/gate.sh"), "#!/bin/sh\n").unwrap();
+        let report = update(dir.path(), |_| {}, false).unwrap();
+        assert!(report.removed.is_empty());
+        assert_eq!(
+            report.kept,
+            vec![
+                PathBuf::from(".github/storm/gate.sh"),
+                PathBuf::from(".github/storm/squash-body.sh")
+            ]
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), edited);
+        assert_eq!(
+            check(dir.path()).unwrap(),
+            vec![
+                Drift::Retired(".github/storm/gate.sh".into()),
+                Drift::Retired(".github/storm/squash-body.sh".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn update_without_retired_files_removes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let report = update(dir.path(), |_| {}, false).unwrap();
+        assert!(report.removed.is_empty() && report.kept.is_empty());
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn update_keeps_a_symlink_at_a_retired_path() {
+        let outside = tempfile::tempdir().unwrap();
+        let target = outside.path().join("target");
+        fs::write(&target, SQUASH_BODY_0_5_0).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let link = dir.path().join(".github/storm/squash-body.sh");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let report = update(dir.path(), |_| {}, false).unwrap();
+        assert_eq!(report.kept, vec![PathBuf::from(".github/storm/squash-body.sh")]);
+        assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read_to_string(&target).unwrap(), SQUASH_BODY_0_5_0);
+        assert_eq!(
+            check(dir.path()).unwrap(),
+            vec![Drift::Retired(".github/storm/squash-body.sh".into())]
+        );
     }
 
     #[test]

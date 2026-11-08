@@ -57,9 +57,10 @@ To take a newer release, install that `fab` and run `fab update`. It keeps the
 settings in `.github/fabrial.toml`, unless `--owner`, `--trailer`,
 `--gates`, `--signoff` or `--assisted-by` changes one, and replaces the files
 with this build's. `--signoff ""` removes the sign-off. It refuses to install
-an older release over a newer one unless you pass `--force`. It leaves files
-that only older releases wrote, such as `.github/storm/gate.sh` and
-`.github/storm/squash-body.sh`; delete them. `CHANGELOG.md` says what each
+an older release over a newer one unless you pass `--force`. It deletes a
+file only older releases installed, such as `.github/storm/gate.sh`, when it
+is as a release wrote it, and keeps and names one you edited; `fab check`
+reports each still there. `CHANGELOG.md` says what each
 release changes. A repository moving to this release from one that named
 its tracker in the skills adds a **Tasks** section to its `AGENTS.md`;
 without it the skills stop and ask when given a task ID.

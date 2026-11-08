@@ -242,6 +242,15 @@ fn written(report: &Report, done: &str) -> ExitCode {
     for path in &report.written {
         println!("wrote {}", path.display());
     }
+    for path in &report.removed {
+        println!("removed {}, which this release no longer installs", path.display());
+    }
+    for path in &report.kept {
+        println!(
+            "kept {}: no release wrote it as it is, and this one no longer installs it; delete it once nothing uses it",
+            path.display()
+        );
+    }
     println!(
         "fabrial {} {done}: {} written, {} unchanged.",
         fab_core::VERSION,
