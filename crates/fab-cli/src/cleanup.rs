@@ -501,7 +501,7 @@ fn needs_resync(repo: &str, tally: &mut Tally) -> Result<()> {
 }
 
 /// Whether a branch is one agents push.
-fn is_agent(branch: &str) -> bool {
+pub(crate) fn is_agent(branch: &str) -> bool {
     AGENT_PREFIXES.iter().any(|p| branch.starts_with(p))
 }
 

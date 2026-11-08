@@ -10,9 +10,10 @@ You own one task. Read its acceptance criteria before writing anything, as
 the `implement` skill's **Read before starting** says, and read the code you
 are about to change.
 
-The run created a worktree for you and named the directory. You start in the
-run's checkout, so change into that directory before you write anything, and
-make no worktree of your own.
+Work in the worktree the run created and named. A Pi worker starts there; a
+Claude Code subagent starts in the run's checkout. If you are not in that
+worktree, change into it before you write anything. Make no worktree of your
+own.
 
 Make the smallest change that meets the criteria, following `AGENTS.md` and the
 conventions the surrounding code keeps. Write the test with the change. Run the

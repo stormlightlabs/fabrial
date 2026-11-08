@@ -125,7 +125,10 @@ Each role gets these skills:
 
 An implementer gets `arclightning` only where the repository commits
 `.arcl/workspace`. It works in a worktree the driver created on the task's
-branch, and Pi starts there.
+branch, and Pi starts there. Dispatch refuses an implementer or reviser whose
+worktree is not on a `claude/`, `codex/` or `storm/` branch. That check stops
+a mistaken push, not a hostile worker: the token can still push any branch the
+rulesets leave open.
 `arcl` is not in the sandbox, so the driver starts and completes an arcl task
 on the host. Until Rust gates run in the sandbox (below), an implementer in a
 Rust repository reports the gate blocker and leaves the gates to the driver.

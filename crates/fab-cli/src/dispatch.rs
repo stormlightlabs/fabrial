@@ -307,6 +307,24 @@ fn host_command(name: impl AsRef<std::ffi::OsStr>) -> Result<Command> {
     Ok(c)
 }
 
+/// Refuse a writer role unless the worktree is on an agent branch, so a
+/// token with Contents write is not handed to a worker whose checkout would
+/// push to `main`, a detached head or another branch by mistake. The token
+/// still reaches every branch; this limits mistakes, not a hostile worker.
+fn writer_branch(worktree: &Path, role: &str) -> Result<()> {
+    if !WRITERS.contains(&role) {
+        return Ok(());
+    }
+    let mut git = host_command("git")?;
+    git.arg("-C")
+        .arg(worktree)
+        .args(["symbolic-ref", "--quiet", "--short", "HEAD"]);
+    let refused = || format!("{role} needs a worktree on a claude/, codex/ or storm/ branch");
+    let branch = execute(git, None, Duration::from_secs(30)).map_err(|_| refused())?;
+    let branch = String::from_utf8(branch).map_err(|_| refused())?;
+    if crate::cleanup::is_agent(branch.trim()) { Ok(()) } else { Err(refused()) }
+}
+
 /// Capture both pipes concurrently, discard diagnostics, and impose a host-tool deadline.
 fn execute(command: Command, data: Option<Vec<u8>>, timeout: Duration) -> Result<Vec<u8>> {
     let (status, bytes) = execute_outcome(command, data, timeout)?;
@@ -939,6 +957,7 @@ fn dispatch(options: Options) -> Result<u8> {
     if home()?.starts_with(&worktree) {
         return Err("worktree exposes owner home".into());
     }
+    writer_branch(&worktree, &options.role)?;
     let (model, thinking) = role_config(&root, &options.role)?;
     let (tools, unmapped, body) = role_input(&root, &options.role)?;
     emit(&json!({"type": "progress", "event": format!("unmapped tools: {}", unmapped.join(", "))}));

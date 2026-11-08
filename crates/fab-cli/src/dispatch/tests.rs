@@ -310,3 +310,51 @@ fn dispatch_hands_the_session_bus_to_the_recorder() {
     );
     assert!(session_bus(|_| None).is_empty());
 }
+
+#[test]
+fn writers_need_a_worktree_on_an_agent_branch() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo = temp.path().join("repo");
+    let git = |dir: &Path, args: &[&str]| {
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args([
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    };
+    fs::create_dir(&repo).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    git(&repo, &["commit", "-q", "--allow-empty", "-m", "init"]);
+    let tree = |name: &str, args: &[&str]| {
+        let path = temp.path().join(name);
+        let mut all = vec!["worktree", "add", "-q"];
+        all.extend_from_slice(args);
+        all.push(path.to_str().unwrap());
+        git(&repo, &all);
+        path
+    };
+    let agent = tree("agent", &["-b", "storm/task"]);
+    let other = tree("other", &["-b", "feature"]);
+    let detached = tree("detached", &["--detach"]);
+    for role in WRITERS {
+        assert!(writer_branch(&agent, role).is_ok());
+        for refused in [&other, &detached, &repo] {
+            assert!(writer_branch(refused, role).unwrap_err().contains("storm/ branch"));
+        }
+    }
+    for refused in [&other, &detached] {
+        assert!(writer_branch(refused, "reviewer").is_ok());
+    }
+}
