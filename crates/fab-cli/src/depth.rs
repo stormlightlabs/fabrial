@@ -160,7 +160,7 @@ pub fn classify(paths: &[&str], planning: &[String], version_only: impl Fn(&str)
 /// The planning directories the settings at `base` name. None when the file
 /// or the setting is missing, and none, with a warning, when the file does
 /// not parse, so planning records then take the full review.
-fn planning(base: &str) -> Vec<String> {
+pub fn planning(base: &str) -> Vec<String> {
     let spec = format!("{base}:{SETTINGS_PATH}");
     let Ok(text) = run::git(Path::new("."), &["show", &spec]) else {
         return Vec::new();
@@ -175,15 +175,16 @@ fn planning(base: &str) -> Vec<String> {
 }
 
 /// Whether a path holds only documentation: what the Check workflow skips
-/// the build for.
-fn is_doc(path: &str) -> bool {
+/// the build for. `fab gates` runs nothing for these unless a scope names
+/// them.
+pub fn is_doc(path: &str) -> bool {
     (path.len() > ".md".len() && path.ends_with(".md") && !path.contains('/') && !is_instructions(path))
         || (path.starts_with("docs/") && DOC_KINDS.iter().any(|k| path.ends_with(k)))
 }
 
 /// Whether a path is a planning record: a Markdown or TOML file under one of
 /// the `planning` directories that is not configuration.
-fn is_planning(path: &str, planning: &[String]) -> bool {
+pub fn is_planning(path: &str, planning: &[String]) -> bool {
     planning.iter().any(|dir| path.starts_with(dir.as_str()))
         && PLANNING_KINDS.iter().any(|k| path.ends_with(k))
         && !is_config(path)

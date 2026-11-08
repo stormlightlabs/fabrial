@@ -59,7 +59,8 @@ just check    # fmt --check, clippy with warnings denied, tests, fab check
 ```
 
 It needs Rust, Node 22.18 or later, git, and jq for the gate tests' fake
-`gh`. `gates` in `.github/fabrial.toml` names this command for the skills.
+`gh`. `.github/fabrial-gates.toml` names it as `full`, with Rust and Pi
+scopes; `fab gates` runs the scopes a change touches.
 CI runs the same recipe as the `check` job, which the ruleset on `main`
 requires. Clippy warnings fail it whether or not your change caused them.
 
@@ -71,8 +72,8 @@ crates/fab-core   install, settings and task claims; later, the other run
 crates/fab-cli    the `fab` binary, including what workflows and skills run:
                   `fab claim`, `fab gate`, `fab branch-pr`, `fab release`,
                   `fab review-depth`, `fab sequence`, `fab run`,
-                  `fab pr-status`, `fab pr-review`, `fab pr-answer` and
-                  `fab cleanup`
+                  `fab gates`, `fab pr-status`, `fab pr-review`,
+                  `fab pr-answer` and `fab cleanup`
 packages/pi/      the Pi package: extensions/ holds workers, PR status and the
                   status area, lib/ their shared code, and worker.ts the
                   extension `fab dispatch` gives each worker
@@ -86,6 +87,7 @@ package.json      the Pi package manifest, at the root so git installs find it
 .github/storm/    shot.sh, which captures a terminal UI as a PNG, and sgr.pl, its color filter
 .github/fabrial.toml  the owner, the squash trailer and the gate command
 .github/fabrial-sequence.toml  the review stages the storm skill runs
+.github/fabrial-gates.toml  the checks fab gates runs for the paths a change touches
 docs/hosts.md     what each host reads, and where they differ
 docs/pi.md        how to set up a host and run Pi workers
 docs/pi-design.md planned Pi ownership, PR status transport and status area
@@ -183,7 +185,9 @@ drifted.
   names each agent model the commits' `Co-authored-by` trailers name, as
   `Assisted-by: <model>`. Agents never write `Assisted-by` in a PR body; the
   squash drops it.
-- Before pushing, run the command `gates` names in `.github/fabrial.toml`.
+- Before pushing, run `fab gates`. It runs the checks
+  `.github/fabrial-gates.toml` names for the files the change touches, or the
+  command `gates` names in `.github/fabrial.toml` when that file is missing.
 - The owner approves the PR and merges it, with the posted squash message or
   their own edit of it. Agents never approve or merge.
 - Keep the PR body to what changed and why. Put verification in a PR comment.

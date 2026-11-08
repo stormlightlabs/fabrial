@@ -24,7 +24,9 @@ drifted.
   names each agent model the commits' `Co-authored-by` trailers name, as
   `Assisted-by: <model>`. Agents never write `Assisted-by` in a PR body; the
   squash drops it.
-- Before pushing, run the command `gates` names in `.github/fabrial.toml`.
+- Before pushing, run `fab gates`. It runs the checks
+  `.github/fabrial-gates.toml` names for the files the change touches, or the
+  command `gates` names in `.github/fabrial.toml` when that file is missing.
 - The owner approves the PR and merges it, with the posted squash message or
   their own edit of it. Agents never approve or merge.
 - Keep the PR body to what changed and why. Put verification in a PR comment.
