@@ -1,9 +1,9 @@
 # Pi dispatch
 
-`fab dispatch` runs reviewer, verifier, adversarial-reviewer and reviser as
-fresh headless Pi 1.4.0 workers, each in a host tmux session with the whole Pi
-process wrapped in agent-sandbox.nix. This guide sets up the host and runs a
-worker. [Pi design](pi-design.md) covers what is still planned; arcl's
+`fab dispatch` runs implementer, reviewer, verifier, adversarial-reviewer and
+reviser as fresh headless Pi 1.4.0 workers, each in a host tmux session with
+the whole Pi process wrapped in agent-sandbox.nix. This guide sets up the host
+and runs a worker. [Pi design](pi-design.md) covers what is still planned; arcl's
 roadmap phases 6 to 8 track delivery ([PLAN.md](../PLAN.md#work)).
 
 > **Note:** This is a preview feature under active development.
@@ -86,7 +86,8 @@ Run dispatch with a trusted PATH for tmux, gh, curl, `security` or
 
 Install the App on the named repository with Actions write, Contents write and
 Pull requests read. Review workers get tokens with Actions write, Contents
-read and Pull requests read; reviser also gets Contents write. Dispatch
+read and Pull requests read; implementer and reviser also get Contents write,
+to push their branch. Dispatch
 rejects a token with wider permissions or another repository, and accepts no
 personal access token. Keep the App out of ruleset bypass lists, and require
 the owner's approval and checks on `main`, so workers cannot approve or merge.
@@ -114,6 +115,19 @@ model from `.github/fabrial-roles.toml`, which `fab init` installs. A missing
 or invalid role entry fails with the role's name; there is no fallback model.
 Role tools Pi lacks, such as `Skill` and GitHub MCP tools, are reported and
 noted in the prompt. Reviewers keep Bash, so their worktree is not read-only.
+
+Each role gets these skills:
+
+| Role                                     | Skills                                                         |
+| ---------------------------------------- | -------------------------------------------------------------- |
+| implementer                              | `implement`, `storm`, `writing-docs`, and `arclightning` where the repository commits `.arcl/workspace` |
+| reviewer, verifier, adversarial-reviewer | `review`, `storm`, `writing-docs`                              |
+| reviser                                  | `review`, `storm`, `writing-docs`, `revise`, `resync`          |
+
+An implementer works in a worktree the driver created on the task's branch.
+`arcl` is not in the sandbox, so the driver starts and completes an arcl task
+on the host. Until Rust gates run in the sandbox (below), an implementer in a
+Rust repository reports the gate blocker and leaves the gates to the driver.
 
 A worker gets read-only copies of its role and skills, and no session history,
 extensions, packages, settings or MCP servers from the host. Files in the PR

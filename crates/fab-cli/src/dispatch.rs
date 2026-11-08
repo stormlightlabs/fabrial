@@ -27,7 +27,9 @@ mod state;
 
 use state::WorkerRecord;
 
-const ROLES: &[&str] = &["reviewer", "verifier", "adversarial-reviewer", "reviser"];
+const ROLES: &[&str] = &["implementer", "reviewer", "verifier", "adversarial-reviewer", "reviser"];
+/// The roles that push commits, so their token gets Contents write.
+const WRITERS: &[&str] = &["implementer", "reviser"];
 const GRACE: Duration = Duration::from_secs(120);
 const RECORD_LIMIT: usize = 4 * 1024 * 1024;
 /// What libsecret needs to find the session bus on Linux.
@@ -37,7 +39,7 @@ type Result<T> = std::result::Result<T, String>;
 /// Explicit operator-selected dispatch inputs. No model or credential fallback.
 #[derive(Args)]
 pub struct Options {
-    #[arg(value_parser = ["reviewer", "verifier", "adversarial-reviewer", "reviser"])]
+    #[arg(value_parser = ["implementer", "reviewer", "verifier", "adversarial-reviewer", "reviser"])]
     role: String,
     #[arg(long)]
     task: PathBuf,
@@ -203,6 +205,27 @@ fn role_input(root: &Path, role: &str) -> Result<(Vec<String>, Vec<String>, Stri
         return Err("role needs bash and read".into());
     }
     Ok((mapped.into_iter().collect(), unmapped, body))
+}
+
+/// The skills a role's worker gets as read-only input. The implementer gets
+/// `implement` in place of `review`, and `arclightning` where the repository
+/// commits an arcl workspace and carries that skill; the reviser adds
+/// `revise` and `resync`.
+fn role_skills(root: &Path, role: &str) -> Vec<String> {
+    let mut skills: Vec<String> = match role {
+        "implementer" => vec!["implement".into(), "storm".into(), "writing-docs".into()],
+        _ => vec!["review".into(), "storm".into(), "writing-docs".into()],
+    };
+    if role == "implementer"
+        && root.join(".arcl/workspace").is_dir()
+        && root.join(".claude/skills/arclightning").is_dir()
+    {
+        skills.push("arclightning".into());
+    }
+    if role == "reviser" {
+        skills.extend(["revise".into(), "resync".into()]);
+    }
+    skills
 }
 
 fn role_config(root: &Path, role: &str) -> Result<(String, String)> {
@@ -486,8 +509,7 @@ fn issue(c: &Config, session_bus: &[(String, String)], private: &Path, role: &st
         return Err("installation does not match repository".into());
     }
     let repo = c.repository.split('/').nth(1).unwrap();
-    let permissions =
-        json!({"actions": "write", "contents": if role == "reviser" {"write"} else {"read"}, "pull_requests": "read"});
+    let permissions = json!({"actions": "write", "contents": if WRITERS.contains(&role) {"write"} else {"read"}, "pull_requests": "read"});
     let response = app_api(
         "POST",
         &format!("/app/installations/{installation}/access_tokens"),
@@ -920,10 +942,7 @@ fn dispatch(options: Options) -> Result<u8> {
     let (model, thinking) = role_config(&root, &options.role)?;
     let (tools, unmapped, body) = role_input(&root, &options.role)?;
     emit(&json!({"type": "progress", "event": format!("unmapped tools: {}", unmapped.join(", "))}));
-    let mut skills = vec!["review".to_string(), "storm".into(), "writing-docs".into()];
-    if options.role == "reviser" {
-        skills.extend(["revise".into(), "resync".into()]);
-    }
+    let skills = role_skills(&root, &options.role);
     if fs::metadata(&config.state_dir)
         .map_err(|_| "cannot inspect state directory")?
         .permissions()
