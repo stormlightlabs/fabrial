@@ -87,9 +87,8 @@ Run dispatch with a trusted PATH for tmux, gh, curl, `security` or
 Install the App on the named repository with Actions write, Contents write and
 Pull requests read. Review workers get tokens with Actions write, Contents
 read and Pull requests read; implementer and reviser also get Contents write,
-to push their branch. Dispatch
-rejects a token with wider permissions or another repository, and accepts no
-personal access token. Keep the App out of ruleset bypass lists, and require
+to push their branch. Dispatch rejects a token with wider permissions or
+another repository, and accepts no personal access token. Keep the App out of ruleset bypass lists, and require
 the owner's approval and checks on `main`, so workers cannot approve or merge.
 
 The BWS token and App key stay on the host. A worker gets its token in its
@@ -120,11 +119,13 @@ Each role gets these skills:
 
 | Role                                     | Skills                                                         |
 | ---------------------------------------- | -------------------------------------------------------------- |
-| implementer                              | `implement`, `storm`, `writing-docs`, and `arclightning` where the repository commits `.arcl/workspace` |
+| implementer                              | `implement`, `storm`, `writing-docs`, `arclightning`           |
 | reviewer, verifier, adversarial-reviewer | `review`, `storm`, `writing-docs`                              |
 | reviser                                  | `review`, `storm`, `writing-docs`, `revise`, `resync`          |
 
-An implementer works in a worktree the driver created on the task's branch.
+An implementer gets `arclightning` only where the repository commits
+`.arcl/workspace`. It works in a worktree the driver created on the task's
+branch, and Pi starts there.
 `arcl` is not in the sandbox, so the driver starts and completes an arcl task
 on the host. Until Rust gates run in the sandbox (below), an implementer in a
 Rust repository reports the gate blocker and leaves the gates to the driver.

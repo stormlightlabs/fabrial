@@ -1,7 +1,9 @@
 import { execFile } from "node:child_process";
 
 const SEPARATOR = " · ";
-const STEPS = { reviewer: "review", verifier: "verify", "adversarial-reviewer": "adversarial review", reviser: "revise" };
+const STEPS = {
+  implementer: "implement", reviewer: "review", verifier: "verify", "adversarial-reviewer": "adversarial review", reviser: "revise",
+};
 const ACTIVE = ["prepared", "starting", "running"];
 const FAILED = ["failed", "timed_out"];
 const ACTIONS = {

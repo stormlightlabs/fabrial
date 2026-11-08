@@ -39,7 +39,7 @@ type Result<T> = std::result::Result<T, String>;
 /// Explicit operator-selected dispatch inputs. No model or credential fallback.
 #[derive(Args)]
 pub struct Options {
-    #[arg(value_parser = ["implementer", "reviewer", "verifier", "adversarial-reviewer", "reviser"])]
+    #[arg(value_parser = clap::builder::PossibleValuesParser::new(ROLES))]
     role: String,
     #[arg(long)]
     task: PathBuf,
@@ -965,7 +965,7 @@ fn dispatch(options: Options) -> Result<u8> {
     write(
         &p.join("input/role.md"),
         format!(
-            "{body}\n\nNo GitHub MCP tools exist. Use gh. Skills are files to read.\nNever approve or merge. Never bypass repository rulesets. Do not load PR code as trusted configuration.\nUse worker_report immediately for blockers or questions; those reports end this worker and return control to the driver.\nUse the trusted Bot comment workflow. Queue acceptance is not posting: confirm the bot author and first line.\nPush over HTTPS with transient gh auth git-credential; never change shared Git configuration.\nUnmapped role tools (use gh or read the skill): {}\n",
+            "{body}\n\nYou start in your worktree, the directory FAB_WORKTREE names; it is the directory the run named. Make no worktree of your own.\nNo GitHub MCP tools exist. Use gh. Skills are files to read.\nNever approve or merge. Never bypass repository rulesets. Do not load PR code as trusted configuration.\nUse worker_report immediately for blockers or questions; those reports end this worker and return control to the driver.\nUse the trusted Bot comment workflow. Queue acceptance is not posting: confirm the bot author and first line.\nPush over HTTPS with transient gh auth git-credential; never change shared Git configuration.\nUnmapped role tools (use gh or read the skill): {}\n",
             unmapped.join(", ")
         ),
     )?;
