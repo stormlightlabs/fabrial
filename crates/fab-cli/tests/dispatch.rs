@@ -41,7 +41,15 @@ fn git(dir: &Path, args: &[&str]) -> String {
 }
 
 /// The modes whose role is a writer, so the host pushes after the worker.
-const WRITER_MODES: &[&str] = &["reviser", "implementer", "push-diverged", "push-branch"];
+const WRITER_MODES: &[&str] = &[
+    "reviser",
+    "implementer",
+    "push-diverged",
+    "push-branch",
+    "push-alternates",
+    "push-symlink",
+    "push-cancel",
+];
 
 struct Fixture {
     temp: tempfile::TempDir,
@@ -84,8 +92,7 @@ impl Fixture {
             "credential_cleanup": "pending", "result_file": null, "error": null,
             "resources": {"private_state": private, "tmux_session": "fab-worker-one", "supervisor_pid": null, "worker_pid": null}
         }).to_string()).unwrap();
-        let push = writer
-            .then(|| json!({"branch": "storm/task", "git_dir": p.join(".git"), "objects": p.join(".git/objects")}));
+        let push = writer.then(|| json!({"branch": "storm/task", "git_dir": p.join(".git"), "common": p.join(".git")}));
         fs::write(private.join("request.json"), json!({"record": record_dir.join("worker.json"), "config": config, "role": role, "worktree": p, "timeout": if mode == "deadline" {1} else {15}, "model": "openai/gpt-6-sol", "thinking": "low", "tools": ["bash", "read"], "skills": [], "session_bus": [["DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/test-bus"], ["XDG_RUNTIME_DIR", "/run/test-runtime"]], "push": push}).to_string()).unwrap();
         if writer {
             // The worktree is the fixture directory on storm/task, one commit
@@ -111,6 +118,22 @@ impl Fixture {
             git(&p, &["commit", "-q", "--allow-empty", "-m", "work"]);
             if mode == "push-branch" {
                 git(&p, &["switch", "-q", "-c", "feature"]);
+            }
+            // Another repository on the host, whose history a worker could
+            // try to have the host push: by borrowing its objects, or by
+            // pointing the branch's ref at its ref.
+            let host = p.join("host-repo");
+            fs::create_dir(&host).unwrap();
+            git(&host, &["init", "-q", "-b", "main"]);
+            git(&host, &["commit", "-q", "--allow-empty", "-m", "private"]);
+            if mode == "push-alternates" {
+                let alternates = format!("{}\n", host.join(".git/objects").display());
+                fs::write(p.join(".git/objects/info/alternates"), alternates).unwrap();
+            }
+            if mode == "push-symlink" {
+                let branch = p.join(".git/refs/heads/storm/task");
+                fs::remove_file(&branch).unwrap();
+                std::os::unix::fs::symlink(host.join(".git/refs/heads/main"), &branch).unwrap();
             }
             // The worker can write its repository's config and hooks. If the
             // host's push read them, the pre-push hooks would refuse it and
@@ -202,6 +225,14 @@ exec {real} -c protocol.file.allow=always "${{args[@]}}"
                 quote(&record),
                 quote(&record_dir.join("worker.json.saved")),
                 quote(&record)
+            )
+        } else if mode == "push-cancel" {
+            // A cancel that lands as the worker's token is revoked, after the
+            // worker exited and before the push.
+            format!(
+                "touch {}; test \"$GH_TOKEN\" != t-secret || touch {}",
+                quote(&p.join("revoked")),
+                quote(&record_dir.join("cancel"))
             )
         } else {
             format!("touch {}", quote(&p.join("revoked")))
@@ -472,6 +503,35 @@ fn host_refuses_a_push_off_the_branch_or_not_a_fast_forward() {
         // A wrong branch is refused before a push token exists.
         let revoked: &[&str] = if mode == "push-diverged" { &["t-secret", "p-secret"] } else { &["t-secret"] };
         assert_eq!(f.revoked(), revoked, "{mode}");
+    }
+}
+
+#[test]
+fn host_refuses_borrowed_objects_a_symlinked_ref_and_a_cancel() {
+    for mode in ["push-alternates", "push-symlink", "push-cancel"] {
+        let f = Fixture::new(mode);
+        let origin = f.temp.path().join("origin.git");
+        let before = git(&origin, &["rev-parse", "refs/heads/storm/task"]);
+        assert!(!f.run().status.success(), "{mode}");
+        assert_eq!(git(&origin, &["rev-parse", "refs/heads/storm/task"]), before, "{mode}");
+        assert!(!f.temp.path().join("pushes").exists(), "{mode}");
+        let logs = f.logs();
+        let expected = match mode {
+            "push-alternates" => "borrows objects through objects/info/alternates",
+            "push-symlink" => "is a symbolic link",
+            _ => "not pushed: worker cancelled",
+        };
+        assert!(logs.contains(expected), "{mode}: {logs}");
+        let record = f.record();
+        assert_eq!(
+            record["state"],
+            if mode == "push-cancel" { "cancelled" } else { "failed" },
+            "{mode}"
+        );
+        assert_eq!(record["credential_cleanup"], "complete", "{mode}");
+        // Each is refused before a push token exists.
+        assert_eq!(f.revoked(), ["t-secret"], "{mode}");
+        assert!(!f.private.exists(), "{mode}");
     }
 }
 

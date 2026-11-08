@@ -14,6 +14,11 @@
 //! The gates do not run on the host unless `--host-gates` asks: the worktree
 //! holds code a worker wrote, so the run reads the result of the Check
 //! workflow's `check` job once instead.
+//!
+//! The run never pushes with its own Git: workers write the worktree's Git
+//! state, so the run's own commits leave through `fab dispatch-push`, the
+//! path dispatch pushes a writer's commits on. Its other Git commands run
+//! with hooks and fsmonitor off.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -35,6 +40,16 @@ const READS: usize = 10;
 const PAUSE: Duration = Duration::from_secs(6);
 /// Minutes a run's claim lasts; a run takes longer than the default hour.
 const CLAIM_MINUTES: &str = "240";
+/// Settings every Git command the run makes carries, so a hook or fsmonitor
+/// program a worker wrote into the shared repository never runs on the host.
+const GIT_HARDENING: &[&str] = &[
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "commit.gpgSign=false",
+];
 /// The line a review worker ends with, so the run knows whether the revise
 /// after it runs.
 const ABOVE_NIT: &str = "Above nit:";
@@ -118,6 +133,9 @@ pub trait Host {
     fn run(&self, dir: &Path, program: &str, args: &[String]) -> Result<String>;
     /// Runs one worker to its end and returns its final message.
     fn dispatch(&self, role: &str, task: &Path, worktree: &Path) -> Result<String>;
+    /// Pushes the worktree's branch as dispatch pushes a writer's, and
+    /// returns the head pushed.
+    fn push(&self, worktree: &Path) -> Result<String>;
     /// The sequence for the diff from `origin/main` to `head`.
     fn plan(&self, head: &str) -> Result<Plan>;
     /// Waits between two reads of GitHub.
@@ -174,6 +192,25 @@ impl Host for System {
             .map_err(|e| format!("cannot run fab dispatch: {e}"))?;
         worker_result(&String::from_utf8_lossy(&output.stdout), output.status.success())
             .map_err(|e| format!("the {role} worker failed: {e}"))
+    }
+
+    fn push(&self, worktree: &Path) -> Result<String> {
+        let fab = std::env::current_exe().map_err(|e| format!("cannot find fab: {e}"))?;
+        let output = Command::new(fab)
+            .arg("dispatch-push")
+            .arg("--worktree")
+            .arg(worktree)
+            .arg("--config")
+            .arg(&self.config)
+            .output()
+            .map_err(|e| format!("cannot run fab dispatch-push: {e}"))?;
+        last_event(
+            &String::from_utf8_lossy(&output.stdout),
+            output.status.success(),
+            "pushed",
+            "head",
+        )
+        .map_err(|e| format!("the push failed: {e}"))
     }
 
     fn plan(&self, head: &str) -> Result<Plan> {
@@ -250,7 +287,9 @@ fn drive<H: Host>(host: &H, root: &Path, settings: Settings, task: &str, host_ga
 
 impl<H: Host> Run<'_, H> {
     fn git(&self, dir: &Path, args: &[&str]) -> Result<String> {
-        self.host.run(dir, "git", &strings(args))
+        let mut all = strings(GIT_HARDENING);
+        all.extend(strings(args));
+        self.host.run(dir, "git", &all)
     }
 
     fn gh(&self, args: &[&str]) -> Result<String> {
@@ -431,8 +470,18 @@ impl<H: Host> Run<'_, H> {
     /// tracked task, pushes and posts `Review finished`. A failed check stops
     /// the run with the task still started.
     fn finish(&self, pr: u64, plan: &Plan, log: &mut Vec<String>) -> Result<String> {
-        self.git(&self.worktree, &["pull", "--ff-only"])?;
-        let reviewed = self.git(&self.worktree, &["rev-parse", "HEAD"])?;
+        // The reviewed head is origin's, fetched into the host's checkout.
+        // The worktree must hold it, so the completion commits on top of it.
+        let reviewed = self.head()?;
+        let local = self.git(&self.worktree, &["rev-parse", "HEAD"])?;
+        if local != reviewed {
+            return Err(format!(
+                "the worktree is at {} but origin has {} at {}; bring the worktree to it, then run the review again",
+                short(&local),
+                self.branch,
+                short(&reviewed)
+            ));
+        }
         self.mergeable(pr)?;
         let checks = self.checks(pr, &reviewed)?;
         log.push(checks.clone());
@@ -458,8 +507,7 @@ impl<H: Host> Run<'_, H> {
                 );
             }
         }
-        self.git(&self.worktree, &["push", "origin", &self.branch])?;
-        let head = self.head()?;
+        let head = self.host.push(&self.worktree)?;
         let body = format!(
             "Review finished at {head}\n\nDepth: {} ({}). {}. Run by fab run.",
             plan.depth.name(),
@@ -658,7 +706,7 @@ impl<H: Host> Run<'_, H> {
                 )
                 .map(drop)
             })
-            .and_then(|_| self.git(&self.worktree, &["push", "origin", &self.branch]).map(drop));
+            .and_then(|_| self.host.push(&self.worktree).map(drop));
         match recorded {
             Ok(()) => format!("Handoff recorded on {id}."),
             Err(e) => format!("The handoff could not be recorded ({e}):\n{note}"),
@@ -754,12 +802,18 @@ fn above_nit(result: &str) -> bool {
 
 /// The final message from `fab dispatch`'s events, one JSON object a line.
 fn worker_result(stdout: &str, success: bool) -> Result<String> {
+    last_event(stdout, success, "result", "text")
+}
+
+/// The `field` of the last `kind` event in a dispatch command's JSON lines,
+/// or the last error's message when the command failed or printed none.
+fn last_event(stdout: &str, success: bool, kind: &str, field: &str) -> Result<String> {
     let events: Vec<Value> = stdout.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
     let text = events
         .iter()
         .rev()
-        .find(|e| e["type"] == "result")
-        .and_then(|e| e["text"].as_str());
+        .find(|e| e["type"] == kind)
+        .and_then(|e| e[field].as_str());
     match (success, text) {
         (true, Some(text)) => Ok(text.to_string()),
         _ => {

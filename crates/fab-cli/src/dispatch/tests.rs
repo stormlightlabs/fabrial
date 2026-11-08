@@ -352,7 +352,7 @@ fn writers_need_a_worktree_on_an_agent_branch() {
         let push = writer_branch(&agent, role).unwrap().unwrap();
         assert_eq!(push.branch, "storm/task");
         assert_eq!(push.git_dir, repo.join(".git/worktrees/agent").canonicalize().unwrap());
-        assert_eq!(push.objects, repo.join(".git/objects").canonicalize().unwrap());
+        assert_eq!(push.common, repo.join(".git").canonicalize().unwrap());
         for refused in [&other, &detached, &repo] {
             assert!(writer_branch(refused, role).unwrap_err().contains("storm/ branch"));
         }

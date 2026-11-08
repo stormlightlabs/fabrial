@@ -9,11 +9,12 @@
 # it ready and sets the squash message, and the owner merges it, by hand or
 # with auto-merge. Nothing here turns auto-merge on.
 #
-# `fab` comes from the branch, as this workflow does: in fabrial it is built
-# from the branch, and elsewhere it is the release the branch's
-# .github/fabrial.toml names, so a branch that runs `fab update` gets the
-# release it updates to. In fabrial, a first push that does not build opens
-# no pull request; once it builds, run this from the Actions tab.
+# `fab` and the action that installs it come from main, as in the Review
+# gate: in fabrial it is built from main, and elsewhere it is the release
+# main's .github/fabrial.toml names. The branch is checked out in `head/`
+# only for git to read, so code pushed to it never runs here with the App
+# token. This file itself runs from the branch, but changing a workflow file
+# takes Workflows write, which no worker's token or push token holds.
 #
 # It runs on the push that creates the branch, and on the push that first
 # puts work on a branch that held only `fab claim` commits, as a claimed
@@ -47,6 +48,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
+          ref: main
+          persist-credentials: false
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          path: head
           fetch-depth: 0
           persist-credentials: false
 
@@ -55,6 +63,7 @@ jobs:
       # tip the checkout lacks, after a force push, counts as holding work.
       - name: Decide
         id: decide
+        working-directory: head
         env:
           EVENT: ${{ github.event_name }}
           CREATED: ${{ github.event.created }}
@@ -90,5 +99,5 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           REPO: ${{ github.repository }}
           BRANCH: ${{ github.ref_name }}
-          HEAD_DIR: .
+          HEAD_DIR: head
         run: fab branch-pr

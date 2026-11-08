@@ -73,6 +73,18 @@ pub struct Options {
     detach: bool,
 }
 
+/// What `fab dispatch-push` takes. `fab run` pushes its own commits on the
+/// task's branch through it, so they leave the host the way a writer's do.
+#[derive(Args)]
+pub struct PushOptions {
+    /// The task's linked worktree, on its agent branch.
+    #[arg(long)]
+    worktree: PathBuf,
+    /// The host's dispatch configuration.
+    #[arg(long)]
+    config: PathBuf,
+}
+
 #[derive(Serialize, Deserialize)]
 struct Config {
     sandbox: PathBuf,
@@ -107,15 +119,17 @@ struct Request {
     push: Option<Push>,
 }
 
-/// A writer's branch, Git directory and object store, read on the host
-/// before the worker starts, so the worker cannot redirect them.
+/// A writer's branch, Git directory and shared Git directory, read on the
+/// host before the worker starts, so the worker cannot redirect them.
 #[derive(Debug, Serialize, Deserialize)]
 struct Push {
     branch: String,
-    /// Where the host reads the branch and head after the worker exits.
+    /// The worktree's own Git directory, whose `HEAD` must still name the
+    /// branch after the worker exits.
     git_dir: PathBuf,
-    /// The object store the host's empty push repository borrows from.
-    objects: PathBuf,
+    /// The shared Git directory: the branch's ref, and the object store the
+    /// host's empty push repository borrows from.
+    common: PathBuf,
 }
 
 /// Owns a subprocess group; even a normally exited leader may leave children.
@@ -159,6 +173,22 @@ pub fn run(options: Options) -> u8 {
     nix::sys::stat::umask(nix::sys::stat::Mode::from_bits_truncate(0o077));
     match dispatch(options) {
         Ok(code) => code,
+        Err(error) => {
+            emit(&json!({"type": "error", "message": error}));
+            1
+        }
+    }
+}
+
+/// Push a worktree's agent branch as the host pushes a writer's, printing a
+/// `pushed` or `error` JSON record.
+pub fn push_branch(options: PushOptions) -> u8 {
+    nix::sys::stat::umask(nix::sys::stat::Mode::from_bits_truncate(0o077));
+    match push_worktree(options) {
+        Ok((branch, head)) => {
+            emit(&json!({"type": "pushed", "branch": branch, "head": head}));
+            0
+        }
         Err(error) => {
             emit(&json!({"type": "error", "message": error}));
             1
@@ -357,23 +387,27 @@ fn writer_branch(worktree: &Path, role: &str) -> Result<Option<Push>> {
         return Err(refused());
     }
     let git_dir = canonical(Path::new(&git(&["rev-parse", "--absolute-git-dir"])?))?;
-    let objects = git(&["rev-parse", "--path-format=absolute", "--git-path", "objects"])?;
-    let objects = canonical(Path::new(&objects))?;
-    Ok(Some(Push { branch, git_dir, objects }))
+    let common = git(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
+    let common = canonical(Path::new(&common))?;
+    Ok(Some(Push { branch, git_dir, common }))
 }
 
 /// Push a writer's branch after its worker has exited, and return the head
 /// pushed. It pushes only while the Git directory recorded at dispatch is
-/// still on the writer's branch. The push itself runs from an empty bare
-/// repository the host creates in its private state, whose only link to the
-/// worktree is its object store: objects are data, so nothing the worker
-/// wrote is read as config or run as a hook. Git refuses a push that does
-/// not fast-forward the branch on origin. The token is minted for this push
-/// alone, reaches Git through a credential helper scoped to `github.com`, and
-/// is revoked after.
-fn push(request: &Request, private: &Path) -> Result<String> {
-    let target = request.push.as_ref().ok_or("writer has no recorded branch")?;
+/// still on the writer's branch. The branch and head are read as files, with
+/// no Git command in the worktree's repository and no symbolic link followed,
+/// and a store that borrows objects through `objects/info/alternates` is
+/// refused, so the worker cannot point the push at another repository's
+/// history. The push itself runs from an empty bare repository the host
+/// creates in its private state, whose only link to the worktree is its
+/// object store: objects are data, so nothing the worker wrote is read as
+/// config or run as a hook. Git refuses a push that does not fast-forward
+/// the branch on origin. The token is minted for this push alone, reaches
+/// Git through a credential helper scoped to `github.com`, and is revoked
+/// after.
+fn push(config: &Config, session_bus: &[(String, String)], target: &Push, private: &Path) -> Result<String> {
     let branch = &target.branch;
+    let head = branch_head(target)?;
     let home = private_dir(&private.join("push-home"))?;
     let run = |mut git: Command, args: &[&str], token: Option<&str>| -> Result<(bool, String)> {
         git.args(args);
@@ -384,18 +418,6 @@ fn push(request: &Request, private: &Path) -> Result<String> {
         let text = String::from_utf8(bytes).map_err(|_| "invalid Git output")?;
         Ok((status.success(), text.trim().to_string()))
     };
-    // These two local reads load the worktree's repository config, which
-    // can run no hook, helper or transport for them. The sha read here is
-    // the one pushed, whatever the worktree holds afterwards.
-    let worktree = || push_git(&home, &target.git_dir);
-    let current = run(worktree()?, &["symbolic-ref", "--quiet", "--short", "HEAD"], None)?;
-    if !current.0 || current.1 != *branch {
-        return Err(format!("not pushed: the worktree is no longer on {branch}"));
-    }
-    let (found, head) = run(worktree()?, &["rev-parse", "--verify", "HEAD^{commit}"], None)?;
-    if !found {
-        return Err(format!("not pushed: {branch} has no commit"));
-    }
     let bare = private_dir(&private.join("push.git"))?;
     if !run(
         push_git(&home, &bare)?,
@@ -408,14 +430,16 @@ fn push(request: &Request, private: &Path) -> Result<String> {
     }
     let info = bare.join("objects/info");
     fs::create_dir_all(&info).map_err(|_| "cannot create the push repository")?;
-    write(&info.join("alternates"), format!("{}\n", target.objects.display()))?;
-    let token = issue(
-        &request.config,
-        &request.session_bus,
-        private,
-        &json!({"contents": "write"}),
+    write(
+        &info.join("alternates"),
+        format!("{}\n", target.common.join("objects").display()),
     )?;
-    let url = format!("https://github.com/{}.git", request.config.repository);
+    let commit = format!("{head}^{{commit}}");
+    if !run(push_git(&home, &bare)?, &["cat-file", "-e", &commit], None)?.0 {
+        return Err(format!("not pushed: {branch} has no commit"));
+    }
+    let token = issue(config, session_bus, private, &json!({"contents": "write"}))?;
+    let url = format!("https://github.com/{}.git", config.repository);
     let refspec = format!("{head}:refs/heads/{branch}");
     let pushed = run(
         push_git(&home, &bare)?,
@@ -438,6 +462,66 @@ fn push(request: &Request, private: &Path) -> Result<String> {
     pushed?;
     revoked?;
     Ok(head)
+}
+
+/// The commit the writer's branch names, read from the shared Git directory
+/// as files: the worktree's `HEAD` must name the branch, the ref is a loose
+/// file or a `packed-refs` line, and no path on the way is a symbolic link.
+/// It refuses an object store with alternates, whose objects could come from
+/// any repository the host can read.
+fn branch_head(target: &Push) -> Result<String> {
+    let branch = &target.branch;
+    let head = plain(&target.git_dir, &["HEAD"])?.ok_or("the worktree has no HEAD")?;
+    if head.trim_end() != format!("ref: refs/heads/{branch}") {
+        return Err(format!("not pushed: the worktree is no longer on {branch}"));
+    }
+    if plain(&target.common, &["objects", "info", "alternates"])?.is_some() {
+        return Err("not pushed: the object store borrows objects through objects/info/alternates".into());
+    }
+    let mut path = vec!["refs", "heads"];
+    path.extend(branch.split('/'));
+    let sha = match plain(&target.common, &path)? {
+        Some(text) => text.trim_end().to_string(),
+        None => plain(&target.common, &["packed-refs"])?
+            .unwrap_or_default()
+            .lines()
+            .find_map(|l| l.strip_suffix(&format!(" refs/heads/{branch}")).map(str::to_string))
+            .ok_or(format!("not pushed: {branch} has no commit"))?,
+    };
+    if !(sha.len() == 40 || sha.len() == 64) || !sha.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()) {
+        return Err(format!("not pushed: {branch} does not name a commit"));
+    }
+    Ok(sha)
+}
+
+/// The text of the file at `base` joined with `parts`, or `None` when it is
+/// absent. It refuses a symbolic link at `base` or anywhere below it, so a
+/// worker cannot point the read at another repository's files.
+fn plain(base: &Path, parts: &[&str]) -> Result<Option<String>> {
+    let mut path = base.to_path_buf();
+    let mut last = fs::symlink_metadata(&path).map_err(|_| "cannot read the worktree's Git directory")?;
+    for part in parts {
+        if last.file_type().is_symlink() || !last.is_dir() {
+            return Err(format!(
+                "not pushed: {} is a symbolic link or not a directory",
+                path.display()
+            ));
+        }
+        path.push(part);
+        last = match fs::symlink_metadata(&path) {
+            Ok(meta) => meta,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err(format!("not pushed: cannot read {}", path.display())),
+        };
+    }
+    if !last.file_type().is_file() {
+        return Err(format!(
+            "not pushed: {} is a symbolic link or not a file",
+            path.display()
+        ));
+    }
+    let text = fs::read_to_string(&path).map_err(|_| format!("not pushed: cannot read {}", path.display()))?;
+    Ok(Some(text))
 }
 
 /// A Git command for `git_dir` that reads no system or global config: HOME
@@ -971,9 +1055,16 @@ fn recorder(private: &Path, request: &Request) -> u8 {
         if WRITERS.contains(&request.role.as_str()) {
             // The worker has exited: retire its token before minting the push token.
             revoke(private, &token)?;
-            let head = push(request, private)?;
-            let branch = request.push.as_ref().map_or("", |p| p.branch.as_str());
-            output(&directory, &json!({"type": "pushed", "branch": branch, "head": head}))?;
+            // A cancel or the deadline that came while the worker finished stops the push.
+            if cancelled() || Instant::now() >= deadline {
+                return Err("not pushed: worker cancelled or deadline exceeded".into());
+            }
+            let target = request.push.as_ref().ok_or("writer has no recorded branch")?;
+            let head = push(&request.config, &request.session_bus, target, private)?;
+            output(
+                &directory,
+                &json!({"type": "pushed", "branch": target.branch, "head": head}),
+            )?;
         }
         output(&directory, &json!({"type": "result", "text": text}))
     })();
@@ -1081,6 +1172,73 @@ fn pane(session: &str) -> Result<bool> {
     }
 }
 
+/// Check the worktree is a linked worktree whose Git metadata and host
+/// paths do not overlap, and that the state directory is private. Returns
+/// the shared Git directory.
+fn host_paths(worktree: &Path, config_path: &Path, config: &Config) -> Result<PathBuf> {
+    if !worktree.join(".git").is_file() {
+        return Err("worker requires a linked Git worktree".into());
+    }
+    let mut git = host_command("git")?;
+    git.arg("-C")
+        .arg(worktree)
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    let common =
+        String::from_utf8(execute(git, None, Duration::from_secs(30))?).map_err(|_| "invalid Git metadata path")?;
+    let common = canonical(Path::new(common.trim()))?;
+    for path in [config_path, &config.pi_runtime, &config.auth_file, &config.state_dir] {
+        if path.starts_with(worktree) || path.starts_with(&common) {
+            return Err("host configuration overlaps worktree or shared Git metadata".into());
+        }
+    }
+    if home()?.starts_with(worktree) {
+        return Err("worktree exposes owner home".into());
+    }
+    if fs::metadata(&config.state_dir)
+        .map_err(|_| "cannot inspect state directory")?
+        .permissions()
+        .mode()
+        & 0o077
+        != 0
+    {
+        return Err("state_dir must be private (mode 0700)".into());
+    }
+    Ok(common)
+}
+
+/// Push a worktree's agent branch the way dispatch pushes a writer's, for
+/// `fab run`'s own commits, and return the branch and the head pushed.
+fn push_worktree(options: PushOptions) -> Result<(String, String)> {
+    let worktree = canonical(&options.worktree)?;
+    let config_path = canonical(&options.config)?;
+    if config_path.starts_with(&worktree) {
+        return Err("local issuer configuration must be outside worktree".into());
+    }
+    let config = load_config(&config_path)?;
+    host_paths(&worktree, &config_path, &config)?;
+    let target = writer_branch(&worktree, "implementer")?.ok_or("no branch to push")?;
+    let private = tempfile::Builder::new()
+        .prefix("push-")
+        .tempdir_in(&config.state_dir)
+        .map_err(|_| "cannot create private push state")?
+        .keep();
+    let pushed = push(
+        &config,
+        &session_bus(|name| std::env::var(name).ok()),
+        &target,
+        &private,
+    );
+    // `push` revokes its token; a token left behind is recovery state.
+    if private.join("revocation-failed").exists() || private.join("installation-token").exists() {
+        return Err(format!(
+            "push token revocation unconfirmed; private state retained at {}",
+            private.display()
+        ));
+    }
+    fs::remove_dir_all(&private).map_err(|_| "cannot remove private push state")?;
+    pushed.map(|head| (target.branch, head))
+}
+
 fn dispatch(options: Options) -> Result<u8> {
     let root = canonical(&options.trusted_checkout)?;
     let worktree = canonical(&options.worktree)?;
@@ -1092,38 +1250,12 @@ fn dispatch(options: Options) -> Result<u8> {
     if root.starts_with(&worktree) || worktree.starts_with(&root) {
         return Err("trusted checkout and worktree must be separate".into());
     }
-    if !worktree.join(".git").is_file() {
-        return Err("worker requires a linked Git worktree".into());
-    }
-    let mut git = host_command("git")?;
-    git.arg("-C")
-        .arg(&worktree)
-        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-    let common =
-        String::from_utf8(execute(git, None, Duration::from_secs(30))?).map_err(|_| "invalid Git metadata path")?;
-    let common = canonical(Path::new(common.trim()))?;
-    for path in [&config_path, &config.pi_runtime, &config.auth_file, &config.state_dir] {
-        if path.starts_with(&worktree) || path.starts_with(&common) {
-            return Err("host configuration overlaps worktree or shared Git metadata".into());
-        }
-    }
-    if home()?.starts_with(&worktree) {
-        return Err("worktree exposes owner home".into());
-    }
+    let common = host_paths(&worktree, &config_path, &config)?;
     let push = writer_branch(&worktree, &options.role)?;
     let (model, thinking) = role_config(&root, &options.role)?;
     let (tools, unmapped, body) = role_input(&root, &options.role)?;
     emit(&json!({"type": "progress", "event": format!("unmapped tools: {}", unmapped.join(", "))}));
     let skills = role_skills(&root, &options.role);
-    if fs::metadata(&config.state_dir)
-        .map_err(|_| "cannot inspect state directory")?
-        .permissions()
-        .mode()
-        & 0o077
-        != 0
-    {
-        return Err("state_dir must be private (mode 0700)".into());
-    }
     let interrupted = signals()?;
     let mut private = Private::new(&config.state_dir)?;
     let p = &private.path;

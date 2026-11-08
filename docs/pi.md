@@ -87,6 +87,10 @@ Run dispatch with a trusted PATH for tmux, gh, curl, `security` or
 Install the App on the named repository with Actions write, Contents write and
 Pull requests read. Every worker gets a token with Actions write, for the Bot
 comment workflow, Contents read and Pull requests read, so no worker can push.
+Actions write lets a worker run a workflow on a branch, but the workflows
+that hold the App's key run `fab` from `main`: Branch PR checks the branch
+out only for Git to read, as the Review gate does. Neither token can change
+a workflow file, which takes Workflows write.
 An App token with Contents write reaches every branch and tag the rulesets
 leave open, and cannot be narrowed to one branch. Dispatch rejects a token
 with wider permissions or another repository, and accepts no personal access
@@ -106,13 +110,17 @@ that does not fast-forward that branch on origin; either way the worker fails
 with the reason and nothing is pushed. The host revokes the worker's token,
 mints a token with Contents write alone for the push, and revokes it after.
 
-The worker can write its repository's config and hooks, so the host reads
-none of them when it pushes. It reads the branch and head commit from the
-worktree, then pushes that commit from an empty bare repository in its
-private state, which borrows the worktree's objects and nothing else. Git
-runs there without system or global config, with hooks off, to an explicit
-`github.com` URL, and takes the token through a credential helper that
-answers only for `github.com`.
+The worker can write its repository's Git state, so the host runs no Git
+command there when it pushes. It reads the branch from the worktree's
+`HEAD` and the head commit from the branch's ref as files, and refuses a
+symbolic link on either path and an object store with
+`objects/info/alternates`, so the worker cannot point the push at another
+repository on the host. It pushes that commit from an empty bare repository
+in its private state, which borrows the worktree's objects and nothing
+else. Git runs there without system or global config, with hooks off, to an
+explicit `github.com` URL, and takes the token through a credential helper
+that answers only for `github.com`. A cancel or the deadline that comes as
+the worker finishes stops the push.
 
 ## Run a role
 
@@ -216,6 +224,13 @@ and posts `Review finished`, which names that result. A failed job stops the
 run before the task is completed; a job still running is reported, and the
 ruleset on `main` holds the merge until it passes. A failed step records a
 handoff and stops.
+
+The run pushes its own commits, the completion and the handoff, with
+`fab dispatch-push`, the same push dispatch makes for a writer. It never
+pulls: it fetches the branch into the checkout it runs from and stops when
+the worktree is not at that head. Its other Git commands, which commit the
+task file in the worktree, run with hooks and fsmonitor off; they still read
+the repository's config, which the sandbox keeps workers from writing.
 
 `--host-gates` runs the command `gates` names in the task's worktree instead
 of reading the job. That runs code the workers wrote on the host, outside the
