@@ -22,3 +22,14 @@ disposable = [".arcl/arcl.db", ".arcl/arcl.db-sync.lock", ".arcl/arcl.db-wal", "
 # The fabrial version that wrote the installed files. `fab check`
 # compares it with its own.
 version = "0.8.0"
+
+# The commands fab run uses for each step of a tracked task. Each is
+# split on spaces and run in the task's worktree; {id}, {evidence}
+# and {file} are replaced. init, when set, runs once in the new
+# worktree before start.
+[tasks]
+init = "arcl init"
+show = "arcl task show {id}"
+start = "arcl task start {id}"
+complete = "arcl task complete {id} --evidence {evidence}"
+handoff = "arcl task handoff {id} --note-file {file}"

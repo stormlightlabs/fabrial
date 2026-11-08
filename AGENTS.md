@@ -70,8 +70,9 @@ crates/fab-core   install, settings and task claims; later, the other run
                   operations
 crates/fab-cli    the `fab` binary, including what workflows and skills run:
                   `fab claim`, `fab gate`, `fab branch-pr`, `fab release`,
-                  `fab review-depth`, `fab sequence`, `fab pr-status`,
-                  `fab pr-review`, `fab pr-answer` and `fab cleanup`
+                  `fab review-depth`, `fab sequence`, `fab run`,
+                  `fab pr-status`, `fab pr-review`, `fab pr-answer` and
+                  `fab cleanup`
 packages/pi/      the Pi package: extensions/ holds workers, PR status and the
                   status area, lib/ their shared code, and worker.ts the
                   extension `fab dispatch` gives each worker

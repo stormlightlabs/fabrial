@@ -161,6 +161,55 @@ private state, and neither holds raw tool output. The worker's installation
 token and OAuth access and refresh tokens are redacted; any other secret in
 the answer is kept as written.
 
+## Run a task
+
+`fab run` takes one task through the whole sequence with Pi workers. Run it
+from the primary checkout, on `main`:
+
+```sh
+fab run <task> --trusted-checkout /trusted/fabrial --config /private/issuer.toml
+```
+
+`<task>` is an ID, an issue as `#<n>` or a file holding a description. An ID
+needs a `[tasks]` table in `.github/fabrial.toml`, naming the command for each
+step of the repository's tracker:
+
+```toml
+[tasks]
+init = "arcl init"
+show = "arcl task show {id}"
+start = "arcl task start {id}"
+complete = "arcl task complete {id} --evidence {evidence}"
+handoff = "arcl task handoff {id} --note-file {file}"
+```
+
+Each command is split on spaces and run on the host, without a shell, in the
+task's worktree; a value put in for `{id}`, `{evidence}` or `{file}` stays one
+argument. `init` is optional and takes no placeholders: it runs once in the
+new worktree, before `start`, for a tracker that needs each checkout set up.
+The run claims the task, adds the worktree `../<repo>-worktrees/<task>` on
+`storm/<task>`, starts the task and dispatches the implementer. If the start
+fails, the run removes that worktree and branch and releases the claim. Once it pushes, the run reads the pull request
+Branch PR opened, then runs each stage `fab sequence` gives: a reviewer in a
+detached worktree at the pinned head, a reviser in the task's worktree. A
+review ends with `Above nit: yes` or `no`, which decides whether its revise
+runs. The run then checks the pull request merges, reads the result of the
+Check workflow's `check` job at the reviewed head once, completes the task
+and posts `Review finished`, which names that result. A failed job stops the
+run before the task is completed; a job still running is reported, and the
+ruleset on `main` holds the merge until it passes. A failed step records a
+handoff and stops.
+
+`--host-gates` runs the command `gates` names in the task's worktree instead
+of reading the job. That runs code the workers wrote on the host, outside the
+sandbox, beside the host's credentials: a task's text reaches the
+implementer, which can change the justfile, a build script or a test that
+the gates then run. Pass it only for tasks whose source you trust.
+
+The run reads GitHub a bounded number of times, never waiting on an event: up
+to ten reads for the pull request, asking Branch PR to open it once halfway,
+up to ten for whether it merges, and one for the `check` job.
+
 ## Detached workers
 
 Add `--detach` to return a `started` record with the run and worker IDs once

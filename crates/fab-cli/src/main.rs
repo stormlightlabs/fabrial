@@ -9,6 +9,7 @@ mod cleanup;
 mod depth;
 #[cfg(unix)]
 mod dispatch;
+mod drive;
 mod gate;
 mod release;
 mod review;
@@ -117,6 +118,9 @@ enum Command {
     /// Print the review stages the diff's depth gives, from
     /// .github/fabrial-sequence.toml.
     Sequence(sequence::Options),
+    /// Take one task through the fixed sequence: claim it, give it a
+    /// worktree and run one Pi worker per step, ending with Review finished.
+    Run(drive::Options),
     /// Set a section of the pull request's status comment; the Bot comment
     /// workflow runs it.
     PrStatus(status::Options),
@@ -148,7 +152,8 @@ struct Repo {
 fn main() -> ExitCode {
     let result = match Cli::parse().command {
         Command::Init { repo, owner, trailer, gates, signoff, assisted_by, force } => in_repo(&repo, |dir| {
-            let settings = Settings { owner, trailer, gates, signoff, assisted_by, disposable: None, version: None };
+            let settings =
+                Settings { owner, trailer, gates, signoff, assisted_by, disposable: None, version: None, tasks: None };
             install::install(dir, &settings, force).map(|r| written(&r, "installed"))
         }),
         Command::Update { repo, owner, trailer, gates, signoff, assisted_by, force } => in_repo(&repo, |dir| {
@@ -179,6 +184,7 @@ fn main() -> ExitCode {
         Command::Release { step } => return in_workflow(step.run()),
         Command::ReviewDepth(options) => return in_workflow(depth::run(options)),
         Command::Sequence(options) => return in_workflow(sequence::run(options)),
+        Command::Run(options) => return in_workflow(drive::run(options)),
         Command::PrStatus(options) => return in_workflow(status::run(options)),
         Command::PrReview(options) => return in_workflow(review::review(options)),
         Command::PrAnswer(options) => return in_workflow(review::answer(options)),

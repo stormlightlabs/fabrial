@@ -69,6 +69,10 @@ Cargo's `target/`, so nothing local is lost. A repository whose tools leave
 caches in each worktree names them in `.github/fabrial.toml`, for example
 `disposable = [".cache/db"]`; a path ending in `/` names a directory.
 
+`fab run` takes a task through implement and review with Pi workers;
+[docs/pi.md](docs/pi.md#run-a-task) covers it, and the `[tasks]` table it
+reads from `.github/fabrial.toml` to reach a tracker.
+
 `fab check` lists files that differ from this build's and an installed version
 that differs from it, and exits 1 when there is any drift.
 

@@ -40,6 +40,52 @@ pub struct Settings {
     /// The fabrial version that last wrote the installed files.
     #[serde(default)]
     pub version: Option<String>,
+    /// The commands `fab run` uses to reach the repository's task source.
+    /// `None` leaves a run to GitHub issues and description files.
+    #[serde(default)]
+    pub tasks: Option<Tasks>,
+}
+
+/// The commands for each step of a tracked task, in a `[tasks]` table. Each
+/// is split on whitespace and run without a shell in the task's worktree,
+/// after `{id}`, `{evidence}` and `{file}` in a word are replaced. A
+/// replacement stays one argument, whatever it holds.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Tasks {
+    /// Prepares a new worktree for the other commands, run once before
+    /// `start`, such as a tracker that keeps a local cache per checkout.
+    /// Takes no placeholders. `None` skips it.
+    #[serde(default)]
+    pub init: Option<String>,
+    /// Prints the task, given `{id}`.
+    pub show: String,
+    /// Starts the task, given `{id}`.
+    pub start: String,
+    /// Completes the task, given `{id}` and `{evidence}`.
+    pub complete: String,
+    /// Records a handoff note, given `{id}` and the note's `{file}`.
+    pub handoff: String,
+}
+
+impl Tasks {
+    /// Each step's name, command and the placeholders it must hold.
+    pub fn steps(&self) -> [(&'static str, &str, &'static [&'static str]); 4] {
+        [
+            ("show", &self.show, &["{id}"]),
+            ("start", &self.start, &["{id}"]),
+            ("complete", &self.complete, &["{id}", "{evidence}"]),
+            ("handoff", &self.handoff, &["{id}", "{file}"]),
+        ]
+    }
+
+    /// The argument list for a command, with each placeholder replaced.
+    pub fn argv(command: &str, values: &[(&str, &str)]) -> Vec<String> {
+        command
+            .split_whitespace()
+            .map(|word| values.iter().fold(word.to_string(), |w, (k, v)| w.replace(k, v)))
+            .collect()
+    }
 }
 
 impl Settings {
@@ -81,13 +127,31 @@ impl Settings {
         .into_iter()
         .chain(signoff)
         {
-            if value.is_empty() {
+            if value.trim().is_empty() {
                 return Err(Error::Settings(format!("`{key}` is empty")));
             }
             if value.contains(['"', '\\', '\n', '\r']) {
                 return Err(Error::Settings(format!(
                     "`{key}` holds a quote, a backslash or a line break, which the workflows cannot read"
                 )));
+            }
+        }
+        let init = self.tasks.iter().filter_map(|t| t.init.as_deref());
+        for command in init {
+            if command.trim().is_empty() || command.contains(['"', '\\', '\n', '\r']) {
+                return Err(Error::Settings(
+                    "`tasks.init` is empty or holds a quote, a backslash or a line break".into(),
+                ));
+            }
+        }
+        for (step, command, needs) in self.tasks.iter().flat_map(Tasks::steps) {
+            if command.contains(['"', '\\', '\n', '\r']) {
+                return Err(Error::Settings(format!(
+                    "`tasks.{step}` holds a quote, a backslash or a line break"
+                )));
+            }
+            if let Some(missing) = needs.iter().find(|p| !command.contains(*p)) {
+                return Err(Error::Settings(format!("`tasks.{step}` does not use {missing}")));
             }
         }
         if self.owner.starts_with('@') {
@@ -133,6 +197,25 @@ impl Settings {
                  disposable = [{list}]\n"
             )
         });
+        let tasks = self.tasks.as_ref().map_or_else(String::new, |t| {
+            let init = t
+                .init
+                .as_ref()
+                .map_or_else(String::new, |i| format!("init = \"{i}\"\n"));
+            format!(
+                "\n# The commands fab run uses for each step of a tracked task. Each is\n\
+                 # split on spaces and run in the task's worktree; {{id}}, {{evidence}}\n\
+                 # and {{file}} are replaced. init, when set, runs once in the new\n\
+                 # worktree before start.\n\
+                 [tasks]\n\
+                 {init}\
+                 show = \"{}\"\n\
+                 start = \"{}\"\n\
+                 complete = \"{}\"\n\
+                 handoff = \"{}\"\n",
+                t.show, t.start, t.complete, t.handoff
+            )
+        });
         format!(
             "# fabrial's settings for this repository. The Branch PR workflow, the Review\n\
              # gate and the skills read them. Each value is one line: key = \"value\".\n\
@@ -152,7 +235,8 @@ impl Settings {
              \n\
              # The fabrial version that wrote the installed files. `fab check`\n\
              # compares it with its own.\n\
-             version = \"{}\"\n",
+             version = \"{}\"\n\
+             {tasks}",
             self.owner, self.trailer, self.gates, version
         )
     }
@@ -182,7 +266,50 @@ mod tests {
             assisted_by: None,
             disposable: None,
             version: None,
+            tasks: None,
         }
+    }
+
+    fn tasks() -> Tasks {
+        Tasks {
+            init: None,
+            show: "arcl task show {id}".into(),
+            start: "arcl task start {id}".into(),
+            complete: "arcl task complete {id} --evidence {evidence}".into(),
+            handoff: "arcl task handoff {id} --note-file {file}".into(),
+        }
+    }
+
+    #[test]
+    fn task_commands_render_parse_back_and_keep_each_value_one_argument() {
+        let with = Settings { tasks: Some(tasks()), ..settings() };
+        let parsed = Settings::parse(&with.render("0.9.0")).unwrap();
+        assert_eq!(parsed.tasks, Some(tasks()));
+        assert_eq!(parsed.version.as_deref(), Some("0.9.0"));
+        let init = Tasks { init: Some("arcl init".into()), ..tasks() };
+        let text = Settings { tasks: Some(init.clone()), ..settings() }.render("0.9.0");
+        assert!(text.lines().any(|l| l == r#"init = "arcl init""#), "{text}");
+        assert_eq!(Settings::parse(&text).unwrap().tasks, Some(init));
+        let argv = Tasks::argv(
+            &tasks().complete,
+            &[("{id}", "t-1"), ("{evidence}", "Done in #3 at abc")],
+        );
+        assert_eq!(
+            argv,
+            ["arcl", "task", "complete", "t-1", "--evidence", "Done in #3 at abc"]
+        );
+    }
+
+    #[test]
+    fn task_commands_need_their_placeholders() {
+        let missing = Tasks { complete: "arcl task complete {id}".into(), ..tasks() };
+        let err = Settings { tasks: Some(missing), ..settings() }.validate().unwrap_err();
+        assert!(err.to_string().contains("tasks.complete"), "{err}");
+        let text = format!("{}[tasks]\nshow = \"x {{id}}\"\n", settings().render("0.9.0"));
+        assert!(Settings::parse(&text).is_err());
+        let quoted = Tasks { init: Some("arcl \\ init".into()), ..tasks() };
+        let err = Settings { tasks: Some(quoted), ..settings() }.validate().unwrap_err();
+        assert!(err.to_string().contains("tasks.init"), "{err}");
     }
 
     #[test]
@@ -260,6 +387,9 @@ mod tests {
         assert!(bad.validate().is_err());
         let mut bad = settings();
         bad.gates = String::new();
+        assert!(bad.validate().is_err());
+        let mut bad = settings();
+        bad.gates = " ".into();
         assert!(bad.validate().is_err());
         let mut bad = settings();
         bad.signoff = Some("A <a@b>\nSigned-off-by: B <b@c>".into());
