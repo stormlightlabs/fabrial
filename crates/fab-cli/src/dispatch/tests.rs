@@ -374,12 +374,41 @@ fn writers_need_a_worktree_on_an_agent_branch() {
     let other = tree("other", &["-b", "feature"]);
     let detached = tree("detached", &["--detach"]);
     for role in WRITERS {
-        assert!(writer_branch(&agent, role).is_ok());
+        let push = writer_branch(&agent, role).unwrap().unwrap();
+        assert_eq!(push.branch, "storm/task");
+        assert_eq!(push.git_dir, repo.join(".git/worktrees/agent").canonicalize().unwrap());
+        assert_eq!(push.common, repo.join(".git").canonicalize().unwrap());
         for refused in [&other, &detached, &repo] {
             assert!(writer_branch(refused, role).unwrap_err().contains("storm/ branch"));
         }
     }
     for refused in [&other, &detached] {
-        assert!(writer_branch(refused, "reviewer").is_ok());
+        assert!(writer_branch(refused, "reviewer").unwrap().is_none());
+    }
+}
+
+#[test]
+fn the_push_credential_helper_answers_github_alone() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = private_dir(&temp.path().join("home")).unwrap();
+    let bare = private_dir(&temp.path().join("push.git")).unwrap();
+    let mut init = push_git(&home, &bare).unwrap();
+    init.args(["init", "--quiet", "--bare", "--template="]);
+    assert!(execute(init, None, Duration::from_secs(30)).is_ok());
+    let fill = |host: &str| {
+        let mut git = push_git(&home, &bare).unwrap();
+        git.args(["credential", "fill"]).env("FAB_PUSH_TOKEN", "p-secret");
+        let input = format!("protocol=https\nhost={host}\n\n").into_bytes();
+        execute(git, Some(input), Duration::from_secs(30))
+    };
+    let answer = String::from_utf8(fill("github.com").unwrap()).unwrap();
+    assert!(
+        answer.contains("username=x-access-token\npassword=p-secret\n"),
+        "{answer}"
+    );
+    // Another host gets no token, and with no prompt Git fails.
+    assert!(fill("proxy.example").is_err());
+    for dir in [&home, &bare] {
+        assert_eq!(fs::metadata(dir).unwrap().permissions().mode() & 0o777, 0o700);
     }
 }

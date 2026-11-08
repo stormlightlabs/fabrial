@@ -16,6 +16,41 @@ fn quote(path: &Path) -> String {
     format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
 }
 
+/// Run the real git in `dir` with a fixed identity, returning its output.
+fn git(dir: &Path, args: &[&str]) -> String {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args([
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout).unwrap().trim().to_string()
+}
+
+/// The modes whose role is a writer, so the host pushes after the worker.
+const WRITER_MODES: &[&str] = &[
+    "reviser",
+    "implementer",
+    "push-diverged",
+    "push-branch",
+    "push-alternates",
+    "push-symlink",
+    "push-cancel",
+];
+
 struct Fixture {
     temp: tempfile::TempDir,
     private: PathBuf,
@@ -39,17 +74,119 @@ impl Fixture {
         fs::write(p.join("auth.json"), json!({"openai": {"type": "oauth", "access": "a-secret", "refresh": "r-secret", "expires": (now+4000)*1000}, "other": {"key": "owner-secret"}}).to_string()).unwrap();
         let config = json!({"sandbox": bin.join("sandbox"), "pi_runtime": p.join("runtime"), "auth_file": p.join("auth.json"), "state_dir": p,
             "repository": "org/repo", "keychain_service": "local-service", "keychain_account": "local-account", "app_id_secret": "id-one", "installation_id_secret": "id-two", "pem_secret": "id-three"});
+        let writer = WRITER_MODES.contains(&mode);
+        let role = if mode == "reviser" {
+            "reviser"
+        } else if writer {
+            "implementer"
+        } else {
+            "reviewer"
+        };
         let record_dir = p.join("records/worker-one");
         fs::create_dir_all(&record_dir).unwrap();
         fs::write(record_dir.join("worker.json"), json!({
             "version": 1, "run_id": "run-one", "worker_id": "worker-one",
-            "task_head": "1".repeat(40), "role": if ["reviser", "implementer"].contains(&mode) { mode } else { "reviewer" },
+            "task_head": "1".repeat(40), "role": role,
             "repository": "org/repo", "worktree": p,
             "created_at": now, "updated_at": now, "state": "prepared",
             "credential_cleanup": "pending", "result_file": null, "error": null,
             "resources": {"private_state": private, "tmux_session": "fab-worker-one", "supervisor_pid": null, "worker_pid": null}
         }).to_string()).unwrap();
-        fs::write(private.join("request.json"), json!({"record": record_dir.join("worker.json"), "config": config, "role": if ["reviser", "implementer"].contains(&mode) { mode } else { "reviewer" }, "worktree": p, "timeout": if mode == "deadline" {1} else {15}, "model": "openai/gpt-6-sol", "thinking": "low", "tools": ["bash", "read"], "skills": [], "session_bus": [["DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/test-bus"], ["XDG_RUNTIME_DIR", "/run/test-runtime"]]}).to_string()).unwrap();
+        let push = writer.then(|| json!({"branch": "storm/task", "git_dir": p.join(".git"), "common": p.join(".git")}));
+        fs::write(private.join("request.json"), json!({"record": record_dir.join("worker.json"), "config": config, "role": role, "worktree": p, "timeout": if mode == "deadline" {1} else {15}, "model": "openai/gpt-6-sol", "thinking": "low", "tools": ["bash", "read"], "skills": [], "session_bus": [["DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/test-bus"], ["XDG_RUNTIME_DIR", "/run/test-runtime"]], "push": push}).to_string()).unwrap();
+        if writer {
+            // The worktree is the fixture directory on storm/task, one commit
+            // ahead of origin, which is a bare repository the fake git puts
+            // in place of the GitHub URL.
+            let origin = p.join("origin.git");
+            git(&p, &["init", "-q", "-b", "storm/task"]);
+            git(&p, &["commit", "-q", "--allow-empty", "-m", "base"]);
+            git(&p, &["init", "-q", "--bare", origin.to_str().unwrap()]);
+            git(&p, &["push", "-q", origin.to_str().unwrap(), "storm/task"]);
+            if mode == "push-diverged" {
+                let other = git(&p, &["commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "other"]);
+                git(
+                    &p,
+                    &[
+                        "push",
+                        "-q",
+                        origin.to_str().unwrap(),
+                        &format!("{other}:refs/heads/storm/task"),
+                    ],
+                );
+            }
+            git(&p, &["commit", "-q", "--allow-empty", "-m", "work"]);
+            if mode == "push-branch" {
+                git(&p, &["switch", "-q", "-c", "feature"]);
+            }
+            // Another repository on the host, whose history a worker could
+            // try to have the host push: by borrowing its objects, or by
+            // pointing the branch's ref at its ref.
+            let host = p.join("host-repo");
+            fs::create_dir(&host).unwrap();
+            git(&host, &["init", "-q", "-b", "main"]);
+            git(&host, &["commit", "-q", "--allow-empty", "-m", "private"]);
+            if mode == "push-alternates" {
+                let alternates = format!("{}\n", host.join(".git/objects").display());
+                fs::write(p.join(".git/objects/info/alternates"), alternates).unwrap();
+            }
+            if mode == "push-symlink" {
+                let branch = p.join(".git/refs/heads/storm/task");
+                fs::remove_file(&branch).unwrap();
+                std::os::unix::fs::symlink(host.join(".git/refs/heads/main"), &branch).unwrap();
+            }
+            // The worker can write its repository's config and hooks. If the
+            // host's push read them, the pre-push hooks would refuse it and
+            // the URL rewrites would send it to another repository.
+            let elsewhere = p.join("elsewhere.git");
+            git(&p, &["init", "-q", "--bare", elsewhere.to_str().unwrap()]);
+            let hooks = p.join("planted-hooks");
+            fs::create_dir(&hooks).unwrap();
+            let hook = format!("touch {}\nexit 1", quote(&p.join("hook-ran")));
+            script(&hooks.join("pre-push"), &hook);
+            script(&p.join(".git/hooks/pre-push"), &hook);
+            let (from, to) = (origin.to_str().unwrap(), elsewhere.to_str().unwrap());
+            for (key, value) in [
+                ("core.hooksPath", hooks.to_str().unwrap()),
+                (&format!("url.{to}.insteadOf"), from),
+                (&format!("url.{to}.pushInsteadOf"), from),
+            ] {
+                git(&p, &["config", key, value]);
+            }
+            let real = String::from_utf8(
+                Command::new("sh")
+                    .args(["-c", "command -v git"])
+                    .output()
+                    .unwrap()
+                    .stdout,
+            )
+            .unwrap();
+            // Secrets never reach git's argv; the push token comes only
+            // through the environment. Hooks are off for every call.
+            script(
+                &bin.join("git"),
+                &format!(
+                    r#"
+case "$*" in *machine-secret*|*pem-secret*|*t-secret*|*p-secret*) exit 90;; esac
+[[ "$*" = *core.hooksPath=/dev/null* ]]
+args=()
+for a in "$@"; do
+ if test "$a" = https://github.com/org/repo.git; then
+  test "$FAB_PUSH_TOKEN" = p-secret
+  a={origin}
+ fi
+ args+=("$a")
+done
+for a in "$@"; do test "$a" = push && printf '%s
+' "$*" >> {calls}; done
+exec {real} -c protocol.file.allow=always "${{args[@]}}"
+"#,
+                    origin = quote(&origin),
+                    calls = quote(&p.join("pushes")),
+                    real = real.trim()
+                ),
+            );
+        }
         script(
             &bin.join("security"),
             "test \"$*\" = 'find-generic-password -s local-service -a local-account -w'\nprintf 'machine-secret\\n'",
@@ -89,10 +226,20 @@ impl Fixture {
                 quote(&record_dir.join("worker.json.saved")),
                 quote(&record)
             )
+        } else if mode == "push-cancel" {
+            // A cancel that lands as the worker's token is revoked, after the
+            // worker exited and before the push.
+            format!(
+                "touch {}; test \"$GH_TOKEN\" != t-secret || touch {}",
+                quote(&p.join("revoked")),
+                quote(&record_dir.join("cancel"))
+            )
         } else {
             format!("touch {}", quote(&p.join("revoked")))
         };
-        let perms = if ["widened", "reviser", "implementer"].contains(&mode) { "write" } else { "read" };
+        // The response grants what was asked, plus metadata, except where
+        // the test widens it. A request without actions is the push token.
+        let widen = if mode == "widened" { " | .permissions.contents = \"write\"" } else { "" };
         script(
             &bin.join("curl"),
             &format!(
@@ -118,13 +265,14 @@ case "$method" in
  GET) test "$#" = 1; test "$1" = https://api.github.com/repos/org/repo/installation
  printf '{{"id":456}}';;
  POST) test "$#" = 3; test "$1" = --data-binary
- printf '%s' "$2" > {}; {during}
+ printf '%s\n' "$2" >> {}; {during}
  test "$3" = https://api.github.com/app/installations/456/access_tokens
- printf '{{"token":"t-secret","permissions":{{"actions":"write","contents":"{perms}","pull_requests":"read","metadata":"read"}}}}';;
+ token=t-secret; [[ "$2" = *'"actions"'* ]] || token=p-secret
+ printf '%s' "$2" | jq -c --arg t "$token" '{{token: $t, permissions: (.permissions + {{metadata: "read"}})}}{widen}';;
  *) exit 91;;
 esac
 "#,
-                quote(&p.join("token-request"))
+                quote(&p.join("token-requests"))
             ),
         );
         script(
@@ -134,11 +282,12 @@ esac
 # Secrets may be in the environment, never argv. No owner credential is used.
 case "$*" in *machine-secret*|*pem-secret*|*t-secret*) exit 90;; esac
 case "${{!#}}" in
- /installation/repositories) test "$GH_TOKEN" = t-secret; printf '{{"repositories":[{{"full_name":"org/repo"}}]}}';;
- /installation/token) test "$GH_TOKEN" = t-secret; {revoke}; printf 'HTTP/2.0 204 No Content\r\n\r\n';;
+ /installation/repositories) [[ "$GH_TOKEN" = [tp]-secret ]]; printf '{{"repositories":[{{"full_name":"org/repo"}}]}}';;
+ /installation/token) [[ "$GH_TOKEN" = [tp]-secret ]]; printf '%s\n' "$GH_TOKEN" >> {revoked}; {revoke}; printf 'HTTP/2.0 204 No Content\r\n\r\n';;
  *) exit 91;;
 esac
 "#,
+                revoked = quote(&p.join("revoked-tokens"))
             ),
         );
         let worker = match mode {
@@ -218,6 +367,24 @@ printf '%s\n' '{{"type":"agent_settled","aborted":false}}'
         fs::read_to_string(self.temp.path().join("records/worker-one/events.jsonl")).unwrap()
     }
 
+    /// Each token request body, in order.
+    fn requests(&self) -> Vec<Value> {
+        fs::read_to_string(self.temp.path().join("token-requests"))
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect()
+    }
+
+    /// Each revoked token, in order.
+    fn revoked(&self) -> Vec<String> {
+        fs::read_to_string(self.temp.path().join("revoked-tokens"))
+            .unwrap_or_default()
+            .lines()
+            .map(String::from)
+            .collect()
+    }
+
     fn record(&self) -> Value {
         serde_json::from_str(&fs::read_to_string(self.temp.path().join("records/worker-one/worker.json")).unwrap())
             .unwrap()
@@ -236,11 +403,14 @@ fn recorder_issues_restricted_token_launches_and_revokes() {
     assert!(!f.private.exists());
     let ids = fs::read_to_string(f.temp.path().join("secret-ids")).unwrap();
     assert_eq!(ids, "id-one\nid-two\nid-three\n");
-    let body: Value = serde_json::from_str(&fs::read_to_string(f.temp.path().join("token-request")).unwrap()).unwrap();
     assert_eq!(
-        body,
-        json!({"repositories": ["repo"], "permissions": {"actions": "write", "contents": "read", "pull_requests": "read"}})
+        f.requests(),
+        [
+            json!({"repositories": ["repo"], "permissions": {"actions": "write", "contents": "read", "pull_requests": "read"}})
+        ]
     );
+    assert_eq!(f.revoked(), ["t-secret"]);
+    assert!(!f.temp.path().join("pushes").exists());
     let record = f.record();
     assert_eq!(record["state"], "succeeded");
     assert_eq!(record["credential_cleanup"], "complete");
@@ -261,6 +431,7 @@ fn recorder_issues_restricted_token_launches_and_revokes() {
         "a-secret",
         "r-secret",
         "t-secret",
+        "p-secret",
     ] {
         assert!(!logs.contains(secret));
         assert!(!String::from_utf8_lossy(&out.stdout).contains(secret));
@@ -274,18 +445,93 @@ fn recorder_issues_restricted_token_launches_and_revokes() {
 }
 
 #[test]
-fn writers_request_contents_write_only_for_their_repository() {
+fn writers_get_read_tokens_and_the_host_pushes_with_its_own() {
     for role in ["reviser", "implementer"] {
         let f = Fixture::new(role);
-        assert!(f.run().status.success(), "{role}: {}", f.logs());
-        let body: Value =
-            serde_json::from_str(&fs::read_to_string(f.temp.path().join("token-request")).unwrap()).unwrap();
+        let out = f.run();
+        assert!(out.status.success(), "{role}: {}", f.logs());
         assert_eq!(
-            body,
-            json!({"repositories": ["repo"], "permissions": {"actions": "write", "contents": "write", "pull_requests": "read"}}),
+            f.requests(),
+            [
+                json!({"repositories": ["repo"], "permissions": {"actions": "write", "contents": "read", "pull_requests": "read"}}),
+                json!({"repositories": ["repo"], "permissions": {"contents": "write"}}),
+            ],
             "{role}"
         );
-        assert!(f.temp.path().join("revoked").exists(), "{role}");
+        // The worker's token goes before the push token is minted.
+        assert_eq!(f.revoked(), ["t-secret", "p-secret"], "{role}");
+        let head = git(f.temp.path(), &["rev-parse", "HEAD"]);
+        let origin = f.temp.path().join("origin.git");
+        assert_eq!(git(&origin, &["rev-parse", "refs/heads/storm/task"]), head, "{role}");
+        let elsewhere = f.temp.path().join("elsewhere.git");
+        assert_eq!(git(&elsewhere, &["for-each-ref"]), "", "{role}");
+        assert!(!f.temp.path().join("hook-ran").exists(), "{role}");
+        let pushes = fs::read_to_string(f.temp.path().join("pushes")).unwrap();
+        assert!(pushes.contains(&format!("{head}:refs/heads/storm/task")), "{pushes}");
+        let logs = f.logs();
+        assert!(logs.contains(&format!(r#""head":"{head}""#)), "{logs}");
+        assert_eq!(f.record()["state"], "succeeded");
+        assert!(!f.private.exists());
+        for secret in ["t-secret", "p-secret"] {
+            assert!(!logs.contains(secret));
+            assert!(!String::from_utf8_lossy(&out.stdout).contains(secret));
+        }
+    }
+}
+
+#[test]
+fn host_refuses_a_push_off_the_branch_or_not_a_fast_forward() {
+    for mode in ["push-diverged", "push-branch"] {
+        let f = Fixture::new(mode);
+        let origin = f.temp.path().join("origin.git");
+        let before = git(&origin, &["rev-parse", "refs/heads/storm/task"]);
+        assert!(!f.run().status.success(), "{mode}");
+        assert_eq!(git(&origin, &["rev-parse", "refs/heads/storm/task"]), before, "{mode}");
+        // Git refuses the non-fast-forward; a wrong branch never reaches it.
+        assert_eq!(f.temp.path().join("pushes").exists(), mode == "push-diverged", "{mode}");
+        let logs = f.logs();
+        let expected = if mode == "push-diverged" {
+            "origin refused storm/task: [rejected] (non-fast-forward)"
+        } else {
+            "no longer on storm/task"
+        };
+        assert!(logs.contains(expected), "{mode}: {logs}");
+        let record = f.record();
+        assert_eq!(record["state"], "failed", "{mode}");
+        assert_eq!(record["credential_cleanup"], "complete", "{mode}");
+        assert!(!f.private.exists(), "{mode}");
+        // A wrong branch is refused before a push token exists.
+        let revoked: &[&str] = if mode == "push-diverged" { &["t-secret", "p-secret"] } else { &["t-secret"] };
+        assert_eq!(f.revoked(), revoked, "{mode}");
+    }
+}
+
+#[test]
+fn host_refuses_borrowed_objects_a_symlinked_ref_and_a_cancel() {
+    for mode in ["push-alternates", "push-symlink", "push-cancel"] {
+        let f = Fixture::new(mode);
+        let origin = f.temp.path().join("origin.git");
+        let before = git(&origin, &["rev-parse", "refs/heads/storm/task"]);
+        assert!(!f.run().status.success(), "{mode}");
+        assert_eq!(git(&origin, &["rev-parse", "refs/heads/storm/task"]), before, "{mode}");
+        assert!(!f.temp.path().join("pushes").exists(), "{mode}");
+        let logs = f.logs();
+        let expected = match mode {
+            "push-alternates" => "borrows objects through objects/info/alternates",
+            "push-symlink" => "is a symbolic link",
+            _ => "not pushed: worker cancelled",
+        };
+        assert!(logs.contains(expected), "{mode}: {logs}");
+        let record = f.record();
+        assert_eq!(
+            record["state"],
+            if mode == "push-cancel" { "cancelled" } else { "failed" },
+            "{mode}"
+        );
+        assert_eq!(record["credential_cleanup"], "complete", "{mode}");
+        // Each is refused before a push token exists.
+        assert_eq!(f.revoked(), ["t-secret"], "{mode}");
+        assert!(!f.private.exists(), "{mode}");
     }
 }
 

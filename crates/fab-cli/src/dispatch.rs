@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -29,12 +29,29 @@ mod state;
 use state::WorkerRecord;
 
 const ROLES: &[&str] = &["implementer", "reviewer", "verifier", "adversarial-reviewer", "reviser"];
-/// The roles that push commits, so their token gets Contents write.
+/// The roles whose commits the host pushes once their worker exits. Their
+/// token, like every worker's, has Contents read and cannot push.
 const WRITERS: &[&str] = &["implementer", "reviser"];
 const GRACE: Duration = Duration::from_secs(120);
 const RECORD_LIMIT: usize = 4 * 1024 * 1024;
 /// What libsecret needs to find the session bus on Linux.
 const SESSION_BUS: &[&str] = &["DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"];
+/// Git settings for the host's push, on top of reading no configuration
+/// the worker can write: no hooks or fsmonitor, HTTPS only, TLS verified, no
+/// signing program, and only the push token as credential.
+const PUSH_CONFIG: &[&str] = &[
+    "core.hooksPath=/dev/null",
+    "core.fsmonitor=false",
+    "core.askPass=",
+    "protocol.allow=never",
+    "protocol.https.allow=always",
+    "http.sslVerify=true",
+    "push.gpgSign=false",
+    "credential.helper=",
+];
+/// The push's credential helper: it answers `get` for `github.com` alone,
+/// with the token from `FAB_PUSH_TOKEN`, and answers nothing otherwise.
+const CREDENTIAL_HELPER: &str = "f() { test \"$1\" = get || exit 0; ok=; while read -r l; do test \"$l\" = host=github.com && ok=1; done; test -n \"$ok\" && printf 'username=x-access-token\\npassword=%s\\n' \"$FAB_PUSH_TOKEN\"; }; f";
 type Result<T> = std::result::Result<T, String>;
 
 /// Explicit operator-selected dispatch inputs. No model or credential fallback.
@@ -55,6 +72,18 @@ pub struct Options {
     /// Return the worker identity once tmux accepts the launch.
     #[arg(long)]
     detach: bool,
+}
+
+/// What `fab dispatch-push` takes. `fab run` pushes its own commits on the
+/// task's branch through it, so they leave the host the way a writer's do.
+#[derive(Args)]
+pub struct PushOptions {
+    /// The task's linked worktree, on its agent branch.
+    #[arg(long)]
+    worktree: PathBuf,
+    /// The host's dispatch configuration.
+    #[arg(long)]
+    config: PathBuf,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -86,6 +115,22 @@ struct Request {
     /// which takes the tmux server's environment rather than the caller's.
     #[serde(default)]
     session_bus: Vec<(String, String)>,
+    /// Where the host pushes a writer's commits; `None` for other roles.
+    #[serde(default)]
+    push: Option<Push>,
+}
+
+/// A writer's branch, Git directory and shared Git directory, read on the
+/// host before the worker starts, so the worker cannot redirect them.
+#[derive(Debug, Serialize, Deserialize)]
+struct Push {
+    branch: String,
+    /// The worktree's own Git directory, whose `HEAD` must still name the
+    /// branch after the worker exits.
+    git_dir: PathBuf,
+    /// The shared Git directory: the branch's ref, and the object store the
+    /// host's empty push repository borrows from.
+    common: PathBuf,
 }
 
 /// Owns a subprocess group; even a normally exited leader may leave children.
@@ -129,6 +174,22 @@ pub fn run(options: Options) -> u8 {
     nix::sys::stat::umask(nix::sys::stat::Mode::from_bits_truncate(0o077));
     match dispatch(options) {
         Ok(code) => code,
+        Err(error) => {
+            emit(&json!({"type": "error", "message": error}));
+            1
+        }
+    }
+}
+
+/// Push a worktree's agent branch as the host pushes a writer's, printing a
+/// `pushed` or `error` JSON record.
+pub fn push_branch(options: PushOptions) -> u8 {
+    nix::sys::stat::umask(nix::sys::stat::Mode::from_bits_truncate(0o077));
+    match push_worktree(options) {
+        Ok((branch, head)) => {
+            emit(&json!({"type": "pushed", "branch": branch, "head": head}));
+            0
+        }
         Err(error) => {
             emit(&json!({"type": "error", "message": error}));
             1
@@ -319,22 +380,187 @@ fn host_command(name: impl AsRef<std::ffi::OsStr>) -> Result<Command> {
     Ok(c)
 }
 
-/// Refuse a writer role unless the worktree is on an agent branch, so a
-/// token with Contents write is not handed to a worker whose checkout would
-/// push to `main`, a detached head or another branch by mistake. The token
-/// still reaches every branch; this limits mistakes, not a hostile worker.
-fn writer_branch(worktree: &Path, role: &str) -> Result<()> {
+/// Refuse a writer role unless the worktree is on an agent branch, and
+/// return where the host pushes once the worker exits: that branch, the
+/// worktree's Git directory and its object store. Other roles push nothing.
+fn writer_branch(worktree: &Path, role: &str) -> Result<Option<Push>> {
     if !WRITERS.contains(&role) {
-        return Ok(());
+        return Ok(None);
     }
-    let mut git = host_command("git")?;
-    git.arg("-C")
-        .arg(worktree)
-        .args(["symbolic-ref", "--quiet", "--short", "HEAD"]);
     let refused = || format!("{role} needs a worktree on a claude/, codex/ or storm/ branch");
-    let branch = execute(git, None, Duration::from_secs(30)).map_err(|_| refused())?;
-    let branch = String::from_utf8(branch).map_err(|_| refused())?;
-    if crate::cleanup::is_agent(branch.trim()) { Ok(()) } else { Err(refused()) }
+    let git = |args: &[&str]| -> Result<String> {
+        let mut git = host_command("git")?;
+        git.arg("-C").arg(worktree).args(args);
+        let bytes = execute(git, None, Duration::from_secs(30)).map_err(|_| refused())?;
+        Ok(String::from_utf8(bytes).map_err(|_| refused())?.trim().to_string())
+    };
+    let branch = git(&["symbolic-ref", "--quiet", "--short", "HEAD"])?;
+    if !crate::cleanup::is_agent(&branch) {
+        return Err(refused());
+    }
+    let git_dir = canonical(Path::new(&git(&["rev-parse", "--absolute-git-dir"])?))?;
+    let common = git(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
+    let common = canonical(Path::new(&common))?;
+    Ok(Some(Push { branch, git_dir, common }))
+}
+
+/// Push a writer's branch after its worker has exited, and return the head
+/// pushed. It pushes only while the Git directory recorded at dispatch is
+/// still on the writer's branch. The branch and head are read as files, with
+/// no Git command in the worktree's repository and no symbolic link followed,
+/// and a store that borrows objects through `objects/info/alternates` is
+/// refused, so the worker cannot point the push at another repository's
+/// history. The push itself runs from an empty bare repository the host
+/// creates in its private state, whose only link to the worktree is its
+/// object store: objects are data, so nothing the worker wrote is read as
+/// config or run as a hook. Git refuses a push that does not fast-forward
+/// the branch on origin. The token is minted for this push alone, reaches
+/// Git through a credential helper scoped to `github.com`, and is revoked
+/// after.
+fn push(config: &Config, session_bus: &[(String, String)], target: &Push, private: &Path) -> Result<String> {
+    let branch = &target.branch;
+    let head = branch_head(target)?;
+    let home = private_dir(&private.join("push-home"))?;
+    let run = |mut git: Command, args: &[&str], token: Option<&str>| -> Result<(bool, String)> {
+        git.args(args);
+        if let Some(token) = token {
+            git.env("FAB_PUSH_TOKEN", token);
+        }
+        let (status, bytes) = execute_outcome(git, None, Duration::from_secs(120))?;
+        let text = String::from_utf8(bytes).map_err(|_| "invalid Git output")?;
+        Ok((status.success(), text.trim().to_string()))
+    };
+    let bare = private_dir(&private.join("push.git"))?;
+    if !run(
+        push_git(&home, &bare)?,
+        &["init", "--quiet", "--bare", "--template="],
+        None,
+    )?
+    .0
+    {
+        return Err("cannot create the push repository".into());
+    }
+    let info = bare.join("objects/info");
+    fs::create_dir_all(&info).map_err(|_| "cannot create the push repository")?;
+    write(
+        &info.join("alternates"),
+        format!("{}\n", target.common.join("objects").display()),
+    )?;
+    let commit = format!("{head}^{{commit}}");
+    if !run(push_git(&home, &bare)?, &["cat-file", "-e", &commit], None)?.0 {
+        return Err(format!("not pushed: {branch} has no commit"));
+    }
+    let token = issue(config, session_bus, private, &json!({"contents": "write"}))?;
+    let url = format!("https://github.com/{}.git", config.repository);
+    let refspec = format!("{head}:refs/heads/{branch}");
+    let pushed = run(
+        push_git(&home, &bare)?,
+        &["push", "--porcelain", &url, &refspec],
+        Some(&token),
+    )
+    .and_then(|(ok, report)| {
+        if ok {
+            return Ok(());
+        }
+        // `--porcelain` prints a refused ref as `!<TAB>src:dst<TAB>reason`.
+        let reason = report
+            .lines()
+            .find(|l| l.starts_with('!'))
+            .and_then(|l| l.rsplit('\t').next())
+            .unwrap_or("the push failed");
+        Err(format!("not pushed: origin refused {branch}: {reason}"))
+    });
+    let revoked = revoke(private, &token);
+    pushed?;
+    revoked?;
+    Ok(head)
+}
+
+/// The commit the writer's branch names, read from the shared Git directory
+/// as files: the worktree's `HEAD` must name the branch, the ref is a loose
+/// file or a `packed-refs` line, and no path on the way is a symbolic link.
+/// It refuses an object store with alternates, whose objects could come from
+/// any repository the host can read.
+fn branch_head(target: &Push) -> Result<String> {
+    let branch = &target.branch;
+    let head = plain(&target.git_dir, &["HEAD"])?.ok_or("the worktree has no HEAD")?;
+    if head.trim_end() != format!("ref: refs/heads/{branch}") {
+        return Err(format!("not pushed: the worktree is no longer on {branch}"));
+    }
+    if plain(&target.common, &["objects", "info", "alternates"])?.is_some() {
+        return Err("not pushed: the object store borrows objects through objects/info/alternates".into());
+    }
+    let mut path = vec!["refs", "heads"];
+    path.extend(branch.split('/'));
+    let sha = match plain(&target.common, &path)? {
+        Some(text) => text.trim_end().to_string(),
+        None => plain(&target.common, &["packed-refs"])?
+            .unwrap_or_default()
+            .lines()
+            .find_map(|l| l.strip_suffix(&format!(" refs/heads/{branch}")).map(str::to_string))
+            .ok_or(format!("not pushed: {branch} has no commit"))?,
+    };
+    if !(sha.len() == 40 || sha.len() == 64) || !sha.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()) {
+        return Err(format!("not pushed: {branch} does not name a commit"));
+    }
+    Ok(sha)
+}
+
+/// The text of the file at `base` joined with `parts`, or `None` when it is
+/// absent. It refuses a symbolic link at `base` or anywhere below it, so a
+/// worker cannot point the read at another repository's files.
+fn plain(base: &Path, parts: &[&str]) -> Result<Option<String>> {
+    let mut path = base.to_path_buf();
+    let mut last = fs::symlink_metadata(&path).map_err(|_| "cannot read the worktree's Git directory")?;
+    for part in parts {
+        if last.file_type().is_symlink() || !last.is_dir() {
+            return Err(format!(
+                "not pushed: {} is a symbolic link or not a directory",
+                path.display()
+            ));
+        }
+        path.push(part);
+        last = match fs::symlink_metadata(&path) {
+            Ok(meta) => meta,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err(format!("not pushed: cannot read {}", path.display())),
+        };
+    }
+    if !last.file_type().is_file() {
+        return Err(format!(
+            "not pushed: {} is a symbolic link or not a file",
+            path.display()
+        ));
+    }
+    let text = fs::read_to_string(&path).map_err(|_| format!("not pushed: cannot read {}", path.display()))?;
+    Ok(Some(text))
+}
+
+/// A Git command for `git_dir` that reads no system or global config: HOME
+/// and XDG_CONFIG_HOME are `home`, an empty private directory, and the
+/// host's push settings come last on the command line.
+fn push_git(home: &Path, git_dir: &Path) -> Result<Command> {
+    let mut git = host_command("git")?;
+    git.env("HOME", home)
+        .env("XDG_CONFIG_HOME", home)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .arg("--git-dir")
+        .arg(git_dir)
+        .args(PUSH_CONFIG.iter().flat_map(|c| ["-c", *c]))
+        .arg("-c")
+        .arg(format!("credential.helper=!{CREDENTIAL_HELPER}"));
+    Ok(git)
+}
+
+/// Create a directory only the host user can enter.
+fn private_dir(path: &Path) -> Result<PathBuf> {
+    fs::DirBuilder::new()
+        .mode(0o700)
+        .create(path)
+        .map_err(|_| "cannot create private push state")?;
+    Ok(path.to_path_buf())
 }
 
 /// Capture both pipes concurrently, discard diagnostics, and impose a host-tool deadline.
@@ -502,7 +728,9 @@ fn credential_lookup<'a>(macos: bool, service: &'a str, account: &'a str) -> (&'
     }
 }
 
-fn issue(c: &Config, session_bus: &[(String, String)], private: &Path, role: &str) -> Result<String> {
+/// Mint an installation token with `permissions` for the configured
+/// repository alone, persisting it as recovery state until `revoke`.
+fn issue(c: &Config, session_bus: &[(String, String)], private: &Path, permissions: &Value) -> Result<String> {
     let machine = machine_credential(c, session_bus)?;
     let mut values = Vec::new();
     for id in [&c.app_id_secret, &c.installation_id_secret, &c.pem_secret] {
@@ -539,7 +767,6 @@ fn issue(c: &Config, session_bus: &[(String, String)], private: &Path, role: &st
         return Err("installation does not match repository".into());
     }
     let repo = c.repository.split('/').nth(1).unwrap();
-    let permissions = json!({"actions": "write", "contents": if WRITERS.contains(&role) {"write"} else {"read"}, "pull_requests": "read"});
     let response = app_api(
         "POST",
         &format!("/app/installations/{installation}/access_tokens"),
@@ -559,7 +786,7 @@ fn issue(c: &Config, session_bus: &[(String, String)], private: &Path, role: &st
         return Err("cannot persist installation token recovery state".into());
     }
     let checked = (|| {
-        let mut expected = permissions;
+        let mut expected = permissions.clone();
         expected["metadata"] = json!("read");
         if response["permissions"] != expected {
             return Err("unexpected installation token permissions".into());
@@ -756,7 +983,10 @@ fn recorder(private: &Path, request: &Request) -> u8 {
             return Err("invalid recorder role".into());
         }
         let credential = oauth(&request.config.auth_file, request.timeout)?;
-        let token = issue(&request.config, &request.session_bus, private, &request.role)?;
+        // Every worker reads the repository, runs the Bot comment workflow
+        // and reads pull requests. None can push; the host pushes for writers.
+        let permissions = json!({"actions": "write", "contents": "read", "pull_requests": "read"});
+        let token = issue(&request.config, &request.session_bus, private, &permissions)?;
         // Issuance can outlive cancellation or the deadline. Never launch in that case.
         if cancelled() || Instant::now() >= deadline {
             return Err("worker cancelled or deadline exceeded during issuance".into());
@@ -834,6 +1064,20 @@ fn recorder(private: &Path, request: &Request) -> u8 {
         )?;
         let text = redact(&text, &token, &credential);
         worker.result(&text)?;
+        if WRITERS.contains(&request.role.as_str()) {
+            // The worker has exited: retire its token before minting the push token.
+            revoke(private, &token)?;
+            // A cancel or the deadline that came while the worker finished stops the push.
+            if cancelled() || Instant::now() >= deadline {
+                return Err("not pushed: worker cancelled or deadline exceeded".into());
+            }
+            let target = request.push.as_ref().ok_or("writer has no recorded branch")?;
+            let head = push(&request.config, &request.session_bus, target, private)?;
+            output(
+                &directory,
+                &json!({"type": "pushed", "branch": target.branch, "head": head}),
+            )?;
+        }
         output(&directory, &json!({"type": "result", "text": text}))
     })();
     let cancellation_observed = cancelled();
@@ -940,6 +1184,73 @@ fn pane(session: &str) -> Result<bool> {
     }
 }
 
+/// Check the worktree is a linked worktree whose Git metadata and host
+/// paths do not overlap, and that the state directory is private. Returns
+/// the shared Git directory.
+fn host_paths(worktree: &Path, config_path: &Path, config: &Config) -> Result<PathBuf> {
+    if !worktree.join(".git").is_file() {
+        return Err("worker requires a linked Git worktree".into());
+    }
+    let mut git = host_command("git")?;
+    git.arg("-C")
+        .arg(worktree)
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    let common =
+        String::from_utf8(execute(git, None, Duration::from_secs(30))?).map_err(|_| "invalid Git metadata path")?;
+    let common = canonical(Path::new(common.trim()))?;
+    for path in [config_path, &config.pi_runtime, &config.auth_file, &config.state_dir] {
+        if path.starts_with(worktree) || path.starts_with(&common) {
+            return Err("host configuration overlaps worktree or shared Git metadata".into());
+        }
+    }
+    if home()?.starts_with(worktree) {
+        return Err("worktree exposes owner home".into());
+    }
+    if fs::metadata(&config.state_dir)
+        .map_err(|_| "cannot inspect state directory")?
+        .permissions()
+        .mode()
+        & 0o077
+        != 0
+    {
+        return Err("state_dir must be private (mode 0700)".into());
+    }
+    Ok(common)
+}
+
+/// Push a worktree's agent branch the way dispatch pushes a writer's, for
+/// `fab run`'s own commits, and return the branch and the head pushed.
+fn push_worktree(options: PushOptions) -> Result<(String, String)> {
+    let worktree = canonical(&options.worktree)?;
+    let config_path = canonical(&options.config)?;
+    if config_path.starts_with(&worktree) {
+        return Err("local issuer configuration must be outside worktree".into());
+    }
+    let config = load_config(&config_path)?;
+    host_paths(&worktree, &config_path, &config)?;
+    let target = writer_branch(&worktree, "implementer")?.ok_or("no branch to push")?;
+    let private = tempfile::Builder::new()
+        .prefix("push-")
+        .tempdir_in(&config.state_dir)
+        .map_err(|_| "cannot create private push state")?
+        .keep();
+    let pushed = push(
+        &config,
+        &session_bus(|name| std::env::var(name).ok()),
+        &target,
+        &private,
+    );
+    // `push` revokes its token; a token left behind is recovery state.
+    if private.join("revocation-failed").exists() || private.join("installation-token").exists() {
+        return Err(format!(
+            "push token revocation unconfirmed; private state retained at {}",
+            private.display()
+        ));
+    }
+    fs::remove_dir_all(&private).map_err(|_| "cannot remove private push state")?;
+    pushed.map(|head| (target.branch, head))
+}
+
 fn dispatch(options: Options) -> Result<u8> {
     let root = canonical(&options.trusted_checkout)?;
     let worktree = canonical(&options.worktree)?;
@@ -951,38 +1262,12 @@ fn dispatch(options: Options) -> Result<u8> {
     if root.starts_with(&worktree) || worktree.starts_with(&root) {
         return Err("trusted checkout and worktree must be separate".into());
     }
-    if !worktree.join(".git").is_file() {
-        return Err("worker requires a linked Git worktree".into());
-    }
-    let mut git = host_command("git")?;
-    git.arg("-C")
-        .arg(&worktree)
-        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-    let common =
-        String::from_utf8(execute(git, None, Duration::from_secs(30))?).map_err(|_| "invalid Git metadata path")?;
-    let common = canonical(Path::new(common.trim()))?;
-    for path in [&config_path, &config.pi_runtime, &config.auth_file, &config.state_dir] {
-        if path.starts_with(&worktree) || path.starts_with(&common) {
-            return Err("host configuration overlaps worktree or shared Git metadata".into());
-        }
-    }
-    if home()?.starts_with(&worktree) {
-        return Err("worktree exposes owner home".into());
-    }
-    writer_branch(&worktree, &options.role)?;
+    let common = host_paths(&worktree, &config_path, &config)?;
+    let push = writer_branch(&worktree, &options.role)?;
     let (model, thinking) = role_config(&root, &options.role)?;
     let (tools, unmapped, body) = role_input(&root, &options.role)?;
     emit(&json!({"type": "progress", "event": format!("unmapped tools: {}", unmapped.join(", "))}));
     let skills = role_skills(&root, &options.role)?;
-    if fs::metadata(&config.state_dir)
-        .map_err(|_| "cannot inspect state directory")?
-        .permissions()
-        .mode()
-        & 0o077
-        != 0
-    {
-        return Err("state_dir must be private (mode 0700)".into());
-    }
     let interrupted = signals()?;
     let mut private = Private::new(&config.state_dir)?;
     let p = &private.path;
@@ -996,7 +1281,12 @@ fn dispatch(options: Options) -> Result<u8> {
     write(
         &p.join("input/role.md"),
         format!(
-            "{body}\n\nYou start in your worktree, the directory FAB_WORKTREE names; it is the directory the run named. Make no worktree of your own.\nNo GitHub MCP tools exist. Use gh. Skills are files to read.\nNever approve or merge. Never bypass repository rulesets. Do not load PR code as trusted configuration.\nUse worker_report immediately for blockers or questions; those reports end this worker and return control to the driver.\nUse the trusted Bot comment workflow. Queue acceptance is not posting: confirm the bot author and first line.\nPush over HTTPS with transient gh auth git-credential; never change shared Git configuration.\nUnmapped role tools (use gh or read the skill): {}\n",
+            "{body}\n\nYou start in your worktree, the directory FAB_WORKTREE names; it is the directory the run named. Make no worktree of your own.\nNo GitHub MCP tools exist. Use gh. Skills are files to read.\nNever approve or merge. Never bypass repository rulesets. Do not load PR code as trusted configuration.\nUse worker_report immediately for blockers or questions; those reports end this worker and return control to the driver.\nUse the trusted Bot comment workflow. Queue acceptance is not posting: confirm the bot author and first line.\n{}Never change shared Git configuration.\nUnmapped role tools (use gh or read the skill): {}\n",
+            if push.is_some() {
+                "Commit your work on your branch and do not push: your token cannot push. Once you exit, the host pushes the branch if it fast-forwards origin. A commit's SHA is the one that lands.\n"
+            } else {
+                ""
+            },
             unmapped.join(", ")
         ),
     )?;
@@ -1035,6 +1325,7 @@ fn dispatch(options: Options) -> Result<u8> {
         tools,
         skills,
         session_bus: session_bus(|name| std::env::var(name).ok()),
+        push,
     };
     write(
         &p.join("request.json"),

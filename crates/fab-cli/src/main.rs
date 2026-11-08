@@ -46,6 +46,11 @@ enum Command {
     #[cfg(unix)]
     #[command(hide = true)]
     DispatchRecord { private: PathBuf },
+    /// Push a task worktree's agent branch the way dispatch pushes a
+    /// writer's; `fab run` pushes its own commits with it.
+    #[cfg(unix)]
+    #[command(hide = true)]
+    DispatchPush(dispatch::PushOptions),
     /// Take, renew or release a task's claim, its storm/<task> branch.
     Claim {
         #[command(subcommand)]
@@ -209,6 +214,8 @@ fn main() -> ExitCode {
         Command::Worker { operation } => return ExitCode::from(operation.run()),
         #[cfg(unix)]
         Command::DispatchRecord { private } => return ExitCode::from(dispatch::record(&private)),
+        #[cfg(unix)]
+        Command::DispatchPush(options) => return ExitCode::from(dispatch::push_branch(options)),
     };
     result.unwrap_or_else(|e| {
         eprintln!("fab: {e}");

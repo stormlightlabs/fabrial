@@ -24,6 +24,8 @@ struct Fake {
     gates_fail: bool,
     /// The tracker refuses to start the task.
     start_fails: bool,
+    /// The worktree's head is not origin's when the run finishes.
+    stale: bool,
     /// The `check` job's `status conclusion` at the head; `None` is a pass.
     check: Option<&'static str>,
     /// When the plan is full; `None` is always, and otherwise it is standard.
@@ -69,6 +71,17 @@ impl Fake {
 
 impl Host for Fake {
     fn run(&self, dir: &Path, program: &str, args: &[String]) -> Result<String> {
+        // Every Git command turns hooks and fsmonitor off; the rest of the
+        // fake reads the command after those settings.
+        let args = if program == "git" {
+            assert!(
+                args.starts_with(&strings(GIT_HARDENING)),
+                "git without hooks and fsmonitor off: {args:?}"
+            );
+            &args[GIT_HARDENING.len()..]
+        } else {
+            args
+        };
         let line = format!("{program} {}", args.join(" "));
         self.calls.borrow_mut().push(line.clone());
         let arg = |n: usize| args.get(n).map(String::as_str).unwrap_or("");
@@ -93,6 +106,7 @@ impl Host for Fake {
             "gh" if line.starts_with("gh issue view") => Ok("# Fix it\n\nThe body.".into()),
             "gh" | "fab" => Ok(String::new()),
             "git" => match arg(0) {
+                "rev-parse" if arg(1) == "HEAD" && self.stale => Ok("f".repeat(40)),
                 "rev-parse" => Ok(self.head()),
                 "status" => Ok(if *self.dirty.borrow() { " M task.md\0".into() } else { String::new() }),
                 "hash-object" => Ok(format!("hash-{}", self.writes.borrow())),
@@ -104,10 +118,7 @@ impl Host for Fake {
                     *self.writes.borrow_mut() -= 1;
                     Ok(String::new())
                 }
-                "push" => {
-                    *self.pushes.borrow_mut() += 1;
-                    Ok(String::new())
-                }
+                "push" | "pull" => panic!("fab run pushes and pulls only through dispatch: {line}"),
                 "worktree" if arg(1) == "add" && arg(2) != "--detach" => {
                     fs::create_dir_all(arg(2)).unwrap();
                     Ok(String::new())
@@ -161,6 +172,12 @@ impl Host for Fake {
             return Ok(rest.to_string());
         }
         Ok(result)
+    }
+
+    fn push(&self, worktree: &Path) -> Result<String> {
+        self.calls.borrow_mut().push(format!("push {}", worktree.display()));
+        *self.pushes.borrow_mut() += 1;
+        Ok(self.head())
     }
 
     fn plan(&self, _head: &str) -> Result<Plan> {
@@ -247,6 +264,10 @@ fn a_tracked_task_runs_implement_each_stage_and_the_finish() {
         host.calls
     );
     assert!(host.called("Then post your answers through the Bot comment workflow as this says: standard revise posts"));
+    // Workers cannot push: dispatch pushes a writer's branch after it exits.
+    assert!(host.called("dispatch implementer"));
+    assert!(host.called("Commit your work and do not push: dispatch pushes storm/t-1 to origin after you exit"));
+    assert!(host.called("commit to storm/t-1 without pushing: dispatch pushes it after you exit"));
     // Reviewers work in a detached worktree at the pinned head; revisers in
     // the task's.
     assert!(host.called("git worktree add --detach"));
@@ -260,6 +281,10 @@ fn a_tracked_task_runs_implement_each_stage_and_the_finish() {
         host.called("arcl task complete t-1 --evidence Done in #7 at 0000000: fab run took it through full review")
     );
     assert!(host.called("git commit -m Complete the task -- task.md"));
+    assert!(
+        host.order("git commit -m Complete the task") < host.order(&format!("push {}", worktree.display())),
+        "the completion leaves through dispatch's push"
+    );
     assert!(!host.called("just"), "the gates do not run on the host by default");
     assert!(
         host.order("statusCheckRollup") < host.order("arcl task complete"),
@@ -292,11 +317,11 @@ fn a_tracked_task_runs_implement_each_stage_and_the_finish() {
 }
 
 #[test]
-fn an_implementer_that_pushes_nothing_ends_in_a_handoff() {
+fn an_implementer_that_commits_nothing_ends_in_a_handoff() {
     let (_temp, root) = root();
     let host = Fake::with(&[("implementer", "Blocked: the gates need the host.")]);
     let err = drive(&host, &root, settings(true), "t-1", false).unwrap_err();
-    assert!(err.contains("the implementer pushed nothing"), "{err}");
+    assert!(err.contains("the implementer committed nothing"), "{err}");
     assert!(host.called("arcl task handoff t-1 --note-file"));
     assert!(host.called("git commit -m Hand off the task -- task.md"));
     assert!(err.contains("Handoff recorded on t-1."), "{err}");
@@ -433,15 +458,24 @@ fn a_completion_that_raises_the_depth_is_undone_before_the_push() {
     assert!(!host.called("Review finished at"));
     let calls = host.calls.borrow();
     let completed = host.order("arcl task complete");
-    let pushed = completed
-        + calls[completed..]
-            .iter()
-            .position(|c| c.starts_with("git push"))
-            .unwrap();
+    let pushed = completed + calls[completed..].iter().position(|c| c.starts_with("push ")).unwrap();
     assert!(
         host.order("git reset") < pushed,
         "only the handoff pushes, after the undo: {calls:?}"
     );
+}
+
+#[test]
+fn a_worktree_off_origins_head_stops_before_completion() {
+    let (_temp, root) = root();
+    let host = reviewed(Fake { stale: true, ..Fake::default() });
+    let err = drive(&host, &root, settings(true), "t-1", false).unwrap_err();
+    assert!(
+        err.contains("the worktree is at fffffff but origin has storm/t-1"),
+        "{err}"
+    );
+    assert!(!host.called("arcl task complete"));
+    assert!(!host.called("Review finished at"));
 }
 
 #[test]

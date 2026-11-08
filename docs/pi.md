@@ -85,17 +85,42 @@ Run dispatch with a trusted PATH for tmux, gh, curl, `security` or
 ### GitHub App
 
 Install the App on the named repository with Actions write, Contents write and
-Pull requests read. Review workers get tokens with Actions write, Contents
-read and Pull requests read; implementer and reviser also get Contents write,
-to push their branch. Dispatch rejects a token with wider permissions or
-another repository, and accepts no personal access token. Keep the App out of ruleset bypass lists, and require
-the owner's approval and checks on `main`, so workers cannot approve or merge.
+Pull requests read. Every worker gets a token with Actions write, for the Bot
+comment workflow, Contents read and Pull requests read, so no worker can push.
+Actions write lets a worker run a workflow on a branch, but the workflows
+that hold the App's key run `fab` from `main`: Branch PR checks the branch
+out only for Git to read, as the Review gate does. Neither token can change
+a workflow file, which takes Workflows write.
+An App token with Contents write reaches every branch and tag the rulesets
+leave open, and cannot be narrowed to one branch. Dispatch rejects a token
+with wider permissions or another repository, and accepts no personal access
+token. Keep the App out of ruleset bypass lists, and require the owner's
+approval and checks on `main`, so workers cannot approve or merge.
 
 The BWS token and App key stay on the host. A worker gets its token in its
 environment, and the host revokes it when the worker finishes, fails, times
 out or is cancelled. A failed revocation fails the worker, and the host keeps
 the token's recovery state, so restrict access to the state directory. A host
 crash during revocation can leave a token valid until its one-hour expiry.
+
+The implementer and reviser commit in their worktree, and the host pushes
+their branch after the worker exits successfully. It pushes only while the
+worktree is still on the branch dispatch recorded, and Git refuses a push
+that does not fast-forward that branch on origin; either way the worker fails
+with the reason and nothing is pushed. The host revokes the worker's token,
+mints a token with Contents write alone for the push, and revokes it after.
+
+The worker can write its repository's Git state, so the host runs no Git
+command there when it pushes. It reads the branch from the worktree's
+`HEAD` and the head commit from the branch's ref as files, and refuses a
+symbolic link on either path and an object store with
+`objects/info/alternates`, so the worker cannot point the push at another
+repository on the host. It pushes that commit from an empty bare repository
+in its private state, which borrows the worktree's objects and nothing
+else. Git runs there without system or global config, with hooks off, to an
+explicit `github.com` URL, and takes the token through a credential helper
+that answers only for `github.com`. A cancel or the deadline that comes as
+the worker finishes stops the push.
 
 ## Run a role
 
@@ -126,10 +151,8 @@ Each role gets these skills:
 An implementer also gets the skill `skill` names in the `[tasks]` table of
 the trusted checkout's `.github/fabrial.toml`, such as `arclightning` here.
 It works in a worktree the driver created on the task's branch, and Pi starts
-there. Dispatch refuses an implementer or reviser whose
-worktree is not on a `claude/`, `codex/` or `storm/` branch. That check stops
-a mistaken push, not a hostile worker: the token can still push any branch the
-rulesets leave open.
+there. Dispatch refuses an implementer or reviser whose worktree is not on a
+`claude/`, `codex/` or `storm/` branch, and pushes only that branch for it.
 `arcl` is not in the sandbox, so the driver starts and completes an arcl task
 on the host. Until Rust gates run in the sandbox (below), an implementer in a
 Rust repository reports the gate blocker and leaves the gates to the driver.
@@ -193,7 +216,8 @@ new worktree, before `start`, for a tracker that needs each checkout set up.
 implementer gets for working the tracker.
 The run claims the task, adds the worktree `../<repo>-worktrees/<task>` on
 `storm/<task>`, starts the task and dispatches the implementer. If the start
-fails, the run removes that worktree and branch and releases the claim. Once it pushes, the run reads the pull request
+fails, the run removes that worktree and branch and releases the claim. Once
+dispatch pushes the implementer's commits, the run reads the pull request
 Branch PR opened, then runs each stage `fab sequence` gives: a reviewer in a
 detached worktree at the pinned head, a reviser in the task's worktree. A
 review ends with `Above nit: yes` or `no`, which decides whether its revise
@@ -203,6 +227,13 @@ and posts `Review finished`, which names that result. A failed job stops the
 run before the task is completed; a job still running is reported, and the
 ruleset on `main` holds the merge until it passes. A failed step records a
 handoff and stops.
+
+The run pushes its own commits, the completion and the handoff, with
+`fab dispatch-push`, the same push dispatch makes for a writer. It never
+pulls: it fetches the branch into the checkout it runs from and stops when
+the worktree is not at that head. Its other Git commands, which commit the
+task file in the worktree, run with hooks and fsmonitor off; they still read
+the repository's config, which the sandbox keeps workers from writing.
 
 `--host-gates` runs the command `gates` names in the task's worktree instead
 of reading the job. That runs code the workers wrote on the host, outside the
