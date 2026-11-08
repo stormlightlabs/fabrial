@@ -64,6 +64,11 @@ pub struct Tasks {
     /// Takes no placeholders. `None` skips it.
     #[serde(default)]
     pub init: Option<String>,
+    /// The skill under `.claude/skills` that `fab dispatch` gives an
+    /// implementer for working the tracker, such as `arclightning`. A
+    /// plain directory name. `None` gives none.
+    #[serde(default)]
+    pub skill: Option<String>,
     /// Prints the task, given `{id}`.
     pub show: String,
     /// Starts the task, given `{id}`.
@@ -154,6 +159,13 @@ impl Settings {
                 ));
             }
         }
+        for skill in self.tasks.iter().filter_map(|t| t.skill.as_deref()) {
+            if !is_name(skill) {
+                return Err(Error::Settings(format!(
+                    "`tasks.skill` is {skill:?}; it names a skill directory: ASCII letters, digits, `-` and `_`"
+                )));
+            }
+        }
         for (step, command, needs) in self.tasks.iter().flat_map(Tasks::steps) {
             if command.contains(['"', '\\', '\n', '\r']) {
                 return Err(Error::Settings(format!(
@@ -220,13 +232,19 @@ impl Settings {
                 .init
                 .as_ref()
                 .map_or_else(String::new, |i| format!("init = \"{i}\"\n"));
+            let skill = t
+                .skill
+                .as_ref()
+                .map_or_else(String::new, |k| format!("skill = \"{k}\"\n"));
             format!(
                 "\n# The commands fab run uses for each step of a tracked task. Each is\n\
                  # split on spaces and run in the task's worktree; {{id}}, {{evidence}}\n\
                  # and {{file}} are replaced. init, when set, runs once in the new\n\
-                 # worktree before start.\n\
+                 # worktree before start. skill names the skill fab dispatch gives\n\
+                 # an implementer.\n\
                  [tasks]\n\
                  {init}\
+                 {skill}\
                  show = \"{}\"\n\
                  start = \"{}\"\n\
                  complete = \"{}\"\n\
@@ -270,6 +288,15 @@ fn is_relative(path: &str) -> bool {
         || path.contains(['"', '\\', '\n', '\r']))
 }
 
+/// Whether a skill name is a plain directory name: ASCII letters, digits,
+/// `-` and `_`, so it cannot leave `.claude/skills`.
+fn is_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
 /// Whether `owner` is a GitHub login: ASCII letters, digits and single
 /// hyphens, not starting or ending with a hyphen, up to 39 characters.
 fn is_login(owner: &str) -> bool {
@@ -302,6 +329,7 @@ mod tests {
     fn tasks() -> Tasks {
         Tasks {
             init: None,
+            skill: None,
             show: "arcl task show {id}".into(),
             start: "arcl task start {id}".into(),
             complete: "arcl task complete {id} --evidence {evidence}".into(),
@@ -327,6 +355,19 @@ mod tests {
             argv,
             ["arcl", "task", "complete", "t-1", "--evidence", "Done in #3 at abc"]
         );
+    }
+
+    #[test]
+    fn the_task_skill_renders_parses_back_and_is_a_plain_name() {
+        let with = Tasks { skill: Some("arclightning".into()), ..tasks() };
+        let text = Settings { tasks: Some(with.clone()), ..settings() }.render("0.9.0");
+        assert!(text.lines().any(|l| l == r#"skill = "arclightning""#), "{text}");
+        assert_eq!(Settings::parse(&text).unwrap().tasks, Some(with));
+        for bad in ["", "../x", "a/b", ".", "a b", "a\"b"] {
+            let tasks = Tasks { skill: Some(bad.into()), ..tasks() };
+            let err = Settings { tasks: Some(tasks), ..settings() }.validate().unwrap_err();
+            assert!(err.to_string().contains("tasks.skill"), "{bad:?}: {err}");
+        }
     }
 
     #[test]

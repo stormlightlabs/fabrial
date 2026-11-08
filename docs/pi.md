@@ -119,13 +119,14 @@ Each role gets these skills:
 
 | Role                                     | Skills                                                         |
 | ---------------------------------------- | -------------------------------------------------------------- |
-| implementer                              | `implement`, `storm`, `writing-docs`, `arclightning`           |
+| implementer                              | `implement`, `storm`, `writing-docs`, the `tasks.skill` skill  |
 | reviewer, verifier, adversarial-reviewer | `review`, `storm`, `writing-docs`                              |
 | reviser                                  | `review`, `storm`, `writing-docs`, `revise`, `resync`          |
 
-An implementer gets `arclightning` only where the repository commits
-`.arcl/workspace`. It works in a worktree the driver created on the task's
-branch, and Pi starts there. Dispatch refuses an implementer or reviser whose
+An implementer also gets the skill `skill` names in the `[tasks]` table of
+the trusted checkout's `.github/fabrial.toml`, such as `arclightning` here.
+It works in a worktree the driver created on the task's branch, and Pi starts
+there. Dispatch refuses an implementer or reviser whose
 worktree is not on a `claude/`, `codex/` or `storm/` branch. That check stops
 a mistaken push, not a hostile worker: the token can still push any branch the
 rulesets leave open.
@@ -177,6 +178,7 @@ step of the repository's tracker:
 ```toml
 [tasks]
 init = "arcl init"
+skill = "arclightning"
 show = "arcl task show {id}"
 start = "arcl task start {id}"
 complete = "arcl task complete {id} --evidence {evidence}"
@@ -187,6 +189,8 @@ Each command is split on spaces and run on the host, without a shell, in the
 task's worktree; a value put in for `{id}`, `{evidence}` or `{file}` stays one
 argument. `init` is optional and takes no placeholders: it runs once in the
 new worktree, before `start`, for a tracker that needs each checkout set up.
+`skill`, also optional, names a directory under `.claude/skills` that the
+implementer gets for working the tracker.
 The run claims the task, adds the worktree `../<repo>-worktrees/<task>` on
 `storm/<task>`, starts the task and dispatches the implementer. If the start
 fails, the run removes that worktree and branch and releases the claim. Once it pushes, the run reads the pull request
