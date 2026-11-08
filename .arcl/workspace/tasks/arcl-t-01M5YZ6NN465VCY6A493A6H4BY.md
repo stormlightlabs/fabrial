@@ -2,7 +2,7 @@
 id = "arcl-t-01M5YZ6NN465VCY6A493A6H4BY"
 phase = "arcl-ph-01M5S4SCGXWH09BAZNT1684VTF"
 title = "Answer the owner's review and cap open pull requests before new work"
-status = "pending"
+status = "cancelled"
 priority = "normal"
 position = 5
 blocked-by = ["arcl-t-01M5S4SCNKRK07FF2PEBNVZKVX"]
@@ -26,3 +26,5 @@ Acceptance criteria:
       it claims a new task
 - [ ] Tests cover the limit, a thread the bot already answered, and an owner
       reply under a declined thread
+
+Cancelled: outside the implementation loop (PLAN.md). Unattended runs, review rounds and following work after hand-off belong to whoever hosts fabrial; the capture "An outer loop for projects that can run hands-off" records what we learned.
