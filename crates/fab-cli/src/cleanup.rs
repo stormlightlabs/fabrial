@@ -7,7 +7,7 @@
 //! `gh api`, so it needs no record from the run that made the worktrees and
 //! works after a restart. A worktree is removed only when its pull request
 //! merged, `git status --porcelain --ignored` lists nothing but Cargo's
-//! `target/` and the paths `disposable` in the primary checkout's
+//! `target/` and the paths `disposable` in `origin/main`'s
 //! `.github/fabrial.toml` names, and its branch tip equals the pull request's head. The branch
 //! is deleted only at that tip. A local agent branch that no worktree has
 //! checked out, or is rebasing or bisecting, is deleted when its pull request
@@ -170,31 +170,30 @@ fn cleanup(options: &Options) -> Result<ExitCode> {
     Ok(tally.code())
 }
 
-/// The ignored paths the primary checkout's `.github/fabrial.toml` lets
-/// cleanup delete: none when the file or the setting is missing, and none,
-/// with a warning, when the file does not parse, so a worktree holding other
+/// The ignored paths `origin/main`'s `.github/fabrial.toml` lets cleanup
+/// delete, so a branch or an uncommitted edit in the primary checkout cannot
+/// widen them. None when the file or the setting is missing, and none, with
+/// a warning, when the file does not parse, so a worktree holding other
 /// ignored files stays while everything else is still cleaned.
 fn disposable(primary: &Path) -> Vec<String> {
-    let path = primary.join(fab_core::settings::SETTINGS_PATH);
-    let Ok(text) = std::fs::read_to_string(&path) else {
+    let spec = format!("origin/main:{}", fab_core::settings::SETTINGS_PATH);
+    let Ok(text) = run::git(primary, &["show", &spec]) else {
         return Vec::new();
     };
     match fab_core::settings::Settings::parse(&text) {
         Ok(settings) => settings.disposable.unwrap_or_default(),
         Err(e) => {
-            println!(
-                "settings: warning: {}: {e}; no ignored path but target/ is disposable",
-                path.display()
-            );
+            println!("settings: warning: {spec}: {e}; no ignored path but target/ is disposable");
             Vec::new()
         }
     }
 }
 
-/// The files under the ignored path git reported that no disposable path
-/// covers. Git reports a wholly ignored directory as one path, so one that
-/// holds a disposable path is listed file by file; `target/` and directories
-/// no disposable path reaches into stay one path.
+/// The ignored path git reported, when something in it is not disposable.
+/// Git reports a wholly ignored directory as one path, so one a disposable
+/// path reaches into is listed file by file, and kept, as one path, when any
+/// file in it is not covered. Paths are read NUL-separated, so git quotes
+/// none of them.
 fn undisposable(worktree: &Path, path: &str, disposable: &[String]) -> Result<Vec<String>> {
     if DISPOSABLE.contains(&path) || disposable.iter().any(|d| covers(d, path)) {
         return Ok(Vec::new());
@@ -207,18 +206,18 @@ fn undisposable(worktree: &Path, path: &str, disposable: &[String]) -> Result<Ve
         &[
             "status",
             "--porcelain",
+            "-z",
             "--ignored",
             "--untracked-files=all",
             "--",
             path,
         ],
     )?;
-    Ok(files
-        .lines()
+    let stray = files
+        .split('\0')
         .filter_map(|l| l.strip_prefix("!! "))
-        .filter(|f| !disposable.iter().any(|d| covers(d, f)))
-        .map(String::from)
-        .collect())
+        .any(|f| !disposable.iter().any(|d| covers(d, f)));
+    Ok(if stray { vec![path.to_string()] } else { Vec::new() })
 }
 
 /// Whether the disposable path `entry` covers the ignored path git reports:
@@ -234,8 +233,11 @@ fn one_worktree(context: &Context, worktree: &Worktree, branch: &str, dry_run: b
     let at = worktree.path.display();
     let pulls = branch_pulls(repo, branch)?;
     let tip = run::git(primary, &["rev-parse", &format!("refs/heads/{branch}")])?;
-    let status = run::git(&worktree.path, &["status", "--porcelain", "--ignored"])?;
-    let (ignored, changed): (Vec<&str>, Vec<&str>) = status.lines().partition(|l| l.starts_with("!! "));
+    let status = run::git(&worktree.path, &["status", "--porcelain", "-z", "--ignored"])?;
+    let (ignored, changed): (Vec<&str>, Vec<&str>) = status
+        .split('\0')
+        .filter(|l| !l.is_empty())
+        .partition(|l| l.starts_with("!! "));
     let mut plan = plan(&pulls, &tip, !changed.is_empty());
     let mut kept: Vec<String> = Vec::new();
     for path in ignored.iter().map(|l| &l[3..]) {

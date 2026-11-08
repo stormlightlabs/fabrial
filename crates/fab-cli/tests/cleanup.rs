@@ -393,20 +393,31 @@ fn ignored_paths_the_settings_name_go_with_a_merged_worktree_and_others_keep_it(
     let f = Fixture::new();
     fs::create_dir_all(f.primary().join(".github")).unwrap();
     let settings = "owner = \"o\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\n\
-        disposable = [\".cache/db\", \".cache/db.lock\", \"tmp/\"]\n";
+        disposable = [\".cache/db\", \".cache/db.lock\", \"tmp/\", \"my cache.db\"]\n";
     f.commit(&f.primary(), ".github/fabrial.toml", settings);
     f.git(&f.primary(), &["push", "-q", "origin", "main"]);
-    for (branch, extra) in [("storm/caches", None), ("storm/env", Some(".env"))] {
+    let cases = [
+        ("storm/caches", None),
+        ("storm/env", Some(".env")),
+        ("storm/stray", Some(".cache/stray")),
+    ];
+    for (number, (branch, extra)) in (1..).zip(cases) {
         let (dir, _) = f.worktree(branch);
-        fs::write(dir.join(".gitignore"), ".cache/\ntmp/\n.env\n").unwrap();
-        f.git(&dir, &["add", ".gitignore"]);
+        // tmp/ holds a tracked file and only tmp/a/ is ignored, so git reports
+        // tmp/a/ and only the `tmp/` entry's directory match covers it.
+        fs::write(dir.join(".gitignore"), ".cache/\ntmp/a/\n.env\nmy cache.db\n").unwrap();
+        fs::create_dir_all(dir.join("tmp")).unwrap();
+        fs::write(dir.join("tmp/keep"), "tracked").unwrap();
+        f.git(&dir, &["add", ".gitignore", "tmp/keep"]);
         f.git(&dir, &["commit", "-q", "-m", "ignore"]);
         let tip = f.git(&dir, &["rev-parse", "HEAD"]);
-        f.pull(branch, if extra.is_some() { 2 } else { 1 }, "closed", true, &tip);
+        f.pull(branch, number, "closed", true, &tip);
         fs::create_dir_all(dir.join(".cache")).unwrap();
         fs::write(dir.join(".cache/db"), "cache").unwrap();
         fs::write(dir.join(".cache/db.lock"), "").unwrap();
         fs::create_dir_all(dir.join("tmp/a")).unwrap();
+        fs::write(dir.join("tmp/a/file"), "x").unwrap();
+        fs::write(dir.join("my cache.db"), "x").unwrap();
         if let Some(file) = extra {
             fs::write(dir.join(file), "SECRET=1\n").unwrap();
         }
@@ -420,6 +431,11 @@ fn ignored_paths_the_settings_name_go_with_a_merged_worktree_and_others_keep_it(
         "{out}"
     );
     assert!(f.path("storm-env").join(".env").exists());
+    assert!(
+        out.contains("kept storm/stray at") && out.contains("removal would delete ignored files: .cache/\n"),
+        "{out}"
+    );
+    assert!(f.path("storm-stray").join(".cache/stray").exists());
 }
 
 #[test]
