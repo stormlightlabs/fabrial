@@ -12,7 +12,8 @@ invocation.
 ## Read the findings
 
 The findings to address are the ones the session that invoked you hands
-over: the report of the review pass it just ran, as the verifier left it.
+over: the report of the review pass it just ran, or the verifier's report
+when one ran.
 When the driver asks for a revise on a person's review instead, that review
 is the input; read it from the pull request:
 

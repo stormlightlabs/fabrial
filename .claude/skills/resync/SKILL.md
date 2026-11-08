@@ -67,8 +67,7 @@ check is green, or ask for another sequence.
 
 Report the pull request, the old and new heads, whether the change is the same
 or differs, the gates and their result, and `storm/review`'s state after the
-push. A stop names its reason and the
-files.
+push. A stop names its reason and the files.
 
 ## Do not
 
