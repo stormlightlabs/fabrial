@@ -2,9 +2,10 @@
 id = "arcl-t-01M5Z573DC6D9C3MHQZSKA2EP2"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
 title = "Remove files a fabrial release no longer installs"
-status = "in_progress"
+status = "completed"
 priority = "normal"
 position = 5
+evidence = "Done in #94 at 730b61c: fab update deletes files only older releases installed when unedited and reports the rest; fab check lists each still present"
 +++
 
 Reported from arclightning's update to 0.7.1 (its PR 12).
@@ -17,11 +18,11 @@ and README.md asks the owner to delete them by hand.
 
 Acceptance criteria:
 
-- [ ] fab-core keeps a list of the files earlier releases installed and this
+- [x] fab-core keeps a list of the files earlier releases installed and this
       one does not, each with the contents or a hash of every version a
       release wrote, since one path can ship in several versions
-- [ ] `fab check` reports each that exists
-- [ ] `fab update` deletes each that still matches one of those versions, and
+- [x] `fab check` reports each that exists
+- [x] `fab update` deletes each that still matches one of those versions, and
       reports one that was edited instead of deleting it
-- [ ] Tests cover a retired file deleted, an edited one kept and reported, and
+- [x] Tests cover a retired file deleted, an edited one kept and reported, and
       a repository without them; README.md drops its by-hand step
