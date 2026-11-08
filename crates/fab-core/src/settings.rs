@@ -23,7 +23,9 @@ pub struct Settings {
     pub owner: String,
     /// The `Co-authored-by` value on every squash commit.
     pub trailer: String,
-    /// The command agents run before pushing.
+    /// The command agents run before pushing. `fab gates` runs it when the
+    /// repository has no `.github/fabrial-gates.toml`, and `fab init` writes
+    /// it into that file's starter as `full`.
     pub gates: String,
     /// The `Signed-off-by` value that ends every squash commit, for
     /// repositories that use the Developer Certificate of Origin. `None`

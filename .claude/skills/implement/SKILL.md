@@ -126,9 +126,11 @@ branch, not in a pull request of its own.
 
 ## Verify
 
-Run the narrowest relevant test, then the gates: the command `gates` names in
-`.github/fabrial.toml`. Do not weaken, skip, or delete a test to make a gate
-pass. If a test is wrong, fix it on purpose and say why.
+Run the narrowest relevant test, then `fab gates` before each push. It runs
+the checks `.github/fabrial-gates.toml` names for the files the change
+touches, or the command `gates` names in `.github/fabrial.toml` when that file
+is missing. Do not weaken, skip, or delete a test to make a gate pass. If a
+test is wrong, fix it on purpose and say why.
 
 A change to what a command prints gets a run against real input as well as a
 unit test. Check what you claim about the output against the output itself.
@@ -178,8 +180,8 @@ When the tracker keeps its tasks in the repository, complete a tracked task
 on the branch once the work is done and verified: before the `storm` skill's
 **Finish**, or before your report in a run without `storm`. Do it as the
 **Tasks** section says, with evidence that names the pull request, such as
-`Done in #<n> at <short sha>: <summary>`. Commit the changed file, run the
-gates and push. The status reaches `main` with the merge, and an abandoned
+`Done in #<n> at <short sha>: <summary>`. Commit the changed file, run
+`fab gates` and push. The status reaches `main` with the merge, and an abandoned
 pull request leaves it untouched.
 
 When the tracker keeps its tasks outside the repository, completing the task

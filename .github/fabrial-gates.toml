@@ -1,0 +1,23 @@
+# The checks `fab gates` runs, by the paths a change touches. It runs each
+# scope whose `paths` match a changed file. Documentation and planning
+# records run nothing unless a scope names them. `unmatched` says what a
+# changed file no scope names runs: "full" or "skip". `fab gates --full`
+# runs `full`. Each command runs with `sh -c` at the repository root. This
+# repository owns the file: `fab update` and `fab check` leave it alone.
+#
+# fab builds skills, agents, workflows and other .github files into its
+# binary, so a change to them names no scope and runs `full`. The rust scope
+# names PLAN.md because a test reads its arcl install line.
+
+full = "just check"
+unmatched = "full"
+
+[[scoped]]
+name = "rust"
+paths = ["crates/**", "Cargo.toml", "Cargo.lock", "packages/pi/worker.ts", "conf/sandbox/worker.nix", "PLAN.md"]
+run = "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && cargo run -q --bin fab -- check"
+
+[[scoped]]
+name = "pi"
+paths = ["packages/pi/**", "scripts/**", "package.json"]
+run = "node --test packages/pi/*.test.mjs packages/pi/lib/*.test.mjs scripts/*.test.mjs"

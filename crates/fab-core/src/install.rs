@@ -3,7 +3,8 @@
 //!
 //! Most files are built into the binary from this repository. `CODEOWNERS`,
 //! the settings file and a section of `AGENTS.md` are written from the
-//! repository's [`Settings`].
+//! repository's [`Settings`]. The gates file is the repository's own: `init`
+//! writes a starter when there is none, and nothing else touches it.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -11,6 +12,7 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use crate::Error;
+use crate::gates::{GATES_PATH, Gates};
 use crate::settings::{SETTINGS_PATH, Settings};
 
 /// The line that opens fabrial's section of `AGENTS.md`.
@@ -304,12 +306,27 @@ pub fn read_settings(root: &Path) -> Result<Option<Settings>, Error> {
 
 /// Installs fabrial in a repository that does not have it yet: `fab init`.
 /// A repository with a settings file is refused; [`update`] refreshes it.
-/// `force` replaces managed files someone else wrote, as in [`init`].
+/// `force` replaces managed files someone else wrote, as in [`init`]. A
+/// starter gates file that runs `settings.gates` for every change is written
+/// when nothing is at its path; an existing one is kept, even with `force`.
 pub fn install(root: &Path, settings: &Settings, force: bool) -> Result<Report, Error> {
     if read_settings(root)?.is_some() {
         return Err(Error::Installed);
     }
-    init(root, settings, force)
+    let mut report = init(root, settings, force)?;
+    // `init` has refused a symlinked `.github`, so this looks at the path
+    // itself only, and anything there, of any kind, is the repository's.
+    let gates = root.join(GATES_PATH);
+    match fs::symlink_metadata(&gates) {
+        Ok(_) => report.unchanged.push(GATES_PATH.into()),
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            fs::write(&gates, Gates::starter(&settings.gates))
+                .map_err(|source| Error::Io { path: gates.clone(), source })?;
+            report.written.push(GATES_PATH.into());
+        }
+        Err(source) => return Err(Error::Io { path: gates, source }),
+    }
+    Ok(report)
 }
 
 /// Replaces an install's files with this build's: `fab update`. `change`
@@ -1045,6 +1062,35 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         install(dir.path(), &settings(), false).unwrap();
         assert!(matches!(install(dir.path(), &settings(), true), Err(Error::Installed)));
+    }
+
+    #[test]
+    fn init_writes_a_starter_gates_file_that_update_and_check_leave_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let report = install(dir.path(), &settings(), false).unwrap();
+        assert!(report.written.contains(&PathBuf::from(GATES_PATH)));
+        let path = dir.path().join(GATES_PATH);
+        let starter = Gates::parse(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(starter.full, settings().gates);
+
+        let own = "full = \"make test\"\n";
+        fs::write(&path, own).unwrap();
+        let report = update(dir.path(), |s| s.gates = "just check".into(), false).unwrap();
+        assert!(!report.written.contains(&PathBuf::from(GATES_PATH)));
+        assert_eq!(fs::read_to_string(&path).unwrap(), own);
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+        fs::remove_file(&path).unwrap();
+        update(dir.path(), |_| {}, false).unwrap();
+        assert!(!path.exists());
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+
+        // A first install keeps the repository's own file, even with force.
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join(".github")).unwrap();
+        fs::write(dir.path().join(GATES_PATH), own).unwrap();
+        let report = install(dir.path(), &settings(), true).unwrap();
+        assert!(report.unchanged.contains(&PathBuf::from(GATES_PATH)));
+        assert_eq!(fs::read_to_string(dir.path().join(GATES_PATH)).unwrap(), own);
     }
 
     #[test]

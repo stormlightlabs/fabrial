@@ -1,11 +1,12 @@
 //! The core of fabrial. It installs fabrial into a repository ([`install`]),
-//! reads a repository's settings ([`settings`]) and claims tasks for runs
-//! ([`claims`]). The other run operations every driver shares (start a step,
-//! record its result and mark the pull request ready) are under active
-//! development, alongside
+//! reads a repository's settings ([`settings`]) and the checks that cover
+//! its paths ([`gates`]), and claims tasks for runs ([`claims`]). The other
+//! run operations every driver shares (start a step, record its result and
+//! mark the pull request ready) are under active development, alongside
 //! [arclightning](https://github.com/stormlightlabs/arclightning).
 
 pub mod claims;
+pub mod gates;
 pub mod install;
 pub mod settings;
 
@@ -29,6 +30,9 @@ pub enum Error {
     /// cannot read.
     #[error(".github/fabrial.toml: {0}")]
     Settings(String),
+    /// The gates file holds a value `fab gates` cannot use.
+    #[error(".github/fabrial-gates.toml: {0}")]
+    Gates(String),
     /// A first install would replace files fabrial did not write.
     #[error("these files exist and differ from fabrial's; pass --force to replace them: {}", list(.0))]
     Conflict(Vec<PathBuf>),
