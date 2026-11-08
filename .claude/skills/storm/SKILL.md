@@ -178,11 +178,13 @@ Each comment is one Bot comment run.
 
 For a tracked task whose tracker keeps its tasks in the repository, first
 complete it on the branch and push, as the `implement` skill's **Complete the
-task** says, so the checks below and the gate read the final head. Run `fab sequence` again on that head; when the
-depth rose, run the stages it now adds before posting.
+task** says, so the checks below and the gate read the final head. Run `fab
+sequence` again on that head; when the depth rose, run the stages it now adds
+before posting.
 
 Then run `fab gates --full` on that head, which runs every check whatever the
-diff touches. A failure is a stop condition below, not a post.
+diff touches. Fix a failure within the task and push before posting; a
+failure whose fix is outside the task is a stop condition below.
 
 Before posting it, check that the pull request still merges. The review
 passes read the diff, not the base, so they do not see a conflict. `gh pr
@@ -198,10 +200,10 @@ moves, so the review stands. On `CONFLICTING` (or `dirty`), merge `main` with a
 merge commit, not a rebase, and resolve it. Regenerate a generated file with
 its tool rather than editing it, as `fab update` does for
 `.github/fabrial.toml`. Stop and report when both sides changed the same
-logic. Run `fab gates --full` and push. A resolved conflict changes the branch's own
-diff, so the gate takes the new head as unreviewed. Report the resolution and
-ask the driver whether to run both passes again or to have the owner accept
-the head with `/storm:ready <sha>`; do neither unasked.
+logic. Run `fab gates --full` and push. A resolved conflict changes the
+branch's own diff, so the gate takes the new head as unreviewed. Report the
+resolution and ask the driver whether to run both passes again or to have the
+owner accept the head with `/storm:ready <sha>`; do neither unasked.
 The `resync` skill does not resolve conflicts; this step does, for the pull
 request this run reviews.
 

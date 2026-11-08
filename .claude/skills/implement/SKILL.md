@@ -129,7 +129,8 @@ branch, not in a pull request of its own.
 Run the narrowest relevant test, then `fab gates` before each push. It runs
 the checks `.github/fabrial-gates.toml` names for the files the change
 touches, or the command `gates` names in `.github/fabrial.toml` when that file
-is missing. Do not weaken, skip, or delete a test to make a gate pass. If a test is wrong, fix it on purpose and say why.
+is missing. Do not weaken, skip, or delete a test to make a gate pass. If a
+test is wrong, fix it on purpose and say why.
 
 A change to what a command prints gets a run against real input as well as a
 unit test. Check what you claim about the output against the output itself.

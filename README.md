@@ -45,7 +45,7 @@ pull request.
 repository owns: `fab update` and `fab check` leave it alone. Agents run
 `fab gates` before each push. It runs each `[[scoped]]` command whose `paths`
 globs match a changed file, `full` for a changed file no scope names, and
-nothing for documentation. The starter has no scopes, so every change runs
+nothing for documentation no scope names. The starter has no scopes, so every change runs
 `full`, the `--gates` command.
 
 The skills take a task from wherever the repository keeps its work. Name the

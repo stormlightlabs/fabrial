@@ -4,8 +4,8 @@
 //! The change is every file that differs from the merge base with
 //! `origin/main`: the commits since it, staged and unstaged changes, and
 //! untracked files. Files review depth counts as documentation or planning
-//! records run nothing. Each scope whose globs match a changed file runs, in
-//! the file's order. A changed file no scope names runs `full` alone, unless
+//! records run nothing unless a scope's globs name them. Each scope whose
+//! globs match a changed file runs, in the file's order. A changed file no scope names runs `full` alone, unless
 //! `unmatched = "skip"`. Without the gates file, the command `gates` names in
 //! `.github/fabrial.toml` runs.
 
@@ -126,11 +126,15 @@ fn changed(root: &Path, base: &str) -> Result<Vec<String>> {
 }
 
 /// The gates `changed` runs. Files `quiet` accepts, documentation and
-/// planning records, count for nothing. A code file no scope names runs
+/// planning records, count for nothing unless a scope names them, since a
+/// check may read them. A code file no scope names runs
 /// `full` in place of every scope, since `full` covers them, unless
 /// `unmatched` is skip.
 fn select(gates: &Gates, changed: &[String], quiet: impl Fn(&str) -> bool) -> Selection {
-    let code: Vec<&String> = changed.iter().filter(|p| !quiet(p)).collect();
+    let code: Vec<&String> = changed
+        .iter()
+        .filter(|p| !quiet(p) || gates.scoped.iter().any(|s| s.matches(p)))
+        .collect();
     let unmatched: Vec<String> = code
         .iter()
         .filter(|p| !gates.scoped.iter().any(|s| s.matches(p)))
@@ -258,6 +262,15 @@ run = "node --test"
     }
 
     #[test]
+    fn a_record_a_scope_names_runs_that_scope() {
+        let gates = Gates::parse(&GATES.replace("\"Cargo.toml\"]", "\"Cargo.toml\", \"PLAN.md\"]")).unwrap();
+        assert_eq!(
+            names(&gates, &["PLAN.md", "README.md"]),
+            (vec!["rust".to_string()], vec![])
+        );
+    }
+
+    #[test]
     fn fabrials_own_gates_parse_and_cover_its_parts() {
         let own = Gates::parse(include_str!("../../../.github/fabrial-gates.toml")).unwrap();
         assert_eq!(own.full, "just check");
@@ -266,5 +279,7 @@ run = "node --test"
         // dispatch builds the worker extension into fab.
         assert_eq!(names(&own, &["packages/pi/worker.ts"]).0, ["rust", "pi"]);
         assert_eq!(names(&own, &[".claude/skills/implement/SKILL.md"]).0, ["full"]);
+        // The Rust tests read PLAN.md's arcl install line.
+        assert_eq!(names(&own, &["PLAN.md"]).0, ["rust"]);
     }
 }

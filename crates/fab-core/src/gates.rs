@@ -80,10 +80,10 @@ impl Gates {
         format!(
             "# The checks `fab gates` runs, by the paths a change touches. It runs each\n\
              # scope whose `paths` match a changed file. Documentation and planning\n\
-             # records run nothing. `unmatched` says what a changed file no scope names\n\
-             # runs: \"full\" or \"skip\". `fab gates --full` runs `full`. Each command\n\
-             # runs with `sh -c` at the repository root. This repository owns the file:\n\
-             # `fab update` and `fab check` leave it alone.\n\
+             # records run nothing unless a scope names them. `unmatched` says what a\n\
+             # changed file no scope names runs: \"full\" or \"skip\". `fab gates --full`\n\
+             # runs `full`. Each command runs with `sh -c` at the repository root. This\n\
+             # repository owns the file: `fab update` and `fab check` leave it alone.\n\
              \n\
              full = \"{full}\"\n\
              unmatched = \"full\"\n\
