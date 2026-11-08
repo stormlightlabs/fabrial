@@ -27,7 +27,7 @@ For a change to terminal UI, capture each affected state with
 `.github/storm/shot.sh <name> <cols> <rows> <command...>`, which needs tmux,
 freeze and perl. Read the PNGs, and report each PNG's absolute path.
 
-Return findings one per line, most severe first, under 200 words in total:
+Return findings one per line, most severe first, 200 words at most in total:
 
 ```text
 <severity> · <path>:<line> — <problem> → <why it matters> → <fix direction>

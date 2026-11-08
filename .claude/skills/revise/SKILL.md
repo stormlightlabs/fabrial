@@ -85,9 +85,6 @@ workflow with `answers` set to `true`, as the `storm` skill's **Posting**
 says. They open with one line naming the review they answer and what you ran
 as, then give one line per inline finding:
 
-The model and effort are the ones your invoker gave you; write `not stated`
-for one you were not told.
-
 ```text
 Answering the review at 4f2a91c · <model> · <effort>
 
@@ -95,11 +92,14 @@ Answering the review at 4f2a91c · <model> · <effort>
 - 2214093388 · Not a defect: `parse_empty` covers the empty input.
 ```
 
+The model and effort are the ones your invoker gave you; write `not stated`
+for one you were not told.
+
 Each line becomes a reply on that finding's thread. Answer the findings in
 the review's body as lines without an id; they stay in the answers review's
 own body. When the findings have no ids, or `main`'s `comment.yml` has no
 `answers` input, post the same text as a plain comment, with lines that name
-no id. Keep the whole under 150 words; `fab pr-answer` refuses longer
+no id. Keep the whole to 150 words at most; `fab pr-answer` refuses longer
 answers and prints the count. `Fixed in <sha>` is a complete
 outcome. A finding needs a sentence only where you did not act on it, or
 where the diff does not show what changed.

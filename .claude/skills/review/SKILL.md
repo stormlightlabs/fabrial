@@ -122,7 +122,7 @@ case is speculation; drop it or mark it `nit`.
 ## Keep the report readable
 
 - Most severe first, with no preamble and no closing summary.
-- Under 200 words: `fab pr-review` refuses a longer report and prints its
+- 200 words at most: `fab pr-review` refuses a longer report and prints its
   count. Past ten findings, give the ten that matter and say how many you
   left out. Cut a finding rather than compressing ten into denser prose.
 - Cite `<path>:<line>` instead of quoting the diff back.
