@@ -22,6 +22,8 @@ struct Fake {
     open_pr: bool,
     never_pr: bool,
     gates_fail: bool,
+    /// The tracker refuses to start the task.
+    start_fails: bool,
 }
 
 impl Fake {
@@ -38,6 +40,15 @@ impl Fake {
 
     fn called(&self, needle: &str) -> bool {
         self.calls.borrow().iter().any(|c| c.contains(needle))
+    }
+
+    /// Where the first call containing `needle` falls among all calls.
+    fn order(&self, needle: &str) -> usize {
+        self.calls
+            .borrow()
+            .iter()
+            .position(|c| c.contains(needle))
+            .unwrap_or_else(|| panic!("no call contains {needle}"))
     }
 
     fn roles(&self) -> Vec<String> {
@@ -101,6 +112,12 @@ impl Host for Fake {
                     "tracker commands run in the task worktree: {}",
                     dir.display()
                 );
+                if arg(0) == "init" {
+                    return Ok(String::new());
+                }
+                if arg(1) == "start" && self.start_fails {
+                    return Err("arcl task start failed: not ready".into());
+                }
                 *self.dirty.borrow_mut() = true;
                 *self.writes.borrow_mut() += 1;
                 Ok(String::new())
@@ -156,7 +173,7 @@ impl Host for Fake {
 }
 
 fn settings(tracked: bool) -> Settings {
-    let tasks = "[tasks]\nshow = \"arcl task show {id}\"\nstart = \"arcl task start {id}\"\n\
+    let tasks = "[tasks]\ninit = \"arcl init\"\nshow = \"arcl task show {id}\"\nstart = \"arcl task start {id}\"\n\
                  complete = \"arcl task complete {id} --evidence {evidence}\"\n\
                  handoff = \"arcl task handoff {id} --note-file {file}\"\n";
     let text = format!(
@@ -203,6 +220,20 @@ fn a_tracked_task_runs_implement_each_stage_and_the_finish() {
         worktree.display()
     )));
     assert!(host.called("arcl task start t-1"));
+    assert!(
+        host.order("arcl init") < host.order("arcl task start t-1"),
+        "the worktree is initialized before the task starts"
+    );
+    assert!(
+        host.called("which holds the claim for run fab-run-"),
+        "the implementer is told the run ID"
+    );
+    assert!(
+        host.called("Post your review through the Bot comment workflow as this says: standard review posts"),
+        "{:?}",
+        host.calls
+    );
+    assert!(host.called("Then post your answers through the Bot comment workflow as this says: standard revise posts"));
     // Reviewers work in a detached worktree at the pinned head; revisers in
     // the task's.
     assert!(host.called("git worktree add --detach"));
@@ -216,7 +247,10 @@ fn a_tracked_task_runs_implement_each_stage_and_the_finish() {
         host.called("arcl task complete t-1 --evidence Done in #7 at 0000000: fab run took it through full review")
     );
     assert!(host.called("git commit -m Complete the task -- task.md"));
-    assert!(host.called("just check"));
+    assert!(
+        host.order("just check") < host.order("arcl task complete"),
+        "the gates run before the task is completed"
+    );
     let finished = host.head();
     assert!(
         host.called(&format!("body=Review finished at {finished}")),
@@ -288,6 +322,24 @@ fn failing_gates_stop_before_review_finished() {
     let err = drive(&host, &root, settings(true), "t-1").unwrap_err();
     assert!(err.contains("the gates failed"), "{err}");
     assert!(!host.called("Review finished at"));
+    assert!(
+        !host.called("arcl task complete"),
+        "a task whose gates fail stays started"
+    );
+}
+
+#[test]
+fn a_failed_start_removes_the_worktree_and_branch_and_releases_the_claim() {
+    let (_temp, root) = root();
+    let host = Fake { start_fails: true, ..Fake::default() };
+    let err = drive(&host, &root, settings(true), "t-1").unwrap_err();
+    assert!(err.contains("not ready"), "{err}");
+    assert!(err.contains("the worktree and branch were removed"), "{err}");
+    let worktree = root.parent().unwrap().join("repo-worktrees/t-1");
+    assert!(host.called(&format!("git worktree remove --force {}", worktree.display())));
+    assert!(host.called("git branch -D storm/t-1"));
+    assert!(host.called("fab claim release t-1 --run fab-run-"));
+    assert!(host.roles().is_empty());
 }
 
 #[test]

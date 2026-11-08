@@ -53,6 +53,11 @@ pub struct Settings {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Tasks {
+    /// Prepares a new worktree for the other commands, run once before
+    /// `start`, such as a tracker that keeps a local cache per checkout.
+    /// Takes no placeholders. `None` skips it.
+    #[serde(default)]
+    pub init: Option<String>,
     /// Prints the task, given `{id}`.
     pub show: String,
     /// Starts the task, given `{id}`.
@@ -131,6 +136,14 @@ impl Settings {
                 )));
             }
         }
+        let init = self.tasks.iter().filter_map(|t| t.init.as_deref());
+        for command in init {
+            if command.trim().is_empty() || command.contains(['"', '\\', '\n', '\r']) {
+                return Err(Error::Settings(
+                    "`tasks.init` is empty or holds a quote, a backslash or a line break".into(),
+                ));
+            }
+        }
         for (step, command, needs) in self.tasks.iter().flat_map(Tasks::steps) {
             if command.contains(['"', '\\', '\n', '\r']) {
                 return Err(Error::Settings(format!(
@@ -185,11 +198,17 @@ impl Settings {
             )
         });
         let tasks = self.tasks.as_ref().map_or_else(String::new, |t| {
+            let init = t
+                .init
+                .as_ref()
+                .map_or_else(String::new, |i| format!("init = \"{i}\"\n"));
             format!(
                 "\n# The commands fab run uses for each step of a tracked task. Each is\n\
                  # split on spaces and run in the task's worktree; {{id}}, {{evidence}}\n\
-                 # and {{file}} are replaced.\n\
+                 # and {{file}} are replaced. init, when set, runs once in the new\n\
+                 # worktree before start.\n\
                  [tasks]\n\
+                 {init}\
                  show = \"{}\"\n\
                  start = \"{}\"\n\
                  complete = \"{}\"\n\
@@ -253,6 +272,7 @@ mod tests {
 
     fn tasks() -> Tasks {
         Tasks {
+            init: None,
             show: "arcl task show {id}".into(),
             start: "arcl task start {id}".into(),
             complete: "arcl task complete {id} --evidence {evidence}".into(),
@@ -266,6 +286,10 @@ mod tests {
         let parsed = Settings::parse(&with.render("0.9.0")).unwrap();
         assert_eq!(parsed.tasks, Some(tasks()));
         assert_eq!(parsed.version.as_deref(), Some("0.9.0"));
+        let init = Tasks { init: Some("arcl init".into()), ..tasks() };
+        let text = Settings { tasks: Some(init.clone()), ..settings() }.render("0.9.0");
+        assert!(text.lines().any(|l| l == r#"init = "arcl init""#), "{text}");
+        assert_eq!(Settings::parse(&text).unwrap().tasks, Some(init));
         let argv = Tasks::argv(
             &tasks().complete,
             &[("{id}", "t-1"), ("{evidence}", "Done in #3 at abc")],
@@ -283,6 +307,9 @@ mod tests {
         assert!(err.to_string().contains("tasks.complete"), "{err}");
         let text = format!("{}[tasks]\nshow = \"x {{id}}\"\n", settings().render("0.9.0"));
         assert!(Settings::parse(&text).is_err());
+        let quoted = Tasks { init: Some("arcl \\ init".into()), ..tasks() };
+        let err = Settings { tasks: Some(quoted), ..settings() }.validate().unwrap_err();
+        assert!(err.to_string().contains("tasks.init"), "{err}");
     }
 
     #[test]

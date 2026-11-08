@@ -176,6 +176,7 @@ step of the repository's tracker:
 
 ```toml
 [tasks]
+init = "arcl init"
 show = "arcl task show {id}"
 start = "arcl task start {id}"
 complete = "arcl task complete {id} --evidence {evidence}"
@@ -184,13 +185,15 @@ handoff = "arcl task handoff {id} --note-file {file}"
 
 Each command is split on spaces and run on the host, without a shell, in the
 task's worktree; a value put in for `{id}`, `{evidence}` or `{file}` stays one
-argument. The run claims the task, adds the worktree
-`../<repo>-worktrees/<task>` on `storm/<task>`, starts the task and
-dispatches the implementer. Once it pushes, the run reads the pull request
+argument. `init` is optional and takes no placeholders: it runs once in the
+new worktree, before `start`, for a tracker that needs each checkout set up.
+The run claims the task, adds the worktree `../<repo>-worktrees/<task>` on
+`storm/<task>`, starts the task and dispatches the implementer. If the start
+fails, the run removes that worktree and branch and releases the claim. Once it pushes, the run reads the pull request
 Branch PR opened, then runs each stage `fab sequence` gives: a reviewer in a
 detached worktree at the pinned head, a reviser in the task's worktree. A
 review ends with `Above nit: yes` or `no`, which decides whether its revise
-runs. The run then completes the task, runs the gates on the host, checks the
+runs. The run then runs the gates on the host, completes the task, checks the
 pull request merges and posts `Review finished`. A failed step records a
 handoff and stops.
 

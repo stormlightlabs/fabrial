@@ -216,7 +216,7 @@ fn drive<H: Host>(host: &H, root: &Path, settings: Settings, task: &str) -> Resu
         .unwrap_or(root)
         .join(format!("{repo}-worktrees"))
         .join(&name);
-    let scratch = std::env::temp_dir().join(format!("fab-run-{name}-{}", claims::now()));
+    let scratch = std::env::temp_dir().join(format!("fab-run-{name}-{}", uuid::Uuid::new_v4()));
     let mut run =
         Run { host, root: root.into(), settings, source, text: String::new(), run_id, branch, worktree, scratch };
     run.text = run.read_task()?;
@@ -239,12 +239,16 @@ impl<H: Host> Run<'_, H> {
     fn task_command(&self, step: &str, values: &[(&str, &str)]) -> Result<String> {
         let tasks = self.settings.tasks.as_ref().ok_or("no [tasks] commands")?;
         let command = match step {
+            "init" => tasks.init.as_deref().unwrap_or_default(),
             "show" => &tasks.show,
             "start" => &tasks.start,
             "complete" => &tasks.complete,
             _ => &tasks.handoff,
         };
         let argv = Tasks::argv(command, values);
+        if argv.is_empty() {
+            return Ok(String::new());
+        }
         let dir = if self.worktree.exists() { &self.worktree } else { &self.root };
         self.host.run(dir, &argv[0], &argv[1..])
     }
@@ -268,7 +272,8 @@ impl<H: Host> Run<'_, H> {
     }
 
     /// Checks no pull request has the task, claims it, makes its worktree
-    /// and starts it in the tracker.
+    /// and starts it in the tracker. A failure removes the worktree and the
+    /// local branch it made and releases the claim, so a rerun starts clean.
     fn start(&self) -> Result<()> {
         let open = self.gh(&[
             "pr",
@@ -295,9 +300,10 @@ impl<H: Host> Run<'_, H> {
             "fab",
             &strings(&["claim", "take", &name, "--run", &self.run_id, "--ttl", CLAIM_MINUTES]),
         )?;
+        let path = self.worktree.to_string_lossy().to_string();
+        let added = std::cell::Cell::new(false);
         let made = (|| {
             self.git(&self.root, &["fetch", "origin", &self.branch])?;
-            let path = self.worktree.to_string_lossy().to_string();
             self.git(
                 &self.root,
                 &[
@@ -309,22 +315,29 @@ impl<H: Host> Run<'_, H> {
                     &format!("origin/{}", self.branch),
                 ],
             )?;
+            added.set(true);
             self.git(
                 &self.worktree,
                 &["branch", "--set-upstream-to", &format!("origin/{}", self.branch)],
             )?;
             if let Source::Tracked(id) = &self.source {
+                self.task_command("init", &[])?;
                 self.task_command("start", &[("{id}", id)])?;
             }
             fs::create_dir_all(&self.scratch).map_err(|e| format!("cannot make {}: {e}", self.scratch.display()))
         })();
         if let Err(error) = made {
+            if added.get() {
+                let _ = self.git(&self.root, &["worktree", "remove", "--force", &path]);
+                let _ = self.git(&self.root, &["branch", "-D", &self.branch]);
+            }
             let _ = self.host.run(
                 &self.root,
                 "fab",
                 &strings(&["claim", "release", &name, "--run", &self.run_id]),
             );
-            return Err(format!("{error}; the claim was released"));
+            let undone = if added.get() { "the worktree and branch were removed and " } else { "" };
+            return Err(format!("{error}; {undone}the claim was released"));
         }
         Ok(())
     }
@@ -392,10 +405,15 @@ impl<H: Host> Run<'_, H> {
         self.finish(pr, &plan, log)
     }
 
-    /// Completes a tracked task, runs the gates, checks the pull request
-    /// merges and posts `Review finished`.
+    /// Runs the gates, then completes a tracked task, pushes, checks the
+    /// pull request merges and posts `Review finished`. Failing gates stop
+    /// the run with the task still started.
     fn finish(&self, pr: u64, plan: &Plan, log: &mut Vec<String>) -> Result<String> {
         self.git(&self.worktree, &["pull", "--ff-only"])?;
+        let gates: Vec<String> = self.settings.gates.split_whitespace().map(String::from).collect();
+        self.host
+            .run(&self.worktree, &gates[0], &gates[1..])
+            .map_err(|e| format!("the gates failed: {e}"))?;
         if let Source::Tracked(id) = &self.source {
             let head = self.git(&self.worktree, &["rev-parse", "HEAD"])?;
             let evidence = format!(
@@ -409,10 +427,6 @@ impl<H: Host> Run<'_, H> {
                 "Complete the task",
             )?;
         }
-        let gates: Vec<String> = self.settings.gates.split_whitespace().map(String::from).collect();
-        self.host
-            .run(&self.worktree, &gates[0], &gates[1..])
-            .map_err(|e| format!("the gates failed: {e}"))?;
         self.git(&self.worktree, &["push", "origin", &self.branch])?;
         let head = self.head()?;
         if self.host.plan(&format!("origin/{}", self.branch))?.depth > plan.depth {
@@ -586,10 +600,11 @@ impl<H: Host> Run<'_, H> {
             _ => String::new(),
         };
         format!(
-            "Implement this task in the worktree {}, on the branch {}, which holds the claim. \
+            "Implement this task in the worktree {}, on the branch {}, which holds the claim for run {}. \
              Push your work to origin {}; Branch PR opens the pull request. Post nothing.\n{tracked}\n{}\n",
             self.worktree.display(),
             self.branch,
+            self.run_id,
             self.branch,
             self.text.trim()
         )
@@ -598,20 +613,22 @@ impl<H: Host> Run<'_, H> {
     fn stage_task(&self, pr: u64, head: &str, step: &sequence::Step, plan: &Plan, notes: &[String]) -> String {
         let ask = if step.role == "reviser" {
             format!(
-                "Address the findings of the review before you on pull request #{pr}, in the worktree {}, and push to {}.",
+                "Address the findings of the review before you on pull request #{pr}, in the worktree {}, and push to {}. \
+                 Then post your answers through the Bot comment workflow as this says: {}",
                 self.worktree.display(),
-                self.branch
+                self.branch,
+                step.posts
             )
         } else {
             format!(
                 "Run the {} on pull request #{pr} at the pinned head {head}, in the worktree you start in. \
+                 Post your review through the Bot comment workflow as this says: {} \
                  End your final message with a line `{ABOVE_NIT} yes` when you found anything above nit, else `{ABOVE_NIT} no`.",
-                step.name
+                step.name, step.posts
             )
         };
         format!(
-            "{ask}\nPosts: {}\nDepth: {} ({}).\n\n# Task\n\n{}\n\n# Earlier stages\n\n{}\n",
-            step.posts,
+            "{ask}\nDepth: {} ({}).\n\n# Task\n\n{}\n\n# Earlier stages\n\n{}\n",
             plan.depth.name(),
             plan.reason,
             self.text.trim(),
