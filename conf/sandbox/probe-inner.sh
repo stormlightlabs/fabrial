@@ -8,7 +8,7 @@ branch=$(git symbolic-ref --short HEAD)
 git config core.hooksPath /tmp/fab-probe-hooks
 git config http.https://github.com.proxy http://fab-probe.invalid:8080
 printf '#!/bin/sh\nexit 0\n' > "$common/hooks/pre-commit"
-mkdir -p "$common/objects/info" && echo /etc > "$common/objects/info/alternates"
+echo /etc > "$common/objects/info/alternates"
 printf '[core]\n\tfsmonitor = /tmp/fab-probe-monitor\n' >> "$gitdir/config.worktree"
 git update-ref refs/heads/fab-probe-other "$(git rev-parse HEAD)"
 echo "$(git rev-parse HEAD) refs/heads/fab-probe-packed" >> "$common/packed-refs"

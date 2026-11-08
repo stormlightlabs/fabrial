@@ -11,16 +11,23 @@
 set -uo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
-# FAB_PROBE_WRAPPER names a wrapper already built with probe-inner.sh, for a
-# user who cannot run nix-build.
+# FAB_PROBE_WRAPPER names a wrapper already built from this checkout's
+# worker.nix with probe-inner.sh, for a user who cannot run nix-build. Nothing
+# checks that it matches the current pin.
 wrapper=${FAB_PROBE_WRAPPER:-$(nix-build "$here/worker.nix" --arg entry "$here/probe-inner.sh" --no-out-link)} || exit 2
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch"/{input,runtime,state} && chmod 700 "$scratch/state"
+# The scratch repository ignores the host's Git config, so a template
+# directory or a global hooksPath cannot change what the probe reads.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 git init -q -b main "$scratch/repo"
 git -C "$scratch/repo" -c user.name=t -c user.email=t@invalid commit -q --allow-empty -m init
 git -C "$scratch/repo" worktree add -q -b storm/probe "$scratch/wt"
 start=$(git -C "$scratch/repo" rev-parse main)
+# Each directory probe-inner.sh writes into exists before it runs, so a write
+# fails only because the sandbox refused it, never with ENOENT.
+mkdir -p "$scratch/repo/.git"/{hooks,objects/info,refs/heads,worktrees/wt}
 
 (cd "$scratch/wt" && FAB_WORKTREE="$scratch/wt" FAB_INPUT="$scratch/input" \
   FAB_PI_RUNTIME="$scratch/runtime" FAB_STATE="$scratch/state" GH_TOKEN=probe GH_REPO=probe/probe \
