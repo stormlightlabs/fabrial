@@ -1,7 +1,7 @@
 # The check a pull request into main must pass. The ruleset on main requires
 # the job named `check`, so the job always runs and reports. On a pull request
-# that changes only PLAN.md, README.md, CHANGELOG.md or docs/, nothing here
-# reads those files, so it passes without building. A newer push to the same
+# that changes only Markdown at the root, other than AGENTS.md and CLAUDE.md,
+# or docs/, nothing here reads those files, so it passes without building. A newer push to the same
 # pull request cancels the run still going. The run on main builds the cache
 # that pull requests restore.
 name: Check
@@ -38,7 +38,8 @@ jobs:
             # build.
             files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" \
               --jq '.[] | .filename, (.previous_filename // empty)') || files=
-            if [[ -n $files ]] && (( $(wc -l <<<"$files") < 3000 )) && ! grep -qvE '^(PLAN\.md|README\.md|CHANGELOG\.md|docs/.+)$' <<<"$files"; then
+            if [[ -n $files ]] && (( $(wc -l <<<"$files") < 3000 )) && ! grep -qvE '^([^/]+\.md|docs/.+)$' <<<"$files" \
+              && ! grep -qxE '(AGENTS|CLAUDE)\.md' <<<"$files"; then
               build=false
               echo "Only documentation changed; nothing to build."
             fi

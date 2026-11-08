@@ -6,9 +6,10 @@
 //!   `Cargo.toml`, `Cargo.lock` or `.github/fabrial.toml`, and
 //!   `CHANGELOG.md`. The owner reads its changelog lines before accepting it.
 //! - `standard`: documentation, planning records and tests only. The
-//!   documentation is the files the Check workflow skips the build for,
-//!   except that under `docs/` only Markdown and images count, since another
-//!   repository's `docs/` can hold a site with its own code. Planning
+//!   documentation is the files the Check workflow skips the build for:
+//!   Markdown at the root, except `AGENTS.md` and `CLAUDE.md`, which are
+//!   agent instructions, and `docs/`, where only Markdown and images count,
+//!   since another repository's `docs/` can hold a site with its own code. Planning
 //!   records are `.arcl/workspace/`'s Markdown and TOML.
 //! - `full`: anything else, including skills and agent roles, which change
 //!   how agents work, and workflows, the gate, release code and the sandbox.
@@ -22,8 +23,9 @@ use clap::{Args, ValueEnum};
 
 use crate::run::{self, Result};
 
-/// Files that hold only documentation, matched as the Check workflow does.
-const DOCS: &[&str] = &["PLAN.md", "README.md", "CHANGELOG.md"];
+/// Root Markdown files that hold agent instructions, not documentation. The
+/// Check workflow builds when either changes.
+const AGENT_DOCS: &[&str] = &["AGENTS.md", "CLAUDE.md"];
 /// Directories whose files with these extensions hold only documentation or
 /// planning records.
 const DOC_DIRS: &[(&str, &[&str])] = &[
@@ -127,7 +129,7 @@ fn classify(paths: &[&str], version_only: impl Fn(&str) -> bool) -> (Depth, Stri
 
 /// Whether a path holds only documentation or planning records.
 fn is_doc(path: &str) -> bool {
-    DOCS.contains(&path)
+    (path.ends_with(".md") && !path.contains('/') && !AGENT_DOCS.contains(&path))
         || DOC_DIRS
             .iter()
             .any(|(dir, kinds)| path.starts_with(dir) && kinds.iter().any(|k| path.ends_with(k)))
@@ -209,6 +211,7 @@ mod tests {
     fn documentation_planning_and_tests_take_the_standard_pass() {
         for paths in [
             &["README.md", "docs/pi.md", "docs/images/status.png"][..],
+            &["ROADMAP.md"],
             &[".arcl/workspace/tasks/arcl-t-1.md", "PLAN.md"],
             &["crates/fab-cli/tests/gate.rs", "packages/pi/lib/status.test.mjs"],
         ] {
@@ -225,6 +228,9 @@ mod tests {
             ".claude/skills/storm/SKILL.md",
             ".claude/agents/reviewer.md",
             "AGENTS.md",
+            "CLAUDE.md",
+            "docs/ROADMAP.md.rs",
+            "crates/fab-cli/README.md",
             "conf/sandbox/worker.nix",
             "docs",
             "docs/package.json",
@@ -242,8 +248,9 @@ mod tests {
     #[test]
     fn the_documentation_paths_match_the_check_workflow() {
         let check = include_str!("../../../.github/workflows/check.yml");
-        assert!(check.contains(r"'^(PLAN\.md|README\.md|CHANGELOG\.md|docs/.+)$'"));
-        assert_eq!(DOCS, ["PLAN.md", "README.md", "CHANGELOG.md"]);
+        assert!(check.contains(r"'^([^/]+\.md|docs/.+)$'"));
+        assert!(check.contains(r"'(AGENTS|CLAUDE)\.md'"));
+        assert_eq!(AGENT_DOCS, ["AGENTS.md", "CLAUDE.md"]);
     }
 
     #[test]

@@ -2,7 +2,7 @@
 id = "arcl-t-01M5Z573E13W1SV2FR6KSY8BDA"
 phase = "arcl-ph-01M5S4SCFE01K31R17FQ29AHJ8"
 title = "Count root Markdown files as documentation"
-status = "pending"
+status = "in_progress"
 priority = "normal"
 position = 3
 +++
