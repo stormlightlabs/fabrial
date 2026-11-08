@@ -75,6 +75,18 @@ a paid plan, so rulesets on `main` are enforced.
   `Review finished at <sha>`. A model-free workflow turns the required
   `storm/review` check green when that comment names the head. It runs from
   `main` through `pull_request_target`, so a change cannot alter its own gate.
+- **fabrial is the implementation loop.** It takes one task to a reviewed
+  pull request and stops there: implement, review, revise, gates, then
+  `Review finished`. The loop never waits on a GitHub event or takes its
+  input from one. Reviewers hand findings to the session that dispatched
+  them, the reviser works from those, and the gates run locally. The loop
+  still posts outward: each pass's review with its findings on the diff, the
+  answers, `Review finished` and the gate. What happens after hand-off, such
+  as CI failing later, the owner's review comments or a request to review
+  again, belongs to the harness or the person driving it. A larger loop that
+  watches pull requests and merges without a person needs projects that can
+  run that hands-off, and its own planning; agents turning on auto-merge,
+  since removed, was the first lesson there.
 - **Prose follows guidelines, not a CI check:** the writing standard and the
   tells catalogue from thunderstorm's `writing-docs`, in
   `.claude/skills/writing-docs/`.
