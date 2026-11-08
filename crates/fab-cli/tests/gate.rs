@@ -672,8 +672,13 @@ fn a_command_naming_another_commit_asks_again_and_accepts_nothing() {
         assert!(!run.calls.iter().any(|c| c.is("pr", "ready")), "{body}");
         let asks = run.calls.iter().filter(|c| c.is("pr", "comment")).collect::<Vec<_>>();
         assert_eq!(asks.len(), 1, "{body}");
+        let command = if body.starts_with('/') { body.split_whitespace().next().unwrap() } else { "Review finished" };
+        let expected = format!("`{command}` names");
         assert!(
-            asks[0].args.iter().any(|a| a.contains("but the head is `aaaaaaa`")),
+            asks[0]
+                .args
+                .iter()
+                .any(|a| a.contains(&expected) && a.contains("but the head is `aaaaaaa`")),
             "{body}"
         );
     }

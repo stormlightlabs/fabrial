@@ -169,7 +169,8 @@ view <n> --json mergeable` must say `MERGEABLE`. In `pull_request_read`, a
 `mergeable_state` of `clean`, `unstable`, `blocked`, `draft` or `has_hooks`
 means it merges; the pull request is still a draft at this point, so `draft`
 is the usual answer. GitHub answers `UNKNOWN` (or `unknown`) for a while after
-a push: read it again until it settles, and never post on an unknown answer.
+a push: read it again up to five times, a few seconds apart. Never post on an
+unknown answer; if it is still unknown, stop and report that to the driver.
 
 On `behind`, merge `main` into the branch; with no conflict only the base
 moves, so the review stands. On `CONFLICTING` (or `dirty`), merge `main` with a
