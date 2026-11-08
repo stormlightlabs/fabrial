@@ -6,10 +6,11 @@
 //!   `Cargo.toml`, `Cargo.lock` or `.github/fabrial.toml`, and
 //!   `CHANGELOG.md`. The owner reads its changelog lines before accepting it.
 //! - `standard`: documentation, planning records and tests only. The
-//!   documentation is the files the Check workflow skips the build for:
-//!   Markdown at the root, except `AGENTS.md` and `CLAUDE.md`, which are
-//!   agent instructions, and `docs/`, where only Markdown and images count,
-//!   since another repository's `docs/` can hold a site with its own code. Planning
+//!   documentation is the files the Check workflow skips the build for.
+//!   At the root that is every Markdown file but `AGENTS.md` and
+//!   `CLAUDE.md`, which are agent instructions. Under `docs/` only Markdown
+//!   and images count, since another repository's `docs/` can hold a site
+//!   with its own code. Planning
 //!   records are `.arcl/workspace/`'s Markdown and TOML.
 //! - `full`: anything else, including skills and agent roles, which change
 //!   how agents work, and workflows, the gate, release code and the sandbox.
@@ -129,7 +130,7 @@ fn classify(paths: &[&str], version_only: impl Fn(&str) -> bool) -> (Depth, Stri
 
 /// Whether a path holds only documentation or planning records.
 fn is_doc(path: &str) -> bool {
-    (path.ends_with(".md") && !path.contains('/') && !AGENT_DOCS.contains(&path))
+    (path.len() > ".md".len() && path.ends_with(".md") && !path.contains('/') && !AGENT_DOCS.contains(&path))
         || DOC_DIRS
             .iter()
             .any(|(dir, kinds)| path.starts_with(dir) && kinds.iter().any(|k| path.ends_with(k)))
@@ -231,6 +232,7 @@ mod tests {
             "CLAUDE.md",
             "docs/ROADMAP.md.rs",
             "crates/fab-cli/README.md",
+            ".md",
             "conf/sandbox/worker.nix",
             "docs",
             "docs/package.json",

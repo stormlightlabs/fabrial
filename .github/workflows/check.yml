@@ -1,7 +1,8 @@
 # The check a pull request into main must pass. The ruleset on main requires
 # the job named `check`, so the job always runs and reports. On a pull request
-# that changes only Markdown at the root, other than AGENTS.md and CLAUDE.md,
-# or docs/, nothing here reads those files, so it passes without building. A newer push to the same
+# that changes only documentation, nothing here reads those files, so it
+# passes without building. Documentation is docs/ and every Markdown file at
+# the root but AGENTS.md and CLAUDE.md. A newer push to the same
 # pull request cancels the run still going. The run on main builds the cache
 # that pull requests restore.
 name: Check
