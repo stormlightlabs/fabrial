@@ -44,18 +44,17 @@ a paid plan, so rulesets on `main` are enforced.
   does not. Work goes on the claimed branch, so it is also the pull request's
   branch; a cloud session uses it in place of the branch its harness names.
   Where a remote refuses to delete branches, releasing pushes a claim that
-  has already expired. `fab daemon` claims the same way when it launches a
-  worker.
+  has already expired. `fab run` claims the same way when it starts a task.
 - **One set of run operations, three drivers.** A core crate holds the
-  operations: claim, start a step, record a result, mark ready, release. The
-  daemon drives the fixed sequence in code. An agent such as Pi drives it
+  operations: claim, start a step, record a result, mark ready, release.
+  `fab run` drives the fixed sequence in code. An agent such as Pi drives it
   through the CLI or `fab mcp`. A person drives it by asking the session,
   with `/storm:ready` and `/storm:stop` PR comments the gate workflow reads,
   or through whatever a host builds on the same operations.
 - **Enforcement is server-side:** rulesets, required checks and the review
   workflow. There is no shell-command parsing or general token broker. Worker
-  sessions never hold the App's private key. Actions, the daemon's token
-  issuer, and the explicitly authorized local spike issuer may hold it. The
+  sessions never hold the App's private key. Actions and the explicitly
+  authorized local spike issuer may hold it, and so may a host's issuer. The
   local issuer retrieves only configured BWS secrets from the host's secret
   store, the Keychain on macOS and the Secret Service on Linux, and mints
   repository-restricted App installation tokens; it never accepts an owner PAT.
@@ -111,9 +110,10 @@ a paid plan, so rulesets on `main` are enforced.
   per-host differences only where thunderstorm's `docs/internal/hosts.md` shows
   they are needed.
 - **fabrial is the engine, not the host.** Harnesses such as Claude Code,
-  Codex and Pi use it to run agents and tasks. It ships `fab daemon`, which
-  drives the review loop, and one runner interface with tmux as its first
-  backend. Hosts reach the run operations through fab-core, the CLI or
+  Codex and Pi use it to run agents and tasks. It ships `fab run`, which
+  drives the implementation loop for one task, and one runner interface with
+  tmux as its first backend. A service that picks up tasks on its own
+  belongs to the host. Hosts reach the run operations through fab-core, the CLI or
   `fab mcp`, follow run events with `fab events`, which prints them as
   JSON lines, and read PR status from GitHub. fabrial runs no server. Where
   these run, how they are reached, network APIs, other runner backends,
