@@ -349,12 +349,14 @@ fn writers_need_a_worktree_on_an_agent_branch() {
     let other = tree("other", &["-b", "feature"]);
     let detached = tree("detached", &["--detach"]);
     for role in WRITERS {
-        assert!(writer_branch(&agent, role).is_ok());
+        let push = writer_branch(&agent, role).unwrap().unwrap();
+        assert_eq!(push.branch, "storm/task");
+        assert_eq!(push.git_dir, repo.join(".git/worktrees/agent").canonicalize().unwrap());
         for refused in [&other, &detached, &repo] {
             assert!(writer_branch(refused, role).unwrap_err().contains("storm/ branch"));
         }
     }
     for refused in [&other, &detached] {
-        assert!(writer_branch(refused, "reviewer").is_ok());
+        assert!(writer_branch(refused, "reviewer").unwrap().is_none());
     }
 }

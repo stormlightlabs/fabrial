@@ -247,6 +247,10 @@ fn a_tracked_task_runs_implement_each_stage_and_the_finish() {
         host.calls
     );
     assert!(host.called("Then post your answers through the Bot comment workflow as this says: standard revise posts"));
+    // Workers cannot push: dispatch pushes a writer's branch after it exits.
+    assert!(host.called("dispatch implementer"));
+    assert!(host.called("Commit your work and do not push: dispatch pushes storm/t-1 to origin after you exit"));
+    assert!(host.called("commit to storm/t-1 without pushing: dispatch pushes it after you exit"));
     // Reviewers work in a detached worktree at the pinned head; revisers in
     // the task's.
     assert!(host.called("git worktree add --detach"));
@@ -292,11 +296,11 @@ fn a_tracked_task_runs_implement_each_stage_and_the_finish() {
 }
 
 #[test]
-fn an_implementer_that_pushes_nothing_ends_in_a_handoff() {
+fn an_implementer_that_commits_nothing_ends_in_a_handoff() {
     let (_temp, root) = root();
     let host = Fake::with(&[("implementer", "Blocked: the gates need the host.")]);
     let err = drive(&host, &root, settings(true), "t-1", false).unwrap_err();
-    assert!(err.contains("the implementer pushed nothing"), "{err}");
+    assert!(err.contains("the implementer committed nothing"), "{err}");
     assert!(host.called("arcl task handoff t-1 --note-file"));
     assert!(host.called("git commit -m Hand off the task -- task.md"));
     assert!(err.contains("Handoff recorded on t-1."), "{err}");

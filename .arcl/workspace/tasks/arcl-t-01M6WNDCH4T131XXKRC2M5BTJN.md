@@ -2,7 +2,7 @@
 id = "arcl-t-01M6WNDCH4T131XXKRC2M5BTJN"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Push a writer's commits from the host, not the worker"
-status = "pending"
+status = "in_progress"
 priority = "high"
 position = 0
 +++

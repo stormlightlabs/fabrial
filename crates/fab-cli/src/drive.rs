@@ -391,7 +391,7 @@ impl<H: Host> Run<'_, H> {
         log.push(format!("implement: {}", first_line(&result)));
         let mut head = self.head()?;
         if head == claimed {
-            return Err("the implementer pushed nothing".into());
+            return Err("the implementer committed nothing for dispatch to push".into());
         }
         let pr = self.pull_request()?;
         log.push(format!("pull request #{pr} at {}", short(&head)));
@@ -675,7 +675,8 @@ impl<H: Host> Run<'_, H> {
         };
         format!(
             "Implement this task in the worktree {}, on the branch {}, which holds the claim for run {}. \
-             Push your work to origin {}; Branch PR opens the pull request. Post nothing.\n{tracked}\n{}\n",
+             Commit your work and do not push: dispatch pushes {} to origin after you exit, \
+             and Branch PR opens the pull request. Post nothing.\n{tracked}\n{}\n",
             self.worktree.display(),
             self.branch,
             self.run_id,
@@ -687,7 +688,8 @@ impl<H: Host> Run<'_, H> {
     fn stage_task(&self, pr: u64, head: &str, step: &sequence::Step, plan: &Plan, notes: &[String]) -> String {
         let ask = if step.role == "reviser" {
             format!(
-                "Address the findings of the review before you on pull request #{pr}, in the worktree {}, and push to {}. \
+                "Address the findings of the review before you on pull request #{pr}, in the worktree {}, and commit to {} \
+                 without pushing: dispatch pushes it after you exit, so the SHAs you commit are the ones that land. \
                  Then post your answers through the Bot comment workflow as this says: {}",
                 self.worktree.display(),
                 self.branch,

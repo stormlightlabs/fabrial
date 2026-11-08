@@ -31,7 +31,8 @@ of `AGENTS.md` says or as a GitHub issue, not absorbed.
 The first commit's subject becomes the pull request title and the subject of
 the squash commit on `main`, followed by the PR number. Keep the title under
 60 characters, imperative, saying what changed. Push the branch; the Branch PR
-workflow opens the pull request.
+workflow opens the pull request. A Pi worker's token cannot push: commit, and
+the host pushes the branch once you exit.
 
 Report the branch, what changed, what you verified and how, what you did not
 verify, and what you captured. Do not claim a check passed without running it.
