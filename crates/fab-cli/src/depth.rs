@@ -6,9 +6,12 @@
 //!   `Cargo.toml`, `Cargo.lock` or `.github/fabrial.toml`, and
 //!   `CHANGELOG.md`. The owner reads its changelog lines before accepting it.
 //! - `standard`: documentation, planning records and tests only. The
-//!   documentation is the files the Check workflow skips the build for,
-//!   except that under `docs/` only Markdown and images count, since another
-//!   repository's `docs/` can hold a site with its own code. Planning
+//!   documentation is the files the Check workflow skips the build for.
+//!   At the root that is every Markdown file but agent instructions: any
+//!   whose name starts with `agents` or `claude` in any case, such as
+//!   `AGENTS.md`, Codex's `AGENTS.override.md` or `CLAUDE.local.md`. Under `docs/` only Markdown
+//!   and images count, since another repository's `docs/` can hold a site
+//!   with its own code. Planning
 //!   records are `.arcl/workspace/`'s Markdown and TOML.
 //! - `full`: anything else, including skills and agent roles, which change
 //!   how agents work, and workflows, the gate, release code and the sandbox.
@@ -22,8 +25,11 @@ use clap::{Args, ValueEnum};
 
 use crate::run::{self, Result};
 
-/// Files that hold only documentation, matched as the Check workflow does.
-const DOCS: &[&str] = &["PLAN.md", "README.md", "CHANGELOG.md"];
+/// How root Markdown files that hold agent instructions start, in lowercase:
+/// hosts read `AGENTS.md`, `AGENTS.override.md`, `CLAUDE.md` and
+/// `CLAUDE.local.md`, and a case-insensitive checkout reads `agents.md` as
+/// `AGENTS.md`. The Check workflow builds when one changes.
+const AGENT_DOCS: &[&str] = &["agents", "claude"];
 /// Directories whose files with these extensions hold only documentation or
 /// planning records.
 const DOC_DIRS: &[(&str, &[&str])] = &[
@@ -127,10 +133,16 @@ fn classify(paths: &[&str], version_only: impl Fn(&str) -> bool) -> (Depth, Stri
 
 /// Whether a path holds only documentation or planning records.
 fn is_doc(path: &str) -> bool {
-    DOCS.contains(&path)
+    (path.len() > ".md".len() && path.ends_with(".md") && !path.contains('/') && !is_instructions(path))
         || DOC_DIRS
             .iter()
             .any(|(dir, kinds)| path.starts_with(dir) && kinds.iter().any(|k| path.ends_with(k)))
+}
+
+/// Whether a root Markdown file holds agent instructions.
+fn is_instructions(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    AGENT_DOCS.iter().any(|start| lower.starts_with(start))
 }
 
 /// Whether a path holds only tests: a Rust integration test or a Node test
@@ -209,6 +221,7 @@ mod tests {
     fn documentation_planning_and_tests_take_the_standard_pass() {
         for paths in [
             &["README.md", "docs/pi.md", "docs/images/status.png"][..],
+            &["ROADMAP.md"],
             &[".arcl/workspace/tasks/arcl-t-1.md", "PLAN.md"],
             &["crates/fab-cli/tests/gate.rs", "packages/pi/lib/status.test.mjs"],
         ] {
@@ -225,6 +238,14 @@ mod tests {
             ".claude/skills/storm/SKILL.md",
             ".claude/agents/reviewer.md",
             "AGENTS.md",
+            "CLAUDE.md",
+            "AGENTS.override.md",
+            "CLAUDE.local.md",
+            "agents.md",
+            "Claude.md",
+            "docs/ROADMAP.md.rs",
+            "crates/fab-cli/README.md",
+            ".md",
             "conf/sandbox/worker.nix",
             "docs",
             "docs/package.json",
@@ -241,9 +262,35 @@ mod tests {
 
     #[test]
     fn the_documentation_paths_match_the_check_workflow() {
+        // The workflow's own test, run on each path: it skips the build
+        // exactly when depth counts a path outside docs/ as documentation.
         let check = include_str!("../../../.github/workflows/check.yml");
-        assert!(check.contains(r"'^(PLAN\.md|README\.md|CHANGELOG\.md|docs/.+)$'"));
-        assert_eq!(DOCS, ["PLAN.md", "README.md", "CHANGELOG.md"]);
+        let start = check.find("! grep -qvE").expect("the workflow's documentation test");
+        let test = &check[start..check[start..].find("; then").map(|i| start + i).unwrap()];
+        let test = test.replace("\\\n", " ");
+        assert!(test.contains("&& ! grep -qiE"), "{test}");
+        let script = format!("files=$1; if {test}; then echo skip; fi");
+        for path in [
+            "README.md",
+            "ROADMAP.md",
+            "PLAN.md",
+            "AGENTS.md",
+            "CLAUDE.md",
+            "AGENTS.override.md",
+            "CLAUDE.local.md",
+            "agents.md",
+            "Claude.md",
+            ".md",
+            "crates/fab-cli/README.md",
+            "justfile",
+        ] {
+            let out = std::process::Command::new("bash")
+                .args(["-c", &script, "test", path])
+                .output()
+                .unwrap();
+            let skips = String::from_utf8_lossy(&out.stdout).trim() == "skip";
+            assert_eq!(skips, is_doc(path), "{path}");
+        }
     }
 
     #[test]
