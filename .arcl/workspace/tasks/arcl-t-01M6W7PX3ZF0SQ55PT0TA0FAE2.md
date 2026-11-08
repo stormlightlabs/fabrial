@@ -19,8 +19,15 @@ Acceptance criteria:
       it stands then
 - [ ] The `storm` skill no longer has agents act on `/storm:review` or
       `/storm:revise` comments; the driver asks the session for another
-      sequence. `/storm:ready` and `/storm:stop` stay, since the gate
-      workflow acts on them
+      sequence
+- [ ] `/storm:stop` and the `storm:stopped` label go from the gate, the
+      Review gate workflow's triggers, the agents section and the docs:
+      auto-merge is for a person or an outer-loop orchestrator, and GitHub
+      turns it off. The note under the squash message about auto-merge stays
+- [ ] The gate accepts `/storm:done <sha>` as an alias for
+      `/storm:ready <sha>`, from the same people, and a gate test covers it.
+      Both still mark the draft ready, set `storm/review` and post the
+      squash message
 - [ ] The `resync` skill no longer waits for a check and reruns the gate; it
       reports the check's state and what the driver can do
 - [ ] The `handoff` skill no longer counts a pending check as work left to

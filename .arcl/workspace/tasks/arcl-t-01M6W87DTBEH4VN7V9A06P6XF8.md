@@ -9,7 +9,8 @@ position = 0
 
 PLAN.md's **fabrial is the implementation loop** decision: the loop never
 takes its input from a GitHub event. The Pi package's PR status still starts
-an orchestrator turn on a merge, a closure, `/storm:stop`, `/storm:ready`, a
+an orchestrator turn on a merge, a closure, `/storm:stop` or the
+`storm:stopped` label, `/storm:ready`, a
 failed check or a requested change (docs/pi.md, **Pull request status**).
 
 Acceptance criteria:
@@ -19,3 +20,5 @@ Acceptance criteria:
 - [ ] docs/pi.md and docs/pi-design.md describe the status as something the
       person reads, and say acting on it belongs to the person or a host
 - [ ] A test shows a failed check reaching the status area without a turn
+- [ ] The package no longer reads the `storm:stopped` label or `/storm:stop`,
+      which the implementation loop task removes
