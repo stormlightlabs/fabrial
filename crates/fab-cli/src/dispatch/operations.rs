@@ -110,6 +110,32 @@ pub(super) fn registry(config: &Path) -> Result<PathBuf> {
     Ok(root)
 }
 
+/// The metadata of every readable worker record under the host
+/// configuration's `state_dir`, as `fab worker list` prints it. A record
+/// directory without `worker.json` is a dispatch still creating it and is
+/// skipped; a record that cannot be read is skipped with a line on stderr.
+/// `fab worker list` fails on either instead, since it serves recovery.
+pub(crate) fn workers(config: &Path) -> Result<Vec<serde_json::Value>> {
+    let directory = registry(config)?.join("records");
+    let mut workers = Vec::new();
+    if !directory.exists() {
+        return Ok(workers);
+    }
+    for entry in fs::read_dir(&directory).map_err(|_| "cannot list workers")? {
+        let entry = entry.map_err(|_| "cannot read worker entry")?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let path = entry.path().join("worker.json");
+        if uuid::Uuid::parse_str(&name).is_err() || !path.exists() {
+            continue;
+        }
+        match WorkerRecord::open(&path).and_then(|record| record.summary()) {
+            Ok(summary) => workers.push(summary),
+            Err(e) => eprintln!("fab: skipping worker record {name}: {e}"),
+        }
+    }
+    Ok(workers)
+}
+
 pub(super) fn lookup(root: &Path, id: &str) -> Result<WorkerRecord> {
     if uuid::Uuid::parse_str(id)
         .map_err(|_| "invalid worker UUID")?
