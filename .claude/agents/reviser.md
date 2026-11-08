@@ -19,8 +19,8 @@ or the test that shows it, rather than making a change you believe is wrong.
 Fix causes, not symptoms, and never weaken, skip or delete a test to clear a
 finding.
 
-Run the narrowest relevant test, then the gates (the command `gates` names in
-`.github/fabrial.toml`). Push to the pull request's branch and confirm it landed
+Run the narrowest relevant test, then `fab gates`, which runs the checks the
+change touches. Push to the pull request's branch and confirm it landed
 before writing a reply that names a commit. Post the answers, a line `<comment
 id> · <outcome>` per finding on the diff, 150 words at most, through the Bot
 comment workflow's `answers` mode, which replies on each thread and resolves

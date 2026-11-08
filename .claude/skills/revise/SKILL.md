@@ -74,8 +74,8 @@ wrong, fix it on purpose and record why.
 
 ## Verify, push and reply
 
-Run the narrowest relevant test, then the gates (the command `gates` names in
-`.github/fabrial.toml`). Commit, push to the same branch, and confirm the push
+Run the narrowest relevant test, then `fab gates`, which runs the checks the
+change touches. Commit, push to the same branch, and confirm the push
 landed before writing a reply that names a commit: `git ls-remote origin
 <branch>` should print your head.
 

@@ -11,6 +11,7 @@ mod depth;
 mod dispatch;
 mod drive;
 mod gate;
+mod gates;
 mod release;
 mod review;
 mod run;
@@ -114,6 +115,9 @@ enum Command {
     /// Open a draft pull request for an agent's work branch; the Branch PR
     /// workflow runs it.
     BranchPr(branch_pr::Options),
+    /// Run the checks the change touches, from .github/fabrial-gates.toml,
+    /// and exit with the first failure's code.
+    Gates(gates::Options),
     /// Print how many review passes the diff takes: none, standard or full.
     ReviewDepth(depth::Options),
     /// Print the review stages the diff's depth gives, from
@@ -191,6 +195,7 @@ fn main() -> ExitCode {
         Command::Gate(options) => return in_workflow(gate::run(options)),
         Command::BranchPr(options) => return in_workflow(branch_pr::run(options)),
         Command::Cleanup(options) => return cleanup::run(options),
+        Command::Gates(options) => return gates::run(options),
         Command::Release { step } => return in_workflow(step.run()),
         Command::ReviewDepth(options) => return in_workflow(depth::run(options)),
         Command::Sequence(options) => return in_workflow(sequence::run(options)),

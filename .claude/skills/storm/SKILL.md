@@ -181,6 +181,9 @@ complete it on the branch and push, as the `implement` skill's **Complete the
 task** says, so the checks below and the gate read the final head. Run `fab sequence` again on that head; when the
 depth rose, run the stages it now adds before posting.
 
+Then run `fab gates --full` on that head, which runs every check whatever the
+diff touches. A failure is a stop condition below, not a post.
+
 Before posting it, check that the pull request still merges. The review
 passes read the diff, not the base, so they do not see a conflict. `gh pr
 view <n> --json mergeable` must say `MERGEABLE`. In `pull_request_read`, a
@@ -195,7 +198,7 @@ moves, so the review stands. On `CONFLICTING` (or `dirty`), merge `main` with a
 merge commit, not a rebase, and resolve it. Regenerate a generated file with
 its tool rather than editing it, as `fab update` does for
 `.github/fabrial.toml`. Stop and report when both sides changed the same
-logic. Run the gates and push. A resolved conflict changes the branch's own
+logic. Run `fab gates --full` and push. A resolved conflict changes the branch's own
 diff, so the gate takes the new head as unreviewed. Report the resolution and
 ask the driver whether to run both passes again or to have the owner accept
 the head with `/storm:ready <sha>`; do neither unasked.
