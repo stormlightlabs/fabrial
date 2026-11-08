@@ -374,11 +374,27 @@ fn graphql(query: &str, vars: &[(&str, &str)], filter: &str) -> Result<String> {
 }
 
 /// The words in `text`, counting only runs that hold a letter or a digit, so
-/// the `·` and `—` of a finding line are not words.
+/// the `·` and `—` of a finding line are not words. Each Chinese or Japanese
+/// character counts as a word of its own, since those scripts put no spaces
+/// between words.
 fn words(text: &str) -> usize {
     text.split_whitespace()
-        .filter(|w| w.chars().any(char::is_alphanumeric))
-        .count()
+        .map(|w| {
+            let wide = w.chars().filter(|c| ideographic(*c)).count();
+            let rest = w.chars().any(|c| c.is_alphanumeric() && !ideographic(c));
+            wide + usize::from(rest)
+        })
+        .sum()
+}
+
+/// Whether `c` is a CJK ideograph or a kana, a script written without spaces.
+fn ideographic(c: char) -> bool {
+    matches!(c,
+        '\u{3040}'..='\u{30FF}'
+        | '\u{3400}'..='\u{4DBF}'
+        | '\u{4E00}'..='\u{9FFF}'
+        | '\u{F900}'..='\u{FAFF}'
+        | '\u{20000}'..='\u{3FFFF}')
 }
 
 /// Refuses `text` when it holds more than `limit` words, naming the count.
@@ -499,6 +515,15 @@ mod tests {
         assert!(within(&"w ".repeat(150), 150, "x").is_ok());
         let err = within(&"w ".repeat(151), 150, "answers").unwrap_err();
         assert!(err.contains("151 words"), "{err}");
+    }
+
+    #[test]
+    fn words_count_each_ideograph() {
+        assert_eq!(words("修正了这个"), 5);
+        assert_eq!(words("abc漢字 ひらがな"), 7);
+        assert_eq!(words("中文。"), 2);
+        let err = within(&"字".repeat(2200), 200, "report").unwrap_err();
+        assert!(err.contains("2200 words"), "{err}");
     }
 
     #[test]
