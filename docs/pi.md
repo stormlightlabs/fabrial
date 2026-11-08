@@ -170,13 +170,15 @@ share a writable Cargo `target/` between workers. Rust does not link
 `libiconv` inside the sandbox, so run Rust gates such as `just check` on the
 host.
 
-Inside the sandbox the shared Git directory's `config`, `hooks/` and
-`objects/info/alternates` are read-only, and the rest of it is writable:
-refs, including other branches' and symlinked ones, `packed-refs`, objects
-and each worktree's `config.worktree`. `conf/sandbox/probe.sh` checks this.
-Run it from the repository root whenever the sandbox pin in `worker.nix`
-moves; it exits 1 when a read-only path took a write or a plain commit
-failed, and lists the writable paths. It needs what dispatch needs, run as a
+Inside the sandbox a worker cannot write the shared Git directory's
+`config`, `hooks/` or `objects/info/alternates`, its worktree's `commondir`,
+or the worktree's `.git` file. It can write branch refs, `main` and other
+tasks' branches included, symlinked refs and `packed-refs`. It can also
+write its worktree's `config.worktree`, which Git reads only when the shared
+config sets `extensions.worktreeConfig`. `conf/sandbox/probe.sh` tries each
+of these. Run it from the repository root whenever the sandbox pin in
+`worker.nix` moves; it exits 1 when a read-only path took a write or a plain
+commit failed, and lists the writable paths. It needs what dispatch needs, run as a
 user other than root; `FAB_PROBE_WRAPPER` names a wrapper built with
 `nix-build conf/sandbox/worker.nix --arg entry conf/sandbox/probe-inner.sh`
 for a user who cannot run `nix-build`.

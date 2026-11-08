@@ -32,16 +32,19 @@ held() { echo "held    $1"; }
 leaked() { echo "LEAKED  $1"; failed=1; }
 note() { echo "open    $1"; }
 
-[ -z "$(git -C "$scratch/repo" config --get core.hooksPath)" ] && held "shared config: core.hooksPath" || leaked "shared config: core.hooksPath"
-git -C "$scratch/repo" config --get-regexp 'http\..*\.proxy' >/dev/null && leaked "shared config: URL-scoped proxy" || held "shared config: URL-scoped proxy"
+[ -z "$(git config --file "$repo/config" --get core.hooksPath)" ] && held "shared config: core.hooksPath" || leaked "shared config: core.hooksPath"
+git config --file "$repo/config" --get-regexp 'http\..*\.proxy' >/dev/null && leaked "shared config: URL-scoped proxy" || held "shared config: URL-scoped proxy"
 [ -e "$repo/hooks/pre-commit" ] && leaked "hooks/pre-commit" || held "hooks/pre-commit"
 [ -e "$repo/objects/info/alternates" ] && leaked "objects/info/alternates" || held "objects/info/alternates"
+grep -q fab-probe "$repo/worktrees/wt/commondir" 2>/dev/null && leaked "worktrees/<name>/commondir" || held "worktrees/<name>/commondir"
+grep -q fab-probe "$scratch/wt/.git" 2>/dev/null && leaked "the worktree's .git file" || held "the worktree's .git file"
 [ "$(git -C "$scratch/repo" log -1 --format=%s storm/probe)" = "fab probe" ] && held "a plain commit lands on the worker's branch" || leaked "a plain commit lands on the worker's branch"
 # The host's push reads refs as plain files and refuses symlinks, and Git
 # reads config.worktree only with extensions.worktreeConfig, which sits in
 # the read-only shared config. These are reported, not failed.
 grep -q fsmonitor "$repo/worktrees/wt/config.worktree" 2>/dev/null && note "worktrees/<name>/config.worktree is writable" || held "worktrees/<name>/config.worktree"
 [ -e "$repo/refs/heads/fab-probe-other" ] && note "other branch refs are writable" || held "other branch refs"
+[ "$(git -C "$scratch/repo" rev-parse main)" = "$start" ] && held "the main branch ref" || note "the main branch ref is writable"
 [ -L "$repo/refs/heads/fab-probe-link" ] && note "a branch ref can be a symlink" || held "branch ref symlinks"
-[ "$(git -C "$scratch/repo" rev-parse main)" = "$start" ] || note "main moved"
+grep -q fab-probe-packed "$repo/packed-refs" 2>/dev/null && note "packed-refs is writable" || held "packed-refs"
 exit $failed
