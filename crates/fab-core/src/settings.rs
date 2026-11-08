@@ -127,7 +127,7 @@ impl Settings {
         .into_iter()
         .chain(signoff)
         {
-            if value.is_empty() {
+            if value.trim().is_empty() {
                 return Err(Error::Settings(format!("`{key}` is empty")));
             }
             if value.contains(['"', '\\', '\n', '\r']) {
@@ -387,6 +387,9 @@ mod tests {
         assert!(bad.validate().is_err());
         let mut bad = settings();
         bad.gates = String::new();
+        assert!(bad.validate().is_err());
+        let mut bad = settings();
+        bad.gates = " ".into();
         assert!(bad.validate().is_err());
         let mut bad = settings();
         bad.signoff = Some("A <a@b>\nSigned-off-by: B <b@c>".into());

@@ -193,13 +193,22 @@ fails, the run removes that worktree and branch and releases the claim. Once it 
 Branch PR opened, then runs each stage `fab sequence` gives: a reviewer in a
 detached worktree at the pinned head, a reviser in the task's worktree. A
 review ends with `Above nit: yes` or `no`, which decides whether its revise
-runs. The run then runs the gates on the host, completes the task, checks the
-pull request merges and posts `Review finished`. A failed step records a
+runs. The run then checks the pull request merges, reads the result of the
+Check workflow's `check` job at the reviewed head once, completes the task
+and posts `Review finished`, which names that result. A failed job stops the
+run before the task is completed; a job still running is reported, and the
+ruleset on `main` holds the merge until it passes. A failed step records a
 handoff and stops.
+
+`--host-gates` runs the command `gates` names in the task's worktree instead
+of reading the job. That runs code the workers wrote on the host, outside the
+sandbox, beside the host's credentials: a task's text reaches the
+implementer, which can change the justfile, a build script or a test that
+the gates then run. Pass it only for tasks whose source you trust.
 
 The run reads GitHub a bounded number of times, never waiting on an event: up
 to ten reads for the pull request, asking Branch PR to open it once halfway,
-and up to ten for whether it merges.
+up to ten for whether it merges, and one for the `check` job.
 
 ## Detached workers
 

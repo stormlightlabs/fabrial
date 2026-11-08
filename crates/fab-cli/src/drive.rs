@@ -10,6 +10,10 @@
 //! The run never waits on a GitHub event. Where it needs GitHub to have done
 //! something, such as Branch PR opening the pull request or GitHub settling
 //! whether it merges, it reads a bounded number of times and then stops.
+//!
+//! The gates do not run on the host unless `--host-gates` asks: the worktree
+//! holds code a worker wrote, so the run reads the result of the Check
+//! workflow's `check` job once instead.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -34,6 +38,8 @@ const CLAIM_MINUTES: &str = "240";
 /// The line a review worker ends with, so the run knows whether the revise
 /// after it runs.
 const ABOVE_NIT: &str = "Above nit:";
+/// The Check workflow's job that runs the gates on a GitHub runner.
+const CHECK_JOB: &str = "check";
 
 /// What `fab run` takes.
 #[derive(Args)]
@@ -50,6 +56,10 @@ pub struct Options {
     /// Seconds each worker may run.
     #[arg(long, default_value_t = 1800, value_parser = clap::value_parser!(u64).range(1..=3000))]
     timeout: u64,
+    /// Run the gates on the host before completing the task. They run code
+    /// the workers wrote, beside the host's credentials.
+    #[arg(long)]
+    host_gates: bool,
 }
 
 /// Where a task comes from.
@@ -181,6 +191,8 @@ struct Run<'a, H: Host> {
     /// The primary checkout the run started in.
     root: PathBuf,
     settings: Settings,
+    /// Whether the gates run on the host, or the run reads the `check` job.
+    host_gates: bool,
     source: Source,
     /// The task's text, as the worker reads it.
     text: String,
@@ -198,13 +210,13 @@ pub fn run(options: Options) -> Result<()> {
         .map_err(|e| format!("cannot read .github/fabrial.toml: {e}"))?;
     let settings = Settings::parse(&text).map_err(|e| e.to_string())?;
     let host = System { trusted_checkout: options.trusted_checkout, config: options.config, timeout: options.timeout };
-    let report = drive(&host, &root, settings, &options.task)?;
+    let report = drive(&host, &root, settings, &options.task, options.host_gates)?;
     println!("{report}");
     Ok(())
 }
 
 /// Runs the whole sequence for one task and returns the report.
-fn drive<H: Host>(host: &H, root: &Path, settings: Settings, task: &str) -> Result<String> {
+fn drive<H: Host>(host: &H, root: &Path, settings: Settings, task: &str, host_gates: bool) -> Result<String> {
     let source = Source::parse(task, settings.tasks.as_ref())?;
     let name = source.name();
     let branch = claims::branch(&name).map_err(|e| e.to_string())?;
@@ -217,8 +229,18 @@ fn drive<H: Host>(host: &H, root: &Path, settings: Settings, task: &str) -> Resu
         .join(format!("{repo}-worktrees"))
         .join(&name);
     let scratch = std::env::temp_dir().join(format!("fab-run-{name}-{}", uuid::Uuid::new_v4()));
-    let mut run =
-        Run { host, root: root.into(), settings, source, text: String::new(), run_id, branch, worktree, scratch };
+    let mut run = Run {
+        host,
+        root: root.into(),
+        settings,
+        host_gates,
+        source,
+        text: String::new(),
+        run_id,
+        branch,
+        worktree,
+        scratch,
+    };
     run.text = run.read_task()?;
     run.start()?;
     let outcome = run.sequence();
@@ -405,38 +427,44 @@ impl<H: Host> Run<'_, H> {
         self.finish(pr, &plan, log)
     }
 
-    /// Runs the gates, then completes a tracked task, pushes, checks the
-    /// pull request merges and posts `Review finished`. Failing gates stop
+    /// Checks the pull request merges and the gates passed, then completes a
+    /// tracked task, pushes and posts `Review finished`. A failed check stops
     /// the run with the task still started.
     fn finish(&self, pr: u64, plan: &Plan, log: &mut Vec<String>) -> Result<String> {
         self.git(&self.worktree, &["pull", "--ff-only"])?;
-        let gates: Vec<String> = self.settings.gates.split_whitespace().map(String::from).collect();
-        self.host
-            .run(&self.worktree, &gates[0], &gates[1..])
-            .map_err(|e| format!("the gates failed: {e}"))?;
+        let reviewed = self.git(&self.worktree, &["rev-parse", "HEAD"])?;
+        self.mergeable(pr)?;
+        let checks = self.checks(pr, &reviewed)?;
+        log.push(checks.clone());
         if let Source::Tracked(id) = &self.source {
-            let head = self.git(&self.worktree, &["rev-parse", "HEAD"])?;
             let evidence = format!(
                 "Done in #{pr} at {}: fab run took it through {} review",
-                short(&head),
+                short(&reviewed),
                 plan.depth.name()
             );
-            self.record(
+            let committed = self.record(
                 "complete",
                 &[("{id}", id), ("{evidence}", &evidence)],
                 "Complete the task",
             )?;
+            // The completion is checked before it is pushed, so a raise
+            // leaves nothing on the pull request.
+            if committed && self.host.plan(&self.branch)?.depth > plan.depth {
+                self.git(&self.worktree, &["reset", "--keep", "HEAD~1"])?;
+                return Err(
+                    "completing the task would raise the review depth; the completion commit was undone, \
+                     run the added stages by hand"
+                        .into(),
+                );
+            }
         }
         self.git(&self.worktree, &["push", "origin", &self.branch])?;
         let head = self.head()?;
-        if self.host.plan(&format!("origin/{}", self.branch))?.depth > plan.depth {
-            return Err("completing the task raised the review depth; run the added stages by hand".into());
-        }
-        self.mergeable(pr)?;
         let body = format!(
-            "Review finished at {head}\n\nDepth: {} ({}). Run by fab run.",
+            "Review finished at {head}\n\nDepth: {} ({}). {}. Run by fab run.",
             plan.depth.name(),
-            plan.reason
+            plan.reason,
+            checks
         );
         self.gh(&[
             "workflow",
@@ -451,10 +479,56 @@ impl<H: Host> Run<'_, H> {
         Ok(format!("#{pr} ready for review at {head}\n{}", log.join("\n")))
     }
 
+    /// The gates' result at the reviewed head, as one line. By default it
+    /// reads the `check` job once and stops only when it failed; a job still
+    /// running is reported, and the ruleset holds the merge until it passes.
+    /// With `--host-gates` it runs the gates in the worktree instead.
+    fn checks(&self, pr: u64, head: &str) -> Result<String> {
+        if self.host_gates {
+            let gates = Tasks::argv(&self.settings.gates, &[]);
+            let (program, args) = gates.split_first().ok_or("`gates` names no command")?;
+            self.host
+                .run(&self.worktree, program, args)
+                .map_err(|e| format!("the gates failed: {e}"))?;
+            return Ok(format!(
+                "Gates: `{}` passed on the host at {}",
+                self.settings.gates,
+                short(head)
+            ));
+        }
+        let jq = format!(
+            ".headRefOid, (.statusCheckRollup[] | select(.name == \"{CHECK_JOB}\") | \"\\(.status) \\(.conclusion)\")"
+        );
+        let out = self.gh(&[
+            "pr",
+            "view",
+            &pr.to_string(),
+            "--json",
+            "headRefOid,statusCheckRollup",
+            "--jq",
+            &jq,
+        ])?;
+        let mut lines = out.lines().map(str::trim);
+        let state = if lines.next() != Some(head) {
+            "not reported yet"
+        } else {
+            match lines.next() {
+                Some("COMPLETED SUCCESS") => "passed",
+                Some(s) if s.starts_with("COMPLETED") => {
+                    return Err(format!("the {CHECK_JOB} job failed at {}: {s}", short(head)));
+                }
+                Some(_) => "running",
+                None => "not reported yet",
+            }
+        };
+        Ok(format!("Gates: the {CHECK_JOB} job at {} {state}", short(head)))
+    }
+
     /// Runs a `[tasks]` step that changes the task, then commits the paths it
     /// changed, and only those, so a worker's leftovers stay out. A path
-    /// counts as changed when it is newly dirty or its content moved.
-    fn record(&self, step: &str, values: &[(&str, &str)], message: &str) -> Result<()> {
+    /// counts as changed when it is newly dirty or its content moved. Returns
+    /// whether it made a commit.
+    fn record(&self, step: &str, values: &[(&str, &str)], message: &str) -> Result<bool> {
         let before = self.dirty()?;
         self.task_command(step, values)?;
         let paths: Vec<String> = self
@@ -464,7 +538,7 @@ impl<H: Host> Run<'_, H> {
             .map(|(path, _)| path)
             .collect();
         if paths.is_empty() {
-            return Ok(());
+            return Ok(false);
         }
         let paths: Vec<&str> = paths.iter().map(String::as_str).collect();
         let mut add = vec!["add", "--"];
@@ -472,21 +546,20 @@ impl<H: Host> Run<'_, H> {
         self.git(&self.worktree, &add)?;
         let mut commit = vec!["commit", "-m", message, "--"];
         commit.extend(&paths);
-        self.git(&self.worktree, &commit).map(drop)
+        self.git(&self.worktree, &commit).map(|_| true)
     }
 
     /// The worktree's changed paths, each with its content's hash, or an
     /// empty hash when it is gone.
     fn dirty(&self) -> Result<Vec<(String, String)>> {
-        let status = self.git(&self.worktree, &["status", "--porcelain"])?;
-        Ok(status
-            .lines()
-            .filter_map(|l| l.get(3..))
+        let status = self.git(&self.worktree, &["status", "--porcelain", "-z"])?;
+        Ok(changed_paths(&status)
+            .into_iter()
             .map(|path| {
                 let hash = self
-                    .git(&self.worktree, &["hash-object", "--", path])
+                    .git(&self.worktree, &["hash-object", "--", &path])
                     .unwrap_or_default();
-                (path.to_string(), hash)
+                (path, hash)
             })
             .collect())
     }
@@ -583,6 +656,7 @@ impl<H: Host> Run<'_, H> {
                     &[("{id}", id), ("{file}", &file.to_string_lossy())],
                     "Hand off the task",
                 )
+                .map(drop)
             })
             .and_then(|_| self.git(&self.worktree, &["push", "origin", &self.branch]).map(drop));
         match recorded {
@@ -643,6 +717,22 @@ fn strings(args: &[&str]) -> Vec<String> {
 
 fn short(sha: &str) -> &str {
     &sha[..sha.len().min(7)]
+}
+
+/// The paths in `git status --porcelain -z` output, as written: each entry is
+/// `XY path`, NUL-ended, and a rename or copy is followed by an entry holding
+/// its source path, which is skipped.
+fn changed_paths(status: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    let mut entries = status.split('\0').filter(|e| !e.is_empty());
+    while let Some(entry) = entries.next() {
+        let Some(path) = entry.get(3..) else { continue };
+        paths.push(path.to_string());
+        if matches!(entry.as_bytes()[0], b'R' | b'C') {
+            entries.next();
+        }
+    }
+    paths
 }
 
 fn first_line(text: &str) -> &str {

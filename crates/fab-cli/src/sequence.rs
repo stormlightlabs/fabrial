@@ -132,12 +132,18 @@ fn load(diff: &depth::Options) -> Result<(Sequence, String)> {
     }
 }
 
-/// Reads a sequence and checks it: at least one stage, and every stage's
+/// Reads a sequence and checks it: at least one stage, no two stages with
+/// one name, since `fab run` tells stages apart by name, and every stage's
 /// role a plain name that exists.
 fn parse(text: &str, role_exists: impl Fn(&str) -> bool) -> Result<Sequence> {
     let sequence: Sequence = toml::from_str(text).map_err(|e| format!("{SEQUENCE_PATH}: {e}"))?;
     if sequence.stage.is_empty() {
         return Err(format!("{SEQUENCE_PATH} has no stages."));
+    }
+    for (n, stage) in sequence.stage.iter().enumerate() {
+        if sequence.stage[..n].iter().any(|s| s.name == stage.name) {
+            return Err(format!("{SEQUENCE_PATH}: two stages are named `{}`.", stage.name));
+        }
     }
     let plain = |role: &str| !role.is_empty() && role.bytes().all(|b| b.is_ascii_lowercase() || b == b'-');
     if let Some(stage) = sequence.stage.iter().find(|s| !plain(&s.role) || !role_exists(&s.role)) {
@@ -219,6 +225,9 @@ mod tests {
         assert!(parse(&bad_depth, |_| true).is_err());
         let outside = FILE.replacen("role = \"reviewer\"", "role = \"../skills/review/SKILL\"", 1);
         assert!(parse(&outside, |_| true).unwrap_err().contains("../skills"));
+        let twice = FILE.replacen("name = \"adversarial review\"", "name = \"standard review\"", 1);
+        let err = parse(&twice, |_| true).unwrap_err();
+        assert!(err.contains("two stages are named `standard review`"), "{err}");
         let finish = &FILE[FILE.find("[finish]").unwrap()..];
         assert!(
             parse(&format!("stage = []\n{finish}"), |_| true)

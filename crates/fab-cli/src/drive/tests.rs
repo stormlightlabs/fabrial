@@ -24,6 +24,10 @@ struct Fake {
     gates_fail: bool,
     /// The tracker refuses to start the task.
     start_fails: bool,
+    /// The `check` job's `status conclusion` at the head; `None` is a pass.
+    check: Option<&'static str>,
+    /// When the plan is full; `None` is always, and otherwise it is standard.
+    full_when: Option<fn(&Fake) -> bool>,
 }
 
 impl Fake {
@@ -80,15 +84,24 @@ impl Host for Fake {
                 *self.pr_reads.borrow_mut() += 1;
                 Ok(if *self.pr_reads.borrow() > self.pr_delay { "7".into() } else { String::new() })
             }
+            "gh" if line.starts_with("gh pr view") && line.contains("statusCheckRollup") => Ok(format!(
+                "{}\n{}",
+                self.head(),
+                self.check.unwrap_or("COMPLETED SUCCESS")
+            )),
             "gh" if line.starts_with("gh pr view") => Ok("MERGEABLE".into()),
             "gh" if line.starts_with("gh issue view") => Ok("# Fix it\n\nThe body.".into()),
             "gh" | "fab" => Ok(String::new()),
             "git" => match arg(0) {
                 "rev-parse" => Ok(self.head()),
-                "status" => Ok(if *self.dirty.borrow() { " M task.md".into() } else { String::new() }),
+                "status" => Ok(if *self.dirty.borrow() { " M task.md\0".into() } else { String::new() }),
                 "hash-object" => Ok(format!("hash-{}", self.writes.borrow())),
                 "commit" => {
                     *self.dirty.borrow_mut() = false;
+                    Ok(String::new())
+                }
+                "reset" => {
+                    *self.writes.borrow_mut() -= 1;
                     Ok(String::new())
                 }
                 "push" => {
@@ -157,16 +170,16 @@ impl Host for Fake {
             conditional,
             posts: format!("{name} posts"),
         };
-        Ok(Plan {
-            depth: Depth::Full,
-            reason: "src/x.rs is code".into(),
-            steps: vec![
-                step("standard review", "reviewer", false),
-                step("standard revise", "reviser", true),
-                step("adversarial review", "adversarial-reviewer", false),
-                step("adversarial revise", "reviser", true),
-            ],
-        })
+        let mut steps = vec![
+            step("standard review", "reviewer", false),
+            step("standard revise", "reviser", true),
+        ];
+        if self.full_when.is_none_or(|full| full(self)) {
+            steps.push(step("adversarial review", "adversarial-reviewer", false));
+            steps.push(step("adversarial revise", "reviser", true));
+            return Ok(Plan { depth: Depth::Full, reason: "src/x.rs is code".into(), steps });
+        }
+        Ok(Plan { depth: Depth::Standard, reason: "docs only".into(), steps })
     }
 
     fn pause(&self) {}
@@ -208,7 +221,7 @@ fn a_tracked_task_runs_implement_each_stage_and_the_finish() {
             ),
         ])
     };
-    let report = drive(&host, &root, settings(true), "t-1").unwrap();
+    let report = drive(&host, &root, settings(true), "t-1", false).unwrap();
     assert_eq!(
         host.roles(),
         ["implementer", "reviewer", "reviser", "adversarial-reviewer"]
@@ -247,13 +260,20 @@ fn a_tracked_task_runs_implement_each_stage_and_the_finish() {
         host.called("arcl task complete t-1 --evidence Done in #7 at 0000000: fab run took it through full review")
     );
     assert!(host.called("git commit -m Complete the task -- task.md"));
+    assert!(!host.called("just"), "the gates do not run on the host by default");
     assert!(
-        host.order("just check") < host.order("arcl task complete"),
-        "the gates run before the task is completed"
+        host.order("statusCheckRollup") < host.order("arcl task complete"),
+        "the check job is read before the task is completed"
+    );
+    assert!(
+        host.order("--json mergeable") < host.order("arcl task complete"),
+        "the merge is checked before the task is completed"
     );
     let finished = host.head();
     assert!(
-        host.called(&format!("body=Review finished at {finished}")),
+        host.called(&format!(
+            "body=Review finished at {finished}\n\nDepth: full (src/x.rs is code). Gates: the check job at 0000000 passed."
+        )),
         "{:?}",
         host.calls
     );
@@ -275,7 +295,7 @@ fn a_tracked_task_runs_implement_each_stage_and_the_finish() {
 fn an_implementer_that_pushes_nothing_ends_in_a_handoff() {
     let (_temp, root) = root();
     let host = Fake::with(&[("implementer", "Blocked: the gates need the host.")]);
-    let err = drive(&host, &root, settings(true), "t-1").unwrap_err();
+    let err = drive(&host, &root, settings(true), "t-1", false).unwrap_err();
     assert!(err.contains("the implementer pushed nothing"), "{err}");
     assert!(host.called("arcl task handoff t-1 --note-file"));
     assert!(host.called("git commit -m Hand off the task -- task.md"));
@@ -287,7 +307,7 @@ fn an_implementer_that_pushes_nothing_ends_in_a_handoff() {
 fn a_missing_pull_request_asks_branch_pr_once_then_stops() {
     let (_temp, root) = root();
     let host = Fake { never_pr: true, ..Fake::with(&[("implementer", "push:Done.")]) };
-    let err = drive(&host, &root, settings(true), "t-1").unwrap_err();
+    let err = drive(&host, &root, settings(true), "t-1", false).unwrap_err();
     assert!(err.contains("no pull request opened for storm/t-1"), "{err}");
     assert_eq!(
         host.calls
@@ -303,25 +323,35 @@ fn a_missing_pull_request_asks_branch_pr_once_then_stops() {
 fn a_task_that_already_has_a_pull_request_is_not_claimed() {
     let (_temp, root) = root();
     let host = Fake { open_pr: true, ..Fake::default() };
-    let err = drive(&host, &root, settings(true), "t-1").unwrap_err();
+    let err = drive(&host, &root, settings(true), "t-1", false).unwrap_err();
     assert!(err.contains("#3 already has storm/t-1"), "{err}");
     assert!(!host.called("claim take"));
 }
 
+fn reviewed(host: Fake) -> Fake {
+    Fake {
+        results: RefCell::new(
+            [
+                ("implementer", "push:Done."),
+                ("reviewer", "Above nit: no"),
+                ("adversarial-reviewer", "Above nit: no"),
+            ]
+            .iter()
+            .map(|(r, t)| (r.to_string(), t.to_string()))
+            .collect(),
+        ),
+        ..host
+    }
+}
+
 #[test]
-fn failing_gates_stop_before_review_finished() {
+fn failing_host_gates_stop_before_review_finished() {
     let (_temp, root) = root();
-    let host = Fake {
-        gates_fail: true,
-        ..Fake::with(&[
-            ("implementer", "push:Done."),
-            ("reviewer", "Above nit: no"),
-            ("adversarial-reviewer", "Above nit: no"),
-        ])
-    };
-    let err = drive(&host, &root, settings(true), "t-1").unwrap_err();
+    let host = reviewed(Fake { gates_fail: true, ..Fake::default() });
+    let err = drive(&host, &root, settings(true), "t-1", true).unwrap_err();
     assert!(err.contains("the gates failed"), "{err}");
     assert!(!host.called("Review finished at"));
+    assert!(!host.called("statusCheckRollup"), "host gates replace the check read");
     assert!(
         !host.called("arcl task complete"),
         "a task whose gates fail stays started"
@@ -329,10 +359,105 @@ fn failing_gates_stop_before_review_finished() {
 }
 
 #[test]
+fn passing_host_gates_are_named_in_review_finished() {
+    let (_temp, root) = root();
+    let host = reviewed(Fake::default());
+    drive(&host, &root, settings(true), "t-1", true).unwrap();
+    assert!(host.order("just check") < host.order("arcl task complete"));
+    assert!(host.called("Gates: `just check` passed on the host at 0000000."));
+}
+
+#[test]
+fn a_failed_check_job_stops_before_completion() {
+    let (_temp, root) = root();
+    let host = reviewed(Fake { check: Some("COMPLETED FAILURE"), ..Fake::default() });
+    let err = drive(&host, &root, settings(true), "t-1", false).unwrap_err();
+    assert!(
+        err.contains("the check job failed at 0000000: COMPLETED FAILURE"),
+        "{err}"
+    );
+    assert!(!host.called("arcl task complete"));
+    assert!(!host.called("Review finished at"));
+}
+
+#[test]
+fn a_running_check_job_is_read_once_and_reported() {
+    let (_temp, root) = root();
+    let host = reviewed(Fake { check: Some("IN_PROGRESS "), ..Fake::default() });
+    let report = drive(&host, &root, settings(true), "t-1", false).unwrap();
+    assert!(report.contains("Gates: the check job at 0000000 running"), "{report}");
+    assert_eq!(
+        host.calls
+            .borrow()
+            .iter()
+            .filter(|c| c.contains("statusCheckRollup"))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn stages_added_by_a_rise_in_depth_run_once() {
+    let (_temp, root) = root();
+    // Standard until the reviser's push, the second; full after it.
+    let host = Fake {
+        full_when: Some(|fake| *fake.pushes.borrow() >= 2),
+        ..Fake::with(&[
+            ("implementer", "push:Done."),
+            ("reviewer", "Above nit: yes"),
+            ("reviser", "push:Fixed, and touched code."),
+            ("adversarial-reviewer", "Above nit: yes"),
+            ("reviser", "push:Fixed again."),
+        ])
+    };
+    let report = drive(&host, &root, settings(true), "t-1", false).unwrap();
+    assert_eq!(
+        host.roles(),
+        ["implementer", "reviewer", "reviser", "adversarial-reviewer", "reviser"]
+    );
+    assert!(report.contains("depth rose to full (src/x.rs is code)"), "{report}");
+    assert!(host.called("through full review"), "{:?}", host.calls);
+}
+
+#[test]
+fn a_completion_that_raises_the_depth_is_undone_before_the_push() {
+    let (_temp, root) = root();
+    // The start is the first write; the completion, the second, raises it.
+    let host = Fake {
+        full_when: Some(|fake| *fake.writes.borrow() >= 2),
+        ..Fake::with(&[("implementer", "push:Done."), ("reviewer", "Above nit: no")])
+    };
+    let err = drive(&host, &root, settings(true), "t-1", false).unwrap_err();
+    assert!(err.contains("would raise the review depth"), "{err}");
+    assert!(host.called("git reset --keep HEAD~1"));
+    assert!(!host.called("Review finished at"));
+    let calls = host.calls.borrow();
+    let completed = host.order("arcl task complete");
+    let pushed = completed
+        + calls[completed..]
+            .iter()
+            .position(|c| c.starts_with("git push"))
+            .unwrap();
+    assert!(
+        host.order("git reset") < pushed,
+        "only the handoff pushes, after the undo: {calls:?}"
+    );
+}
+
+#[test]
+fn porcelain_paths_keep_their_bytes_and_skip_rename_sources() {
+    let status = " M plain.md\0?? with space \"quoted\".md\0R  new.md\0old.md\0 D gone.md\0";
+    assert_eq!(
+        changed_paths(status),
+        ["plain.md", "with space \"quoted\".md", "new.md", "gone.md"]
+    );
+}
+
+#[test]
 fn a_failed_start_removes_the_worktree_and_branch_and_releases_the_claim() {
     let (_temp, root) = root();
     let host = Fake { start_fails: true, ..Fake::default() };
-    let err = drive(&host, &root, settings(true), "t-1").unwrap_err();
+    let err = drive(&host, &root, settings(true), "t-1", false).unwrap_err();
     assert!(err.contains("not ready"), "{err}");
     assert!(err.contains("the worktree and branch were removed"), "{err}");
     let worktree = root.parent().unwrap().join("repo-worktrees/t-1");
@@ -350,7 +475,7 @@ fn an_issue_runs_without_task_commands() {
         ("reviewer", "Above nit: no"),
         ("adversarial-reviewer", "Above nit: no"),
     ]);
-    drive(&host, &root, settings(false), "#12").unwrap();
+    drive(&host, &root, settings(false), "#12", false).unwrap();
     assert!(host.called("fab claim take issue-12"));
     assert!(host.called("# Fix it"), "the issue's text reaches the worker");
     assert!(!host.called("arcl"));
