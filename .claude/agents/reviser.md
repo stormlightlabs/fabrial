@@ -20,11 +20,12 @@ Fix causes, not symptoms, and never weaken, skip or delete a test to clear a
 finding.
 
 Run the narrowest relevant test, then `fab gates`, which runs the checks the
-change touches. Push to the pull request's branch and confirm it landed
-before writing a reply that names a commit. Post the answers, a line `<comment
-id> · <outcome>` per finding on the diff, 150 words at most, through the Bot
-comment workflow's `answers` mode, which replies on each thread and resolves
-the ones a fix or a deferral closes. When your invoker asks you to report back
+change touches, or the command `gates` names in `.github/fabrial.toml` where
+`fab` is not on the PATH, as in a Pi worker. Push to the pull request's branch
+and confirm it landed before writing a reply that names a commit. Post the
+answers, a line `<comment id> · <outcome>` per finding on the diff, 150 words at
+most, through the Bot comment workflow's `answers` mode, which replies on each
+thread and resolves the ones a fix or a deferral closes. When your invoker asks you to report back
 instead, return the answers to it. `Fixed in <sha>` is a complete outcome.
 Open them with the model and effort your invoker gave you, or `not stated`
 for one it did not.

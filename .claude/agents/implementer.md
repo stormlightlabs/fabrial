@@ -18,7 +18,9 @@ own.
 Make the smallest change that meets the criteria, following `AGENTS.md` and the
 conventions the surrounding code keeps. Write the test with the change. Run the
 narrowest relevant test, then `fab gates`, which runs the checks the change
-touches. Never weaken, skip or delete a test to make a gate pass.
+touches, or the command `gates` names in `.github/fabrial.toml` where `fab` is
+not on the PATH, as in a Pi worker. Never weaken, skip or delete a test to make
+a gate pass.
 
 For a change to terminal UI, capture each affected state with
 `.github/storm/shot.sh <name> <cols> <rows> <command...>`, which needs tmux,

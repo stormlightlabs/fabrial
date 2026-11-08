@@ -127,14 +127,51 @@ fn an_unmatched_change_runs_full() {
     assert!(err.contains("full (justfile matches no scope)"), "{err}");
 
     let skip = GATES.replacen("\n[[scoped]]", "unmatched = \"skip\"\n\n[[scoped]]", 1);
-    write(dir.path(), ".github/fabrial-gates.toml", &skip);
-    git(dir.path(), &["add", ".github"]);
-    git(dir.path(), &["commit", "-q", "-m", "skip"]);
+    let dir = repo(&[(".github/fabrial-gates.toml", &skip)]);
+    write(dir.path(), "crates/a.rs", "x\n");
+    write(dir.path(), "justfile", "check:\n");
     let output = gates(dir.path(), &[]);
     let (out, err) = text(&output);
     assert!(output.status.success(), "{err}");
     assert_eq!(out, "ran-rust\n");
-    assert!(err.contains("skipping .github/fabrial-gates.toml and 1 more"), "{err}");
+    assert!(err.contains("skipping justfile, which no scope names"), "{err}");
+}
+
+#[test]
+fn untracked_files_that_trigger_full_are_named_and_symlinks_do_not_count() {
+    let dir = repo(&[(".github/fabrial-gates.toml", GATES)]);
+    write(dir.path(), "crates/a.rs", "x\n");
+    std::os::unix::fs::symlink("/nix/store/x", dir.path().join("result")).unwrap();
+    let output = gates(dir.path(), &[]);
+    let (out, err) = text(&output);
+    assert!(output.status.success(), "{err}");
+    assert_eq!(out, "ran-rust\n", "{err}");
+
+    write(dir.path(), "out/build.o", "x\n");
+    let output = gates(dir.path(), &[]);
+    let (out, err) = text(&output);
+    assert_eq!(out, "ran-full\n", "{err}");
+    assert!(err.contains("untracked out/build.o matches no scope"), "{err}");
+}
+
+#[test]
+fn a_change_to_the_gates_file_runs_the_bases_full() {
+    let failing = GATES.replace("echo ran-full", "echo ran-base-full; exit 3");
+    let dir = repo(&[(".github/fabrial-gates.toml", &failing)]);
+    let loosened = failing.replace("echo ran-base-full; exit 3", "true");
+    write(dir.path(), ".github/fabrial-gates.toml", &loosened);
+    write(dir.path(), "crates/a.rs", "x\n");
+    for args in [&[][..], &["--full"]] {
+        let output = gates(dir.path(), args);
+        let (out, err) = text(&output);
+        assert_eq!(output.status.code(), Some(3), "{args:?}: {err}");
+        assert_eq!(out, "ran-base-full\n", "{args:?}");
+    }
+    let (_, err) = text(&gates(dir.path(), &[]));
+    assert!(
+        err.contains(".github/fabrial-gates.toml changed, so `full` from the base"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -165,8 +202,22 @@ fn without_the_file_the_settings_gates_command_runs() {
         let (out, err) = text(&output);
         assert!(output.status.success(), "{err}");
         assert_eq!(out, "ran-settings\n", "{args:?}");
-        assert!(err.contains("there is no .github/fabrial-gates.toml"), "{err}");
+        assert!(err.contains("has no .github/fabrial-gates.toml"), "{err}");
     }
+
+    // A gates file the change adds waits for the base to hold it.
+    write(dir.path(), ".github/fabrial-gates.toml", GATES);
+    let (out, err) = text(&gates(dir.path(), &[]));
+    assert_eq!(out, "ran-settings\n", "{err}");
+    assert!(err.contains("has no .github/fabrial-gates.toml"), "{err}");
+
+    // A base with neither file, as when installing fabrial, uses the
+    // working tree's settings.
+    let fresh = repo(&[]);
+    write(fresh.path(), ".github/fabrial.toml", settings);
+    let (out, err) = text(&gates(fresh.path(), &[]));
+    assert_eq!(out, "ran-settings\n", "{err}");
+    assert!(err.contains("has neither file"), "{err}");
 
     let bare = repo(&[]);
     let output = gates(bare.path(), &[]);

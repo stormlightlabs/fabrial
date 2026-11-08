@@ -3,11 +3,15 @@
 //!
 //! The change is every file that differs from the merge base with
 //! `origin/main`: the commits since it, staged and unstaged changes, and
-//! untracked files. Files review depth counts as documentation or planning
-//! records run nothing unless a scope's globs name them. Each scope whose
-//! globs match a changed file runs, in the file's order. A changed file no scope names runs `full` alone, unless
-//! `unmatched = "skip"`. Without the gates file, the command `gates` names in
-//! `.github/fabrial.toml` runs.
+//! untracked files other than symlinks. Files review depth counts as
+//! documentation or planning records run nothing unless a scope's globs name
+//! them. Each scope whose globs match a changed file runs, in the file's
+//! order. A changed file no scope names runs `full` alone, unless
+//! `unmatched = "skip"`.
+//!
+//! The gates file is read from the merge base, so a change to it runs the
+//! base's `full`. Without the file there, the command `gates` names in the
+//! base's `.github/fabrial.toml` runs.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -16,10 +20,17 @@ use std::process::{Command, ExitCode};
 use clap::Args;
 use fab_core::gates::{GATES_PATH, Gates, Unmatched};
 use fab_core::install;
-use fab_core::settings::SETTINGS_PATH;
+use fab_core::settings::{SETTINGS_PATH, Settings};
 
 use crate::depth;
 use crate::run::{self, Result};
+
+/// The gates file, or the command that stands in for it.
+enum Loaded {
+    Gates(Gates),
+    /// The settings' `gates` command, and why it runs.
+    Command(String, String),
+}
 
 /// What `fab gates` reads.
 #[derive(Args)]
@@ -67,30 +78,41 @@ pub fn run(options: Options) -> ExitCode {
 /// The repository root and the gates to run there.
 fn plan(options: &Options) -> Result<(PathBuf, Vec<Gate>)> {
     let root = PathBuf::from(run::git(Path::new("."), &["rev-parse", "--show-toplevel"])?);
-    let path = root.join(GATES_PATH);
-    let text = match std::fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let settings = install::read_settings(&root)
-                .map_err(|e| e.to_string())?
-                .ok_or(format!("{GATES_PATH} and {SETTINGS_PATH} are both missing."))?;
-            let gate = Gate {
-                name: "gates".into(),
-                reason: format!("there is no {GATES_PATH}, so the `gates` command in {SETTINGS_PATH}"),
-                command: settings.gates,
-            };
-            return Ok((root, vec![gate]));
+    let merge_base = run::git(root.as_path(), &["merge-base", &options.base, "HEAD"]).map_err(|e| {
+        format!(
+            "cannot find the merge base with {}; fetch it or pass --base: {e}",
+            options.base
+        )
+    })?;
+    let short = &merge_base[..merge_base.len().min(7)];
+    let (gates, from) = match load(&root, &merge_base)? {
+        Loaded::Gates(gates) => (gates, format!("the base {short}")),
+        Loaded::Command(command, reason) => {
+            return Ok((root, vec![Gate { name: "gates".into(), reason, command }]));
         }
-        Err(e) => return Err(format!("{GATES_PATH}: {e}")),
     };
-    let gates = Gates::parse(&text).map_err(|e| e.to_string())?;
     if options.full {
         let gate = Gate { name: "full".into(), reason: "--full".into(), command: gates.full };
         return Ok((root, vec![gate]));
     }
-    let changed = changed(&root, &options.base)?;
+    let (changed, untracked) = changed(&root, &merge_base)?;
+    // A change to the gates file is checked with the file it replaces.
+    if changed.iter().any(|p| p == GATES_PATH) {
+        let reason = format!("{GATES_PATH} changed, so `full` from {from}");
+        return Ok((root, vec![Gate { name: "full".into(), reason, command: gates.full }]));
+    }
     // Review depth decides which files are documentation or planning.
     let selection = select(&gates, &changed, depth::is_doc);
+    let strays: Vec<String> = untracked
+        .into_iter()
+        .filter(|p| !depth::is_doc(p) && !gates.scoped.iter().any(|s| s.matches(p)))
+        .collect();
+    if !strays.is_empty() && gates.unmatched == Unmatched::Full {
+        eprintln!(
+            "fab gates: untracked {} matches no scope; put build output in .gitignore",
+            describe(&strays)
+        );
+    }
     if !selection.skipped.is_empty() {
         eprintln!(
             "fab gates: skipping {}, which no scope names (unmatched = \"skip\")",
@@ -109,20 +131,64 @@ fn plan(options: &Options) -> Result<(PathBuf, Vec<Gate>)> {
     Ok((root, selection.gates))
 }
 
-/// Every file that differs from the merge base of `base` and `HEAD`:
-/// committed, staged, unstaged and untracked, each once, sorted.
-fn changed(root: &Path, base: &str) -> Result<Vec<String>> {
-    let merge_base = run::git(root, &["merge-base", base, "HEAD"])
-        .map_err(|e| format!("cannot find the merge base with {base}; fetch it or pass --base: {e}"))?;
-    let diffed = run::git(root, &["diff", "-z", "--name-only", "--no-renames", &merge_base])?;
-    let untracked = run::git(root, &["ls-files", "-z", "--others", "--exclude-standard"])?;
-    let files: BTreeSet<String> = diffed
+/// Reads the gates from the merge base, as `fab sequence` reads its stages,
+/// so a change to them applies to later changes, never to its own check.
+/// Without the gates file there, the base's `gates` setting runs. A base
+/// with neither, as in the change that installs fabrial, falls back to the
+/// working tree's settings.
+fn load(root: &Path, merge_base: &str) -> Result<Loaded> {
+    let short = &merge_base[..merge_base.len().min(7)];
+    let at_base = |path: &str| -> Result<Option<String>> {
+        if run::git(root, &["cat-file", "-e", &format!("{merge_base}:{path}")]).is_err() {
+            return Ok(None);
+        }
+        run::git(root, &["show", &format!("{merge_base}:{path}")])
+            .map(Some)
+            .map_err(|e| format!("cannot read {path} at the base {short}: {e}"))
+    };
+    if let Some(text) = at_base(GATES_PATH)? {
+        let gates = Gates::parse(&text).map_err(|e| format!("{e} (at the base {short})"))?;
+        return Ok(Loaded::Gates(gates));
+    }
+    if let Some(text) = at_base(SETTINGS_PATH)? {
+        let settings = Settings::parse(&text).map_err(|e| format!("{e} (at the base {short})"))?;
+        let reason = format!("the base {short} has no {GATES_PATH}, so the `gates` command in {SETTINGS_PATH}");
+        return Ok(Loaded::Command(settings.gates, reason));
+    }
+    let settings = install::read_settings(root)
+        .map_err(|e| e.to_string())?
+        .ok_or(format!("{GATES_PATH} and {SETTINGS_PATH} are both missing."))?;
+    let reason =
+        format!("the base {short} has neither file, so the `gates` command in the working tree's {SETTINGS_PATH}");
+    Ok(Loaded::Command(settings.gates, reason))
+}
+
+/// Every file that differs from `merge_base`: committed, staged, unstaged
+/// and untracked, each once, sorted, and the untracked ones apart. An
+/// untracked symlink, such as a Nix `result` link, is build output and does
+/// not count; other untracked build output counts until `.gitignore` names
+/// it.
+fn changed(root: &Path, merge_base: &str) -> Result<(Vec<String>, Vec<String>)> {
+    let diffed = run::git(root, &["diff", "-z", "--name-only", "--no-renames", merge_base])?;
+    let listed = run::git(root, &["ls-files", "-z", "--others", "--exclude-standard"])?;
+    let untracked: Vec<String> = listed
         .split('\0')
-        .chain(untracked.split('\0'))
         .filter(|p| !p.is_empty())
+        .filter(|p| {
+            !root
+                .join(p)
+                .symlink_metadata()
+                .is_ok_and(|m| m.file_type().is_symlink())
+        })
         .map(String::from)
         .collect();
-    Ok(files.into_iter().collect())
+    let files: BTreeSet<String> = diffed
+        .split('\0')
+        .filter(|p| !p.is_empty())
+        .map(String::from)
+        .chain(untracked.iter().cloned())
+        .collect();
+    Ok((files.into_iter().collect(), untracked))
 }
 
 /// The gates `changed` runs. Files `quiet` accepts, documentation and
