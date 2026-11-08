@@ -269,24 +269,26 @@ to 64 events, the next cursor and the current state. Start at 0 and keep the
 cursor when reconnecting. An unchanged cursor means nothing new.
 
 `fab events --config <config> --follow` prints the events of every worker
-under `state_dir` as JSON, one object per line, oldest worker first, and keeps
-reading until interrupted. Without `--follow` it prints what is recorded and
-exits. Each line has these fields:
+under `state_dir` as JSON, one object per line, oldest worker first, as it
+reads them, and keeps reading until interrupted. Without `--follow` it prints
+what is recorded and exits. A worker whose record or events do not read is
+named on standard error, once per reason, and the others go on. Each line has
+these fields:
 
 | Field       | Value                                                         |
 | ----------- | ------------------------------------------------------------- |
 | `format`    | The line format, now `1`; it changes when a field is removed or changes meaning |
-| `cursor`    | The position after this event, to pass to `--after`            |
+| `cursor`    | This worker's position after this event, as `<worker-id>:<offset>` |
 | `worker_id` | The worker that wrote the event                                |
 | `run_id`    | The run that dispatched the worker                             |
 | `role`      | The worker's role, such as `reviewer`                          |
 | `sequence`  | The byte offset after this event in the worker's stream, as `fab worker events` gives it |
 | `event`     | The event as the worker's recorder wrote it                    |
 
-To resume after a restart, keep the `cursor` of the last line handled and
-pass it as `--after <cursor>`; the stream continues with the next event, with
-no repeats and no gaps. The cursor holds one offset per worker, so it grows
-with the number of workers in `state_dir`. The stream carries no pull request
+To resume after a restart, keep the latest `cursor` per worker among the lines
+handled, and pass them joined by commas as `--after <id>:<offset>,...`; the
+stream continues with the next event, with no repeats and no gaps. A worker
+left out starts from its first event. The stream carries no pull request
 status: hosts read that from GitHub, as the Pi package does. A host can also
 link `fab-core` and call `fab_core::runs` for the same reads.
 

@@ -6,8 +6,10 @@
 //! its identity and last state, and `events.jsonl`, which the worker's
 //! recorder appends one JSON object per line to and never rewrites. A
 //! position in that file is a byte offset at a line boundary. A [`Cursor`]
-//! holds one position per worker, so a reader that keeps the cursor of the
-//! last event it handled resumes after it with no repeat and no gap.
+//! holds one position per worker. Each [`Event`] names its worker's new
+//! position, so a reader that folds those into its cursor with
+//! [`Cursor::advance`] resumes after the last event it handled with no
+//! repeat and no gap.
 //!
 //! Pull request status is not a run event: hosts read it from GitHub.
 
@@ -15,6 +17,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::ops::ControlFlow;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -34,7 +37,7 @@ pub const EVENT_LIMIT: usize = 8 * 1024 * 1024;
 pub const BATCH: usize = 64;
 
 /// What can go wrong reading run events.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum Error {
     /// The host configuration is unreadable, or its `state_dir` is missing,
     /// relative or readable by others.
@@ -47,6 +50,16 @@ pub enum Error {
     /// boundary.
     #[error("{0}")]
     Cursor(&'static str),
+}
+
+/// What [`poll`] hands its reader, in stream order.
+#[derive(Debug)]
+pub enum Item {
+    /// The next event.
+    Event(Event),
+    /// A worker whose record or events cannot be read. Its events stop
+    /// before the bad line until the next poll; the other workers go on.
+    Skipped(Skipped),
 }
 
 /// A worker's identity, read from its `worker.json`. Only the host
@@ -81,22 +94,40 @@ impl Worker {
     }
 
     /// Every worker under `root` whose record exists, oldest first. A
-    /// directory whose record is not written yet is left out.
+    /// directory whose record is not written yet is left out, and an
+    /// unreadable record fails the list.
     pub fn list(root: &Path) -> Result<Vec<Self>, Error> {
+        let (workers, skipped) = Self::scan(root)?;
+        match skipped.into_iter().next() {
+            Some(skipped) => Err(skipped.error),
+            None => Ok(workers),
+        }
+    }
+
+    /// Every worker under `root` whose record exists and reads, oldest
+    /// first, and those whose record does not read. A directory whose
+    /// record is not written yet is left out.
+    pub fn scan(root: &Path) -> Result<(Vec<Self>, Vec<Skipped>), Error> {
         let directory = root.join("records");
         let mut workers = Vec::new();
+        let mut skipped = Vec::new();
         if !directory.exists() {
-            return Ok(workers);
+            return Ok((workers, skipped));
         }
         for entry in fs::read_dir(directory).map_err(|_| Error::Record("cannot list workers"))? {
             let entry = entry.map_err(|_| Error::Record("cannot read worker entry"))?;
-            if !canonical_uuid(&entry.file_name().to_string_lossy()) || !entry.path().join("worker.json").exists() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !canonical_uuid(&name) || !entry.path().join("worker.json").exists() {
                 continue;
             }
-            workers.push(Self::load(&entry.path())?);
+            match Self::load(&entry.path()) {
+                Ok(worker) => workers.push(worker),
+                Err(error) => skipped.push(Skipped { worker_id: name, error }),
+            }
         }
         workers.sort_by(|a, b| (a.created_at, &a.worker_id).cmp(&(b.created_at, &b.worker_id)));
-        Ok(workers)
+        skipped.sort_by(|a, b| a.worker_id.cmp(&b.worker_id));
+        Ok((workers, skipped))
     }
 
     /// The worker's record directory.
@@ -137,7 +168,8 @@ pub struct Recorded {
 /// A position in every worker's stream, as worker ID to byte offset. A
 /// worker missing from it is at 0. It is written as `<worker-id>:<offset>`
 /// pairs joined by commas, leaving out workers at 0, so the empty string is
-/// the start of every stream.
+/// the start of every stream. Each [`Event`]'s `cursor` is the one pair for
+/// its worker; a reader keeps the latest pair per worker.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Cursor(BTreeMap<String, u64>);
 
@@ -195,8 +227,10 @@ impl fmt::Display for Cursor {
 pub struct Event {
     /// The line format, [`FORMAT`].
     pub format: u32,
-    /// The cursor just after this event. Pass it to `--after`, or to
-    /// [`poll`], to resume after this event.
+    /// This worker's position just after this event, as the one pair
+    /// `<worker-id>:<offset>`. Keep the latest pair per worker and pass them
+    /// joined by commas to `--after`, or fold them into a [`Cursor`] for
+    /// [`poll`], to resume after the events handled.
     pub cursor: String,
     /// The worker that wrote the event.
     pub worker_id: String,
@@ -208,6 +242,15 @@ pub struct Event {
     pub sequence: u64,
     /// The event as the worker's recorder wrote it.
     pub event: Value,
+}
+
+/// A worker [`poll`] could not read, and why.
+#[derive(Debug, Clone)]
+pub struct Skipped {
+    /// The worker's ID, the name of its record directory.
+    pub worker_id: String,
+    /// What failed.
+    pub error: Error,
 }
 
 /// The registry root: the absolute, private `state_dir` the host
@@ -241,13 +284,82 @@ pub fn registry(config: &Path) -> Result<PathBuf, Error> {
 /// written is left for the next read. `after` must be 0 or the offset just
 /// after a line.
 pub fn read_events(directory: &Path, after: u64, limit: usize) -> Result<Batch, Error> {
-    let path = directory.join("events.jsonl");
+    match read_partial(directory, after, limit)? {
+        (batch, None) => Ok(batch),
+        (_, Some(error)) => Err(error),
+    }
+}
+
+/// Reads every complete event after `cursor` from every worker under the
+/// registry `root`, oldest worker first, handing each to `handle` as it is
+/// read and moving `cursor` past it first. A worker whose record or events
+/// do not read is handed over as [`Item::Skipped`] and the rest go on. It
+/// stops early when `handle` breaks, and returns what `handle` last
+/// returned. A cursor off a line boundary or past a stream's end fails it.
+pub fn poll(
+    root: &Path, cursor: &mut Cursor, mut handle: impl FnMut(Item) -> ControlFlow<()>,
+) -> Result<ControlFlow<()>, Error> {
+    let (workers, skipped) = Worker::scan(root)?;
+    for skipped in skipped {
+        if handle(Item::Skipped(skipped)).is_break() {
+            return Ok(ControlFlow::Break(()));
+        }
+    }
+    for worker in workers {
+        loop {
+            let (batch, error) = read_partial(worker.directory(), cursor.position(&worker.worker_id), BATCH)?;
+            let done = batch.events.is_empty() || error.is_some();
+            for recorded in batch.events {
+                cursor.advance(&worker.worker_id, recorded.sequence);
+                let flow = handle(Item::Event(Event {
+                    format: FORMAT,
+                    cursor: format!("{}:{}", worker.worker_id, recorded.sequence),
+                    worker_id: worker.worker_id.clone(),
+                    run_id: worker.run_id.clone(),
+                    role: worker.role.clone(),
+                    sequence: recorded.sequence,
+                    event: recorded.event,
+                }));
+                if flow.is_break() {
+                    return Ok(flow);
+                }
+            }
+            if let Some(error) = error {
+                let flow = handle(Item::Skipped(Skipped { worker_id: worker.worker_id.clone(), error }));
+                if flow.is_break() {
+                    return Ok(flow);
+                }
+            }
+            if done {
+                break;
+            }
+        }
+    }
+    Ok(ControlFlow::Continue(()))
+}
+
+/// Reads as [`read_events`] does, but hands back the events before an
+/// unreadable stream or line with the error that stopped it. Only a cursor
+/// error fails it.
+fn read_partial(directory: &Path, after: u64, limit: usize) -> Result<(Batch, Option<Error>), Error> {
     let mut batch = Batch { events: Vec::new(), cursor: after };
+    match read_into(directory, limit, &mut batch) {
+        Ok(()) => Ok((batch, None)),
+        Err(error @ Error::Cursor(_)) => Err(error),
+        Err(error) => Ok((batch, Some(error))),
+    }
+}
+
+/// Appends up to `limit` complete events after `batch.cursor` to `batch`,
+/// moving its cursor past each.
+fn read_into(directory: &Path, limit: usize, batch: &mut Batch) -> Result<(), Error> {
+    let after = batch.cursor;
+    let path = directory.join("events.jsonl");
     if !path.exists() {
         if after != 0 {
             return Err(Error::Cursor("event stream missing for cursor"));
         }
-        return Ok(batch);
+        return Ok(());
     }
     let mut file = File::open(path).map_err(|_| Error::Record("cannot open worker events"))?;
     let length = file
@@ -287,36 +399,7 @@ pub fn read_events(directory: &Path, after: u64, limit: usize) -> Result<Batch, 
         batch.cursor += line.len() as u64;
         batch.events.push(Recorded { sequence: batch.cursor, event });
     }
-    Ok(batch)
-}
-
-/// Reads every complete event after `cursor` from every worker under the
-/// registry `root`, oldest worker first, and moves `cursor` past them. Each
-/// event carries the cursor just after it, so a reader that stops partway
-/// resumes from the last event it handled.
-pub fn poll(root: &Path, cursor: &mut Cursor) -> Result<Vec<Event>, Error> {
-    let mut events = Vec::new();
-    for worker in Worker::list(root)? {
-        loop {
-            let batch = read_events(worker.directory(), cursor.position(&worker.worker_id), BATCH)?;
-            if batch.events.is_empty() {
-                break;
-            }
-            for recorded in batch.events {
-                cursor.advance(&worker.worker_id, recorded.sequence);
-                events.push(Event {
-                    format: FORMAT,
-                    cursor: cursor.to_string(),
-                    worker_id: worker.worker_id.clone(),
-                    run_id: worker.run_id.clone(),
-                    role: worker.role.clone(),
-                    sequence: recorded.sequence,
-                    event: recorded.event,
-                });
-            }
-        }
-    }
-    Ok(events)
+    Ok(())
 }
 
 /// Whether `id` is a UUID in canonical form: 36 lowercase hex digits and

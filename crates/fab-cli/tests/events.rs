@@ -85,3 +85,35 @@ fn a_restarted_follow_resumes_after_the_last_cursor() {
         .unwrap();
     assert_eq!(output.status.code(), Some(1));
 }
+
+#[test]
+fn an_unreadable_worker_is_named_on_stderr_and_the_others_print() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("state");
+    let good = root.join("records").join(WORKER);
+    let bad = root.join("records").join("22222222-2222-4222-8222-222222222222");
+    fs::create_dir_all(&good).unwrap();
+    fs::create_dir_all(&bad).unwrap();
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+    let config = temp.path().join("host.toml");
+    fs::write(&config, format!("state_dir = {:?}\n", root.to_str().unwrap())).unwrap();
+    let record = json!({"version": 1, "worker_id": WORKER, "run_id": "r", "role": "reviewer",
+        "repository": "org/repo", "task_head": "a".repeat(40), "created_at": 1});
+    fs::write(good.join("worker.json"), record.to_string()).unwrap();
+    fs::write(bad.join("worker.json"), "{").unwrap();
+    append(&good, 1);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_fab"))
+        .args(["events", "--config", config.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let line: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(line["event"]["n"], 1);
+    assert_eq!(line["cursor"], format!("{WORKER}:{}", line["sequence"]));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("skipping worker 22222222-2222-4222-8222-222222222222: invalid worker record"),
+        "{stderr}"
+    );
+}
