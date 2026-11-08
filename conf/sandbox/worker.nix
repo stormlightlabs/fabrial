@@ -1,5 +1,7 @@
 # Build on the trusted host with: nix-build conf/sandbox/worker.nix
 # No credential values or personal paths are evaluated into the store.
+# `entry` replaces Pi with a script inside the same sandbox; probe.sh uses it.
+{ entry ? null }:
 let
   nixpkgs = builtins.fetchTree {
     type = "github";
@@ -21,9 +23,9 @@ let
     patch -p1 < ${./deny-owner-keychain.patch}
   '';
   sandbox = import patched { inherit pkgs; };
-  worker = pkgs.writeShellScriptBin "fab-pi" ''
+  worker = if entry == null then pkgs.writeShellScriptBin "fab-pi" ''
     exec ${pkgs.nodejs}/bin/node "$FAB_PI_RUNTIME/node_modules/@earendil-works/pi-coding-agent/dist/cli.js" "$@"
-  '';
+  '' else pkgs.writeShellScriptBin "fab-pi" (builtins.readFile entry);
 in sandbox.mkSandbox {
   pkg = worker;
   binName = "fab-pi";

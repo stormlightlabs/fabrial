@@ -170,6 +170,21 @@ share a writable Cargo `target/` between workers. Rust does not link
 `libiconv` inside the sandbox, so run Rust gates such as `just check` on the
 host.
 
+On Linux, inside the sandbox, a worker cannot write the shared Git directory's
+`config`, `hooks/` or `objects/info/alternates`, its worktree's `commondir`,
+or the worktree's `.git` file. It can write branch refs, `main` and other
+tasks' branches included, symlinked refs and `packed-refs`. It can also
+write its worktree's `config.worktree`, which Git reads only when the shared
+config sets `extensions.worktreeConfig`. `conf/sandbox/probe.sh` tries each
+of these. Run it from the repository root whenever the sandbox pin in
+`worker.nix` moves; it exits 1 when a read-only path took a write or a plain
+commit failed, and lists the writable paths. It needs what dispatch needs, run as a
+user other than root; `FAB_PROBE_WRAPPER` names a wrapper built with
+`nix-build conf/sandbox/worker.nix --arg entry conf/sandbox/probe-inner.sh`
+for a user who cannot run `nix-build`. Build it from this checkout: nothing
+checks that it matches the current pin. The probe has not run against the
+macOS sandbox.
+
 `--timeout` defaults to 1800 seconds and accepts 1 to 3000. Stdout is JSONL
 progress ending in a `result` or an `error`, and the tmux pane shows the same
 progress. A worker succeeds only when Pi stops normally with a nonempty final
