@@ -176,7 +176,13 @@ fn a_change_to_the_gates_file_runs_the_bases_full() {
 
 #[test]
 fn a_docs_only_change_runs_nothing_and_full_runs_full() {
-    let dir = repo(&[(".github/fabrial-gates.toml", GATES)]);
+    // Planning records count as quiet only under a directory the base's
+    // settings name.
+    let settings = "owner = \"o\"\ntrailer = \"A <a@b>\"\ngates = \"echo g\"\nplanning = [\".arcl/workspace/\"]\n";
+    let dir = repo(&[
+        (".github/fabrial-gates.toml", GATES),
+        (".github/fabrial.toml", settings),
+    ]);
     write(dir.path(), "README.md", "changed\n");
     write(dir.path(), "docs/guide.md", "new\n");
     write(dir.path(), ".arcl/workspace/tasks/t.md", "task\n");

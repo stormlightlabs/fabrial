@@ -102,7 +102,10 @@ fn plan(options: &Options) -> Result<(PathBuf, Vec<Gate>)> {
         return Ok((root, vec![Gate { name: "full".into(), reason, command: gates.full }]));
     }
     // Review depth decides which files are documentation or planning.
-    let selection = select(&gates, &changed, depth::is_doc);
+    let planning = depth::planning(&merge_base);
+    let selection = select(&gates, &changed, |p| {
+        depth::is_doc(p) || depth::is_planning(p, &planning)
+    });
     let strays: Vec<String> = untracked
         .into_iter()
         .filter(|p| !depth::is_doc(p) && !gates.scoped.iter().any(|s| s.matches(p)))
@@ -286,7 +289,10 @@ run = "node --test"
 
     fn names(gates: &Gates, changed: &[&str]) -> (Vec<String>, Vec<String>) {
         let changed: Vec<String> = changed.iter().map(|p| p.to_string()).collect();
-        let selection = select(gates, &changed, depth::is_doc);
+        let planning = vec![".arcl/workspace/".to_string()];
+        let selection = select(gates, &changed, |p| {
+            depth::is_doc(p) || depth::is_planning(p, &planning)
+        });
         (selection.gates.into_iter().map(|g| g.name).collect(), selection.skipped)
     }
 
