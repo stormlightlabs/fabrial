@@ -2,6 +2,8 @@ import { notification } from "./workers.mjs";
 
 /** The message type the journal delivers. */
 const EVENT_TYPE = "fabrial.worker-event";
+/** Message types whose replays the context folds, including one no longer sent. */
+const DEDUPED_TYPES = [EVENT_TYPE, "fabrial.pr-event"];
 
 /** Session-local checkpoints and a durable outbox; queued messages are not delivery receipts. */
 export class WorkerJournal {
@@ -66,11 +68,14 @@ export class WorkerJournal {
   }
 }
 
-/** Reload may replay an undelivered outbox item still in Pi's in-memory queue. */
+/**
+ * Reload may replay an undelivered outbox item still in Pi's in-memory queue.
+ * A session from an earlier PR status can hold such a replay as `fabrial.pr-event`.
+ */
 export function dedupeNotifications(messages) {
   const seen = new Set();
   return messages.filter((message) => {
-    if (message.role !== "custom" || message.customType !== EVENT_TYPE) return true;
+    if (message.role !== "custom" || !DEDUPED_TYPES.includes(message.customType)) return true;
     const key = message.details?.eventKey;
     if (!key) return true;
     if (seen.has(key)) return false;

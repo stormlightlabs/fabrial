@@ -88,6 +88,9 @@ test("undelivered outbox survives restart and duplicate queued messages are dedu
   assert.equal(session.sent.length, 2); // A new process cannot assume the old queue survived.
   const messages = session.sent.map((message) => ({ ...message, role: "custom" }));
   assert.equal(dedupeNotifications(messages).length, 1);
+  // A session from the earlier PR status can hold a replayed PR event; it folds the same way.
+  const pr = { role: "custom", customType: "fabrial.pr-event", content: "PR merged", details: { eventKey: "pr:owner/repo#7:merged" } };
+  assert.equal(dedupeNotifications([pr, { ...pr }]).length, 1);
 });
 
 test("watching an existing worker cannot rewind a checkpoint or reopen completion", () => {

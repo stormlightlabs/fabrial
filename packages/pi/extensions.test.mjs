@@ -148,8 +148,9 @@ test("a merged PR shows as merged and starts no turn", async (t) => {
   const runtime = s.load(["pr", "status"]);
   await runtime.start();
   const status = () => s.ui.widgets["fabrial-status"]?.render(200)[0].replace(links, "") ?? "";
-  await until(() => /checks/.test(status()), "the PR reading");
-  assert.match(status(), /^PR #7 · merged · checks 1\/1 passed/);
+  await until(() => /merged/.test(status()), "the PR reading");
+  assert.match(status(), /^PR #7 · merged · /);
+  assert.doesNotMatch(status(), /checks/); // A finished PR shows its state, not its checks.
   assert.deepEqual(s.sent, []);
   await runtime.shutdown();
   assert.deepEqual(s.errors, []);

@@ -337,9 +337,10 @@ review text or `gh` errors, and no credentials.
 
 In the terminal UI, two rows below the editor show the session's pull request
 and run. The first shows the PR number and state (`draft`, `ready`, `merged`
-or `closed`), its checks, `changes requested` when a reviewer's latest review
-of the head asks for changes, the PR link, the repository, the branch with
-ahead and behind counts, and the diff against the fetched base. The second
+or `closed`), its checks, `changes requested` when the latest review of the
+head from an owner, member or collaborator asks for changes, the PR link, the
+repository, the branch with ahead and behind counts, and the diff against the
+fetched base. A merged or closed PR shows no checks or requested changes. The second
 shows the current step, the workers active of total with blocked and failed,
 and the run ID. Pi's own footer stays under them with the worktree, context,
 cost and model.

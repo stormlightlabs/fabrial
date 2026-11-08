@@ -7,6 +7,8 @@ const RATE_LIMIT_BACKOFF = 5 * 60000;
 const FIELDS = "number,url,state,isDraft,headRefName,headRefOid,statusCheckRollup,reviews";
 const FAILED = ["FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"];
 const PASSED = ["SUCCESS", "NEUTRAL", "SKIPPED"];
+/** Review authors whose verdicts count; a drive-by review from anyone else changes nothing. */
+const TRUSTED = ["OWNER", "MEMBER", "COLLABORATOR"];
 const BRANCH_MOVES = /\bgit\b[^\n]*\b(push|checkout|switch)\b|\bgh\s+pr\s+checkout\b/;
 
 /**
@@ -154,14 +156,14 @@ export function observe(raw, observedAt) {
 }
 
 /**
- * Each author's latest verdict on the current head; a push leaves earlier
- * reviews behind. An approval replaces the same author's request for changes,
+ * Each trusted author's latest verdict on the current head; a push leaves
+ * earlier reviews behind. An approval replaces the same author's request for changes,
  * and the reverse; a comment-only review replaces neither, as on GitHub.
  */
 function currentReviews(raw) {
   const latest = new Map();
   const verdicts = (raw.reviews ?? [])
-    .filter((r) => r.commit?.oid === raw.headRefOid && ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(r.state))
+    .filter((r) => r.commit?.oid === raw.headRefOid && TRUSTED.includes(r.authorAssociation) && ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"].includes(r.state))
     .map((r, i) => ({ r, i }))
     .sort((a, b) => String(a.r.submittedAt ?? "").localeCompare(String(b.r.submittedAt ?? "")) || a.i - b.i);
   for (const { r } of verdicts) latest.set(r.author?.login ?? r.id, r);

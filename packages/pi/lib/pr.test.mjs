@@ -114,7 +114,8 @@ test("a failed first read and a branch with no PR are unknown", async (t) => {
 
 test("only each author's latest review on the head counts", async (t) => {
   const h = host(t);
-  const review = (id, state, login, submittedAt) => ({ id, state, author: { login }, submittedAt, commit: { oid: oldHead } });
+  const review = (id, state, login, submittedAt, authorAssociation = "MEMBER") =>
+    ({ id, state, author: { login }, authorAssociation, submittedAt, commit: { oid: oldHead } });
   h.set({ ...base, reviews: [
     review("R1", "CHANGES_REQUESTED", "owner", "2026-10-25T11:00:00Z"),
     review("R2", "APPROVED", "owner", "2026-10-25T12:00:00Z"),
@@ -131,6 +132,14 @@ test("only each author's latest review on the head counts", async (t) => {
   ] });
   h.advance(MIN_INTERVAL); await collector.poll();
   assert.deepEqual(collector.get().reviews, { approved: 0, changesRequested: 1 });
+
+  // A drive-by review from outside the repository counts for nothing.
+  h.set({ ...base, reviews: [
+    review("R1", "CHANGES_REQUESTED", "stranger", "2026-10-25T11:00:00Z", "NONE"),
+    review("R2", "APPROVED", "contributor", "2026-10-25T11:00:00Z", "CONTRIBUTOR"),
+  ] });
+  h.advance(MIN_INTERVAL); await collector.poll();
+  assert.deepEqual(collector.get().reviews, { approved: 0, changesRequested: 0 });
   collector.stop();
 });
 
@@ -142,7 +151,9 @@ test("merges, closures, failed checks and requested changes are readings only", 
       { id: "R1", state: "CHANGES_REQUESTED", authorAssociation: "MEMBER", body: "Fix it", submittedAt: "2026-10-25T11:00:00Z", commit: { oid: oldHead } },
       { id: "R2", state: "CHANGES_REQUESTED", authorAssociation: "OWNER", body: "Other head", submittedAt: "2026-10-25T11:00:00Z", commit: { oid: newHead } },
     ] });
-  const collector = h.make();
+  // A collector handed the callbacks the earlier PR status took must never call them.
+  let called = 0;
+  const collector = h.make({ notify: () => called++, replay: () => called++ });
   await collector.poll();
   assert.equal(collector.get().status, "failed");
   assert.deepEqual(collector.get().checks.items, [{ name: "ci", state: "failed" }]);
@@ -157,7 +168,7 @@ test("merges, closures, failed checks and requested changes are readings only", 
   // Labels and comments, where `storm:stopped` and `/storm:stop` lived, are never read.
   const view = readFileSync(h.log, "utf8").trim().split("\n").map((line) => JSON.parse(line)).find((c) => c[2] === "view");
   assert.doesNotMatch(view.at(-1), /labels|comments/);
-  assert.equal(collector.notify, undefined);
+  assert.equal(called, 0);
   collector.stop();
 });
 
