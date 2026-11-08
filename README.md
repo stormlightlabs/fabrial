@@ -73,7 +73,7 @@ caches in each worktree names them in `.github/fabrial.toml`, for example
 `fab review-depth` gives a pull request that changes only documentation,
 tests and planning records the standard review rather than the full one.
 Planning records are the Markdown and TOML files under the directories
-`planning` names in the base's `.github/fabrial.toml`, for example
+`planning` names in the merge base's `.github/fabrial.toml`, for example
 `planning = ["plans/"]`.
 
 `fab run` takes a task through implement and review with Pi workers;

@@ -13,8 +13,11 @@
 //!   and images count, since another repository's `docs/` can hold a site
 //!   with its own code. Planning records are the Markdown and TOML files
 //!   under the directories `planning` names in the merge base's
-//!   `.github/fabrial.toml`, so a pull request cannot mark its own code as
-//!   planning. The Check workflow still builds for them.
+//!   `.github/fabrial.toml`, so a pull request cannot widen them itself.
+//!   Configuration under one of those directories stays code: anything
+//!   under a directory such as `.github/` or `.claude/`, agent
+//!   instructions, dotfiles, and manifests such as `Cargo.toml`. The Check
+//!   workflow still builds for planning records.
 //! - `full`: anything else, including skills and agent roles, which change
 //!   how agents work, and workflows, the gate, release code and the sandbox.
 //!
@@ -25,7 +28,7 @@ use std::path::Path;
 
 use clap::{Args, ValueEnum};
 
-use fab_core::settings::{SETTINGS_PATH, Settings};
+use fab_core::settings::{CONFIG_DIRS, SETTINGS_PATH, Settings};
 
 use crate::run::{self, Result};
 
@@ -36,6 +39,21 @@ use crate::run::{self, Result};
 const AGENT_DOCS: &[&str] = &["agents", "claude"];
 /// The extensions of the files under `docs/` that hold only documentation.
 const DOC_KINDS: &[&str] = &[".md", ".png", ".jpg", ".gif"];
+/// TOML files, in lowercase, that configure a build or a tool wherever they
+/// sit, so none is a planning record.
+const MANIFESTS: &[&str] = &[
+    "cargo.toml",
+    "clippy.toml",
+    "deny.toml",
+    "dist-workspace.toml",
+    "fabrial.toml",
+    "fabrial-sequence.toml",
+    "pyproject.toml",
+    "rust-toolchain.toml",
+    "rustfmt.toml",
+    "taplo.toml",
+    "wrangler.toml",
+];
 /// The extensions of the files under a planning directory that hold
 /// planning records.
 const PLANNING_KINDS: &[&str] = &[".md", ".toml"];
@@ -164,14 +182,31 @@ fn is_doc(path: &str) -> bool {
 }
 
 /// Whether a path is a planning record: a Markdown or TOML file under one of
-/// the `planning` directories.
+/// the `planning` directories that is not configuration.
 fn is_planning(path: &str, planning: &[String]) -> bool {
-    planning.iter().any(|dir| path.starts_with(dir.as_str())) && PLANNING_KINDS.iter().any(|k| path.ends_with(k))
+    planning.iter().any(|dir| path.starts_with(dir.as_str()))
+        && PLANNING_KINDS.iter().any(|k| path.ends_with(k))
+        && !is_config(path)
 }
 
-/// Whether a root Markdown file holds agent instructions.
-fn is_instructions(path: &str) -> bool {
+/// Whether a Markdown or TOML file configures fabrial, a tool or an agent
+/// wherever it sits: one under a directory such as `.github/` or
+/// `.claude/`, agent instructions, a dotfile, a manifest or a version file.
+/// A planning directory cannot lighten these.
+fn is_config(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
+    let parts: Vec<&str> = lower.split('/').collect();
+    let name = parts.last().copied().unwrap_or_default();
+    parts[..parts.len() - 1].iter().any(|dir| CONFIG_DIRS.contains(dir))
+        || is_instructions(name)
+        || name.starts_with('.')
+        || MANIFESTS.contains(&name)
+        || VERSION_FILES.contains(&path)
+}
+
+/// Whether a Markdown file's name says it holds agent instructions.
+fn is_instructions(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
     AGENT_DOCS.iter().any(|start| lower.starts_with(start))
 }
 
@@ -299,6 +334,47 @@ mod tests {
         assert_eq!(classify(&paths, &["plans/".into()], |_| true).0, Depth::Standard);
         assert_eq!(classify(&paths, &["plans/tasks/".into()], |_| true).0, Depth::Standard);
         assert_eq!(classify(&paths, &["other/".into()], |_| true).0, Depth::Full);
+    }
+
+    #[test]
+    fn a_planning_directory_cannot_lighten_configuration() {
+        // The reproduced case: a planning setting that names .github/, which
+        // validation refuses, still leaves the gate and sequence full.
+        let github = [".github/".to_string()];
+        for path in [
+            ".github/fabrial.toml",
+            ".github/fabrial-sequence.toml",
+            ".github/CODEOWNERS.md",
+        ] {
+            assert_eq!(classify(&[path], &github, |_| true).0, Depth::Full, "{path}");
+        }
+        let crates = ["crates/".to_string()];
+        for path in [
+            "crates/fab-cli/Cargo.toml",
+            "crates/fab-cli/rustfmt.toml",
+            "crates/fab-cli/src/main.rs",
+        ] {
+            assert_eq!(classify(&[path], &crates, |_| true).0, Depth::Full, "{path}");
+        }
+        let plans = ["plans/".to_string()];
+        for path in [
+            "plans/.claude/skills/x/SKILL.md",
+            "plans/.agents/x.md",
+            "plans/.codex/agents/x.toml",
+            "plans/AGENTS.md",
+            "plans/sub/claude.local.md",
+            "plans/.taplo.toml",
+            "plans/Cargo.toml",
+            "plans/pyproject.toml",
+        ] {
+            assert_eq!(classify(&[path], &plans, |_| true).0, Depth::Full, "{path}");
+        }
+        let root = ["".to_string()];
+        assert_eq!(classify(&["Cargo.toml"], &root, |_| true).0, Depth::Full);
+        assert_eq!(
+            classify(&["crates/fab-cli/README.md"], &crates, |_| true).0,
+            Depth::Standard
+        );
     }
 
     #[test]

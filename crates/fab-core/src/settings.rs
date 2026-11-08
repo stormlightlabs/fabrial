@@ -6,6 +6,10 @@ use crate::Error;
 
 /// Where the settings live, relative to the repository root.
 pub const SETTINGS_PATH: &str = ".github/fabrial.toml";
+/// Directories that hold workflows, settings or what agents read, in
+/// lowercase. Every file under one is configuration, so none can hold
+/// planning records.
+pub const CONFIG_DIRS: &[&str] = &[".github", ".claude", ".agents", ".codex"];
 
 /// The values the workflows, the gate and the skills read.
 ///
@@ -40,7 +44,9 @@ pub struct Settings {
     /// Directories, relative to the repository root and each ending in `/`,
     /// whose Markdown and TOML files are planning records, such as a
     /// tracker's task files. `fab review-depth` gives a pull request that
-    /// changes only those, documentation and tests the standard pass.
+    /// changes only those, documentation and tests the standard pass. None
+    /// may sit under a directory [`CONFIG_DIRS`] names, and configuration
+    /// under one stays code.
     #[serde(default)]
     pub planning: Option<Vec<String>>,
     /// The fabrial version that last wrote the installed files.
@@ -126,10 +132,17 @@ impl Settings {
             }
         }
         for path in self.planning.iter().flatten() {
-            if !is_relative(path) || !path.ends_with('/') || path.split('/').any(|part| part == ".") {
+            let parts = || path.strip_suffix('/').unwrap_or(path).split('/');
+            if !is_relative(path) || !path.ends_with('/') || parts().any(|part| part.is_empty() || part == ".") {
                 return Err(Error::Settings(format!(
                     "`planning` holds {path:?}; each is a directory relative to the repository, ending in `/`, \
                      without `.`, `..`, quotes or backslashes"
+                )));
+            }
+            if parts().any(|part| CONFIG_DIRS.contains(&part.to_ascii_lowercase().as_str())) {
+                return Err(Error::Settings(format!(
+                    "`planning` holds {path:?}; a directory under {} holds configuration, not planning records",
+                    CONFIG_DIRS.join(", ")
                 )));
             }
         }
@@ -458,7 +471,24 @@ mod tests {
             "{text}"
         );
         assert_eq!(Settings::parse(&text).unwrap().planning, s.planning);
-        for bad in ["", "plans", "/plans/", "../plans/", "a/../b/", "./plans/", "a\"b/"] {
+        for bad in [
+            "",
+            "/",
+            "plans",
+            "/plans/",
+            "../plans/",
+            "a/../b/",
+            "./plans/",
+            "plans//",
+            "a//b/",
+            "a\"b/",
+            ".github/",
+            ".GitHub/",
+            ".github/workflows/",
+            ".claude/",
+            "docs/.claude/",
+            ".agents/skills/",
+        ] {
             let mut s = settings();
             s.planning = Some(vec![bad.into()]);
             assert!(s.validate().is_err(), "{bad:?}");

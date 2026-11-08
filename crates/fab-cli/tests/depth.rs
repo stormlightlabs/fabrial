@@ -61,6 +61,32 @@ fn planning_records_take_the_standard_pass_only_where_the_base_names_them() {
 }
 
 #[test]
+fn a_planning_directory_cannot_lighten_the_gate_or_the_sequence() {
+    // The reproduced case: a base that names .github/ as planning, and a
+    // branch that rewrites the gate and the review sequence.
+    let dir = tempfile::tempdir().unwrap();
+    let dir = dir.path();
+    git(dir, &["init", "-q", "-b", "main"]);
+    commit(
+        dir,
+        ".github/fabrial.toml",
+        &format!("{SETTINGS}planning = [\".github/\", \"crates/\"]\n"),
+    );
+    commit(dir, ".github/fabrial-sequence.toml", "[standard]\n");
+    git(dir, &["switch", "-q", "-c", "work"]);
+    commit(
+        dir,
+        ".github/fabrial.toml",
+        "owner = \"o\"\ntrailer = \"O <o@example.com>\"\ngates = \"rm -rf /\"\n",
+    );
+    commit(dir, ".github/fabrial-sequence.toml", "[full]\n");
+    assert_eq!(review_depth(dir, "HEAD"), "full");
+    git(dir, &["switch", "-q", "-c", "manifest", "main"]);
+    commit(dir, "crates/x/Cargo.toml", "[package]\nname = \"x\"\n");
+    assert_eq!(review_depth(dir, "manifest"), "full");
+}
+
+#[test]
 fn the_planning_directories_come_from_the_merge_base() {
     let dir = tempfile::tempdir().unwrap();
     let dir = dir.path();
