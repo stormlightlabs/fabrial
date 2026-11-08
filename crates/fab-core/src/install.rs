@@ -213,6 +213,19 @@ impl std::fmt::Display for Drift {
     }
 }
 
+/// Why [`update`] kept a retired file instead of deleting it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum KeptReason {
+    /// A regular file that matches no version a release wrote.
+    Edited,
+    /// A symlink, which is never followed or deleted.
+    Symlink,
+    /// A directory or another kind of entry that is not a regular file.
+    NotAFile,
+    /// Reading or deleting it failed, with the error.
+    Failed(String),
+}
+
 /// What sits at `.agents/skills`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LinkState {
@@ -244,9 +257,17 @@ pub struct Report {
     pub unchanged: Vec<PathBuf>,
     /// Retired files [`update`] deleted, each as a release wrote it.
     pub removed: Vec<PathBuf>,
-    /// Retired files [`update`] kept: edited since a release wrote them, or
-    /// a symlink or an entry of another kind.
-    pub kept: Vec<PathBuf>,
+    /// Retired files [`update`] kept, each with the reason.
+    pub kept: Vec<Kept>,
+}
+
+/// A retired file [`update`] kept.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Kept {
+    /// The file, relative to the repository root.
+    pub path: PathBuf,
+    /// Why it is still there.
+    pub reason: KeptReason,
 }
 
 /// The text this build installs at `path`, relative to the repository root,
@@ -312,7 +333,7 @@ pub fn update(root: &Path, change: impl FnOnce(&mut Settings), downgrade: bool) 
     }
     change(&mut settings);
     let mut report = init(root, &settings, false)?;
-    remove_retired(root, &mut report)?;
+    remove_retired(root, &mut report);
     Ok(report)
 }
 
@@ -520,30 +541,49 @@ fn under_refused(path: &Path, refused: &[PathBuf]) -> bool {
 
 /// Deletes each retired file that matches a version a release wrote, and
 /// records the rest in `report.kept`. A symlink or another kind of entry at
-/// a retired path is kept, and nothing is followed through one.
-fn remove_retired(root: &Path, report: &mut Report) -> Result<(), Error> {
-    let bad = unmanageable(root, retired_paths())?;
+/// a retired path is kept, and nothing is followed through one. A file that
+/// cannot be read or deleted is kept with the error, so the files `init`
+/// already wrote stay in the report.
+fn remove_retired(root: &Path, report: &mut Report) {
     for (path, hashes) in RETIRED {
         let rel = Path::new(path);
-        if under_refused(rel, &bad) {
-            continue;
-        }
-        if bad.iter().any(|b| b == rel) {
-            report.kept.push(rel.into());
-            continue;
-        }
         let full = root.join(rel);
-        let Some(bytes) = read_bytes(&full)? else {
-            continue;
+        let reason = match retire(root, rel, &full, hashes, &mut report.removed) {
+            Ok(None) => continue,
+            Ok(Some(reason)) => reason,
+            Err(e) => KeptReason::Failed(e.to_string()),
         };
-        if hashes.contains(&sha256_hex(&bytes).as_str()) {
-            fs::remove_file(&full).map_err(|source| Error::Io { path: full, source })?;
-            report.removed.push(rel.into());
-        } else {
-            report.kept.push(rel.into());
-        }
+        report.kept.push(Kept { path: rel.into(), reason });
     }
-    Ok(())
+}
+
+/// Deletes the retired file at `rel` if it matches one of `hashes`, and
+/// records it in `removed`. Returns why it was kept, or `None` when it was
+/// deleted or nothing is there.
+fn retire(
+    root: &Path, rel: &Path, full: &Path, hashes: &[&str], removed: &mut Vec<PathBuf>,
+) -> Result<Option<KeptReason>, Error> {
+    let bad = unmanageable(root, [(rel.to_path_buf(), Kind::File)])?;
+    if under_refused(rel, &bad) {
+        return Ok(None);
+    }
+    if bad.iter().any(|b| b == rel) {
+        let meta = fs::symlink_metadata(full).map_err(|source| Error::Io { path: full.into(), source })?;
+        return Ok(Some(if meta.file_type().is_symlink() {
+            KeptReason::Symlink
+        } else {
+            KeptReason::NotAFile
+        }));
+    }
+    let Some(bytes) = read_bytes(full)? else {
+        return Ok(None);
+    };
+    if !hashes.contains(&sha256_hex(&bytes).as_str()) {
+        return Ok(Some(KeptReason::Edited));
+    }
+    fs::remove_file(full).map_err(|source| Error::Io { path: full.into(), source })?;
+    removed.push(rel.into());
+    Ok(None)
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -736,42 +776,42 @@ mod tests {
 
     /// Every version of each [`RETIRED`] file a release wrote, from
     /// `git show <tag>:<path>` at the first release that wrote it, with its
-    /// file name under `src/testdata`.
+    /// file name under `src/testdata/retired`.
     const RETIRED_VERSIONS: &[(&str, &str, &str)] = &[
         (
             ".github/storm/gate.sh",
             "gate-0.2.0.sh",
-            include_str!("testdata/gate-0.2.0.sh"),
+            include_str!("testdata/retired/gate-0.2.0.sh"),
         ),
         (
             ".github/storm/gate.sh",
             "gate-0.3.0.sh",
-            include_str!("testdata/gate-0.3.0.sh"),
+            include_str!("testdata/retired/gate-0.3.0.sh"),
         ),
         (
             ".github/storm/gate.sh",
             "gate-0.3.1.sh",
-            include_str!("testdata/gate-0.3.1.sh"),
+            include_str!("testdata/retired/gate-0.3.1.sh"),
         ),
         (
             ".github/storm/gate.sh",
             "gate-0.3.2.sh",
-            include_str!("testdata/gate-0.3.2.sh"),
+            include_str!("testdata/retired/gate-0.3.2.sh"),
         ),
         (
             ".github/storm/squash-body.sh",
             "squash-body-0.2.0.sh",
-            include_str!("testdata/squash-body-0.2.0.sh"),
+            include_str!("testdata/retired/squash-body-0.2.0.sh"),
         ),
         (
             ".github/storm/squash-body.sh",
             "squash-body-0.3.2.sh",
-            include_str!("testdata/squash-body-0.3.2.sh"),
+            include_str!("testdata/retired/squash-body-0.3.2.sh"),
         ),
     ];
 
     /// `.github/storm/squash-body.sh` as v0.3.2 to v0.5.0 installed it.
-    const SQUASH_BODY_0_5_0: &str = include_str!("testdata/squash-body-0.3.2.sh");
+    const SQUASH_BODY_0_5_0: &str = include_str!("testdata/retired/squash-body-0.3.2.sh");
 
     #[test]
     fn retired_hashes_match_the_versions_in_testdata() {
@@ -788,7 +828,7 @@ mod tests {
         for (path, _, _) in RETIRED_VERSIONS {
             assert!(RETIRED.iter().any(|(p, _)| p == path), "{path} is not retired");
         }
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/testdata");
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/testdata/retired");
         let on_disk: BTreeSet<String> = fs::read_dir(dir)
             .unwrap()
             .map(|entry| entry.unwrap().file_name().into_string().unwrap())
@@ -854,8 +894,8 @@ mod tests {
         assert_eq!(
             report.kept,
             vec![
-                PathBuf::from(".github/storm/gate.sh"),
-                PathBuf::from(".github/storm/squash-body.sh")
+                Kept { path: ".github/storm/gate.sh".into(), reason: KeptReason::Edited },
+                Kept { path: ".github/storm/squash-body.sh".into(), reason: KeptReason::Edited },
             ]
         );
         assert_eq!(fs::read_to_string(&path).unwrap(), edited);
@@ -888,13 +928,115 @@ mod tests {
         let link = dir.path().join(".github/storm/squash-body.sh");
         std::os::unix::fs::symlink(&target, &link).unwrap();
         let report = update(dir.path(), |_| {}, false).unwrap();
-        assert_eq!(report.kept, vec![PathBuf::from(".github/storm/squash-body.sh")]);
+        assert_eq!(
+            report.kept,
+            vec![Kept { path: ".github/storm/squash-body.sh".into(), reason: KeptReason::Symlink }]
+        );
         assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
         assert_eq!(fs::read_to_string(&target).unwrap(), SQUASH_BODY_0_5_0);
         assert_eq!(
             check(dir.path()).unwrap(),
             vec![Drift::Retired(".github/storm/squash-body.sh".into())]
         );
+    }
+
+    #[test]
+    fn update_keeps_a_directory_at_a_retired_path() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        fs::create_dir(dir.path().join(".github/storm/gate.sh")).unwrap();
+        let report = update(dir.path(), |_| {}, false).unwrap();
+        assert_eq!(
+            report.kept,
+            vec![Kept { path: ".github/storm/gate.sh".into(), reason: KeptReason::NotAFile }]
+        );
+        assert!(dir.path().join(".github/storm/gate.sh").is_dir());
+    }
+
+    /// A delete that fails is kept with its error, and the files `init`
+    /// wrote before it stay in the report. Skipped where the user can write
+    /// to a read-only directory, as root can.
+    #[cfg(unix)]
+    #[test]
+    fn update_reports_its_writes_when_a_retired_file_cannot_be_deleted() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let storm = dir.path().join(".github/storm");
+        fs::write(storm.join("squash-body.sh"), SQUASH_BODY_0_5_0).unwrap();
+        fs::set_permissions(&storm, fs::Permissions::from_mode(0o555)).unwrap();
+        if fs::write(storm.join("probe"), "").is_ok() {
+            fs::set_permissions(&storm, fs::Permissions::from_mode(0o755)).unwrap();
+            eprintln!("skipped: this user can write to a read-only directory");
+            return;
+        }
+        let report = update(dir.path(), |s| s.owner = "someone-else".into(), false);
+        fs::set_permissions(&storm, fs::Permissions::from_mode(0o755)).unwrap();
+        let report = report.unwrap();
+        assert_eq!(
+            report.written,
+            vec![PathBuf::from(CODEOWNERS_PATH), PathBuf::from(SETTINGS_PATH)]
+        );
+        assert!(report.removed.is_empty());
+        assert_eq!(report.kept.len(), 1);
+        assert_eq!(report.kept[0].path, PathBuf::from(".github/storm/squash-body.sh"));
+        assert!(
+            matches!(report.kept[0].reason, KeptReason::Failed(_)),
+            "{:?}",
+            report.kept[0]
+        );
+        assert!(storm.join("squash-body.sh").exists());
+    }
+
+    /// Every file a tagged release installed is installed by this build or
+    /// listed in [`RETIRED`] with that release's version of it. A tag's
+    /// installed files are the `include_str!` paths in its `install.rs`.
+    /// Skipped without git or tags, as in a shallow checkout.
+    #[test]
+    fn every_file_a_release_installed_is_installed_or_retired() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(args)
+                .output()
+                .ok()
+                .filter(|out| out.status.success())
+                .map(|out| out.stdout)
+        };
+        let tags = git(&["tag", "--list", "v*"])
+            .map(|out| String::from_utf8(out).unwrap())
+            .unwrap_or_default();
+        if tags.trim().is_empty() {
+            eprintln!("skipped: no release tags in this checkout");
+            return;
+        }
+        for tag in tags.lines() {
+            let Some(source) = git(&["show", &format!("{tag}:crates/fab-core/src/install.rs")]) else {
+                continue;
+            };
+            let source = String::from_utf8(source).unwrap();
+            for path in source
+                .split("include_str!(\"../../../")
+                .skip(1)
+                .filter_map(|rest| rest.split('"').next())
+            {
+                if embedded(path).is_some() {
+                    continue;
+                }
+                let hashes = RETIRED
+                    .iter()
+                    .find(|(p, _)| *p == path)
+                    .unwrap_or_else(|| panic!("{tag} installed {path}, which is neither installed nor retired"))
+                    .1;
+                let contents = git(&["show", &format!("{tag}:{path}")]).unwrap();
+                assert!(
+                    hashes.contains(&sha256_hex(&contents).as_str()),
+                    "{tag}'s {path} is not in RETIRED"
+                );
+            }
+        }
     }
 
     #[test]
