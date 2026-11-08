@@ -1,8 +1,8 @@
 //! `fab status`: the tasks runs hold. Each claimed task is a `storm/<task>`
 //! branch on the remote ([`fab_core::claims`]); its claim commit names the
-//! holder, run and expiry. One paginated `gh api` call gives the open pull request on
-//! each branch, and with `--config` dispatch's worker records give the step
-//! each task is at.
+//! holder, run and expiry. One paginated `gh api` call gives the open pull
+//! request on each branch, and with `--config` dispatch's worker records
+//! give the step each task is at.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -68,16 +68,13 @@ fn status(options: &Options) -> Result<()> {
         Err(_) => claims::now(),
     };
     let listed = Store::new(".", &options.remote).list().map_err(|e| e.to_string())?;
-    let pulls = if listed.is_empty() {
-        Vec::new()
-    } else {
-        let repo = match &options.repo {
-            Some(repo) => repo.clone(),
-            None => cleanup::repo_from_url(&run::git(Path::new("."), &["remote", "get-url", &options.remote])?)
-                .ok_or_else(|| format!("cannot read owner/name from {}'s URL; pass --repo", options.remote))?,
-        };
-        pulls(&repo)?
+    let repo = match (&options.repo, listed.is_empty()) {
+        (_, true) => String::new(),
+        (Some(repo), false) => repo.clone(),
+        (None, false) => cleanup::repo_from_url(&run::git(Path::new("."), &["remote", "get-url", &options.remote])?)
+            .ok_or_else(|| format!("cannot read owner/name from {}'s URL; pass --repo", options.remote))?,
     };
+    let pulls = if listed.is_empty() { Vec::new() } else { pulls(&repo)? };
     let workers = match &options.config {
         Some(config) => Some(workers(config)?),
         None => None,
@@ -87,7 +84,7 @@ fn status(options: &Options) -> Result<()> {
     }
     for task in &listed {
         let pull = pulls.iter().find(|(b, _)| *b == task.branch).map(|(_, p)| p);
-        let step = workers.as_ref().map(|w| step(w, &task.task));
+        let step = workers.as_ref().map(|w| step(w, &repo, &task.task));
         if options.json {
             println!("{}", object(task, pull, step.as_ref(), now));
         } else {
@@ -107,7 +104,11 @@ fn pulls(repo: &str) -> Result<Vec<(String, Pull)>> {
     ])?;
     Ok(cleanup::pages(&list)?
         .iter()
-        .filter(|p| p["head"]["repo"]["full_name"].as_str() == Some(repo))
+        .filter(|p| {
+            p["head"]["repo"]["full_name"]
+                .as_str()
+                .is_some_and(|name| name.eq_ignore_ascii_case(repo))
+        })
         .filter_map(|p| {
             let branch = p["head"]["ref"].as_str()?.to_string();
             let pull = Pull {
@@ -130,12 +131,15 @@ fn workers(_: &Path) -> Result<Vec<Value>> {
     Err("--config reads dispatch's worker records, which only Unix hosts keep".into())
 }
 
-/// The latest worker whose worktree is the task's: `fab run` gives the task
-/// worktree the task's name, and each review worktree
-/// `<task>-<role>-<short head>`.
-fn step(workers: &[Value], task: &str) -> Option<Step> {
+/// The latest worker for `repo` whose worktree is the task's: `fab run`
+/// gives the task worktree the task's name, and each review worktree
+/// `<task>-<role>-<short head>`. Hosts keep one `state_dir` for every
+/// repository, so a worker from another repository with a same-named task
+/// is skipped.
+fn step(workers: &[Value], repo: &str, task: &str) -> Option<Step> {
     workers
         .iter()
+        .filter(|w| w["repository"].as_str().is_some_and(|r| r.eq_ignore_ascii_case(repo)))
         .filter(|w| {
             let role = w["role"].as_str().unwrap_or_default();
             let name = Path::new(w["worktree"].as_str().unwrap_or_default())
@@ -222,7 +226,10 @@ mod tests {
     use super::*;
 
     fn worker(id: &str, role: &str, worktree: &str, created_at: u64) -> Value {
-        json!({"worker_id": id, "role": role, "state": "running", "worktree": worktree, "created_at": created_at})
+        json!({
+            "worker_id": id, "role": role, "state": "running", "repository": "o/r",
+            "worktree": worktree, "created_at": created_at,
+        })
     }
 
     #[test]
@@ -233,8 +240,17 @@ mod tests {
             worker("3", "reviewer", "/w/r-worktrees/t1-2-reviewer-abc1234", 30),
             worker("4", "implementer", "/w/r-worktrees/t1-implementer-notahex", 40),
         ];
-        let step = step(&workers, "t1").unwrap();
+        let step = step(&workers, "o/r", "t1").unwrap();
         assert_eq!((step.worker_id.as_str(), step.role.as_str()), ("2", "reviewer"));
-        assert!(super::step(&workers, "t3").is_none());
+        assert!(super::step(&workers, "o/r", "t3").is_none());
+    }
+
+    #[test]
+    fn the_step_skips_workers_from_another_repository() {
+        let mut other = worker("2", "reviewer", "/w/q-worktrees/t1", 20);
+        other["repository"] = json!("o/q");
+        let workers = [worker("1", "implementer", "/w/r-worktrees/t1", 10), other];
+        assert_eq!(step(&workers, "O/R", "t1").unwrap().worker_id, "1");
+        assert!(step(&workers, "o/s", "t1").is_none());
     }
 }

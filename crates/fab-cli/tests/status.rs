@@ -1,7 +1,6 @@
-//! Runs `fab status` against a bare origin whose `storm/` branches `fab
-//! claim` writes, with a fake `gh` that answers the pull request list from a
-//! file and
-//! the clock set through `FAB_CLAIM_NOW`.
+//! Runs `fab status` against a bare origin whose `storm/` branches
+//! `fab claim` writes, with a fake `gh` that answers the pull request list
+//! from a file and the clock set through `FAB_CLAIM_NOW`.
 #![cfg(unix)]
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
