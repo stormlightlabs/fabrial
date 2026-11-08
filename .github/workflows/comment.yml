@@ -21,7 +21,9 @@
 # With `answers` set to `true`, the body is a revise pass's answers, a line
 # `<comment id> · <outcome>` per finding: `fab pr-answer` posts them as
 # replies on the findings' threads in one review, then resolves each thread
-# whose outcome starts with `Fixed` or `Deferred`.
+# whose outcome starts with `Fixed` or `Deferred`. With `reviewer` set to
+# the login of the person whose review the answers address, the bot then
+# requests that person's review again. Nothing here dismisses a review.
 name: Bot comment
 
 on:
@@ -45,6 +47,10 @@ on:
         description: true to post the body as answers on the findings' review threads
         required: false
         default: "false"
+      reviewer:
+        description: With answers, the login of the person whose review they address, to request their review again
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -66,6 +72,7 @@ jobs:
           SECTION: ${{ inputs.section }}
           REVIEW: ${{ inputs.review }}
           ANSWERS: ${{ inputs.answers }}
+          REVIEWER: ${{ inputs.reviewer }}
         run: |
           if [[ ! $PR =~ ^[0-9]+$ ]]; then
             echo "::error title=pr::'$PR' is not a pull request number."
@@ -77,6 +84,10 @@ jobs:
           [[ $ANSWERS == true ]] && modes=$((modes + 1))
           if ((modes > 1)); then
             echo "::error title=mode::Set at most one of section, review and answers."
+            exit 1
+          fi
+          if [[ -n $REVIEWER && $ANSWERS != true ]]; then
+            echo "::error title=reviewer::Set reviewer only with answers."
             exit 1
           fi
           printf '%s\n' "$BODY" > "$RUNNER_TEMP/body.md"
@@ -102,6 +113,7 @@ jobs:
           SECTION: ${{ inputs.section }}
           HEAD_SHA: ${{ inputs.review }}
           ANSWERS: ${{ inputs.answers }}
+          REVIEWER: ${{ inputs.reviewer }}
         run: |
           if [[ -n $SECTION ]]; then
             fab pr-status --body-file "$RUNNER_TEMP/body.md"

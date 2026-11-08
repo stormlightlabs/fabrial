@@ -113,6 +113,9 @@ stage's line says:
   earlier stages' findings and replies when there are any.
 - A reviser gets the pull request, the task worktree and its review's
   findings, as the review the bot posted.
+- Every agent gets the model and effort you dispatched it with, for the
+  opening line of what it posts. An agent cannot see its own effort; one
+  that was not told writes `not stated`.
 - After each stage that pushes, pin the new head and run `fab sequence` on it
   again. When the depth rose, the run goes on to the stages it added. The
   depth never drops.

@@ -128,8 +128,8 @@ enum Command {
     /// they name; the Bot comment workflow runs it.
     PrReview(review::ReviewOptions),
     /// Post a revise pass's answers as replies on the findings' threads, in
-    /// one review, and resolve the threads they close; the Bot comment
-    /// workflow runs it.
+    /// one review, resolve the threads they close and request a person's
+    /// review again; the Bot comment workflow runs it.
     PrAnswer(review::AnswerOptions),
     /// After a merge: remove merged agent worktrees and their branches,
     /// fast-forward a clean main, and list open agent pull requests that

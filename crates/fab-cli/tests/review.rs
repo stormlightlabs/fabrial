@@ -14,7 +14,8 @@ const HEAD: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 /// branch, the compare with `TEST_COMPARE`, the review threads with
 /// `TEST_THREADS`, the bot's pending reviews with `TEST_PENDING`, and each
 /// mutation with the id its filter reads. With
-/// `TEST_FAIL` set to a mutation's name, that mutation fails.
+/// `TEST_FAIL` set to a mutation's name, that mutation fails, and with it
+/// set to `requested_reviewers`, the review request fails.
 const FAKE_GH: &str = r#"#!/usr/bin/env bash
 set -u
 input=null filter= query=
@@ -45,6 +46,9 @@ if [[ $1 == api && $2 == graphql ]]; then
   exit 0
 fi
 case "$*" in
+  "api -X POST "*/requested_reviewers*)
+    if [[ ${TEST_FAIL:-} == requested_reviewers ]]; then echo "HTTP 422" >&2; exit 1; fi
+    echo '{}' ;;
   "api -X POST "*/reviews*) echo '{"id": 1}' ;;
   "api "*/pulls/7" "*) reply '{"base": {"ref": "main"}}' ;;
   "api "*/compare/main...*) printf '%s\n' "$TEST_COMPARE" ;;
@@ -294,4 +298,155 @@ fn a_pending_review_a_cancelled_run_left_is_deleted_first() {
         )
     );
     assert_eq!(mutations[1].0, "addPullRequestReview");
+}
+
+/// The `gh` calls that request a review, as their arguments.
+fn rerequests(run: &Run) -> Vec<Vec<String>> {
+    run.calls
+        .iter()
+        .filter(|c| {
+            c["args"][3]
+                .as_str()
+                .is_some_and(|p| p.ends_with("/requested_reviewers"))
+        })
+        .map(|c| {
+            c["args"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|a| a.as_str().unwrap().to_string())
+                .collect()
+        })
+        .collect()
+}
+
+/// A body of `n` words.
+fn words(n: usize) -> String {
+    vec!["word"; n].join(" ")
+}
+
+#[test]
+fn a_review_at_its_word_limit_posts() {
+    // The separators of a finding line are not words.
+    let report = format!("- low · src/a.rs:2 — {}", words(198));
+    let compare = compare();
+    let run = fab("pr-review", &report, &[("HEAD_SHA", HEAD), ("TEST_COMPARE", &compare)]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert_eq!(run.calls.iter().filter(|c| c["args"][1] == "-X").count(), 1);
+}
+
+#[test]
+fn a_review_over_its_word_limit_posts_nothing() {
+    let run = fab("pr-review", &words(201), &[("HEAD_SHA", HEAD)]);
+    assert_eq!(run.code, Some(2));
+    assert!(run.stderr.contains("201 words"), "{}", run.stderr);
+    assert!(run.stderr.contains("limit of 200"), "{}", run.stderr);
+    assert!(run.calls.is_empty());
+}
+
+#[test]
+fn answers_at_their_word_limit_post() {
+    let run = fab("pr-answer", &words(150), &[]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert_eq!(run.calls.iter().filter(|c| c["args"][1] == "-X").count(), 1);
+}
+
+#[test]
+fn answers_over_their_word_limit_post_nothing() {
+    let run = fab("pr-answer", &words(151), &[("REVIEWER", "alice")]);
+    assert_eq!(run.code, Some(2));
+    assert!(run.stderr.contains("151 words"), "{}", run.stderr);
+    assert!(run.stderr.contains("limit of 150"), "{}", run.stderr);
+    assert!(run.calls.is_empty());
+}
+
+#[test]
+fn answers_to_a_person_request_their_review_again() {
+    let threads = threads();
+    let run = fab(
+        "pr-answer",
+        "- 1001 · Fixed in ccccccc.",
+        &[("TEST_THREADS", &threads), ("REVIEWER", "alice")],
+    );
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert_eq!(
+        rerequests(&run),
+        [[
+            "api",
+            "-X",
+            "POST",
+            "repos/org/repo/pulls/7/requested_reviewers",
+            "-f",
+            "reviewers[]=alice"
+        ]]
+    );
+    let last = run.calls.last().unwrap();
+    assert_eq!(
+        last["args"][3], "repos/org/repo/pulls/7/requested_reviewers",
+        "requested after the answers post"
+    );
+    assert!(
+        !run.calls.iter().any(|c| c.to_string().contains("dismiss")),
+        "nothing dismisses a review"
+    );
+}
+
+#[test]
+fn answers_in_a_plain_review_request_the_person_again_too() {
+    let run = fab("pr-answer", "The body is fixed in ccccccc.", &[("REVIEWER", "alice")]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert_eq!(rerequests(&run).len(), 1);
+}
+
+#[test]
+fn answers_to_a_pass_request_no_review() {
+    let threads = threads();
+    let run = fab(
+        "pr-answer",
+        "- 1001 · Fixed.",
+        &[("TEST_THREADS", &threads), ("REVIEWER", "")],
+    );
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(rerequests(&run).is_empty());
+}
+
+#[test]
+fn a_reviewer_that_is_not_a_login_posts_nothing() {
+    let run = fab("pr-answer", "- 1001 · Fixed.", &[("REVIEWER", "alice bob")]);
+    assert_eq!(run.code, Some(2));
+    assert!(run.stderr.contains("not a GitHub login"), "{}", run.stderr);
+    assert!(run.calls.is_empty());
+}
+
+#[test]
+fn a_failed_review_request_still_counts_the_answers_as_posted() {
+    let threads = threads();
+    let run = fab(
+        "pr-answer",
+        "- 1001 · Fixed.",
+        &[
+            ("TEST_THREADS", &threads),
+            ("REVIEWER", "alice"),
+            ("TEST_FAIL", "requested_reviewers"),
+        ],
+    );
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(
+        run.stderr.contains("cannot request alice's review again"),
+        "{}",
+        run.stderr
+    );
+}
+
+#[test]
+fn a_dry_run_answer_prints_the_review_request() {
+    let threads = threads();
+    let run = fab(
+        "pr-answer",
+        "- 1001 · Fixed.",
+        &[("TEST_THREADS", &threads), ("REVIEWER", "alice"), ("DRY_RUN", "1")],
+    );
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(run.stderr.contains("requested_reviewers"), "{}", run.stderr);
+    assert!(rerequests(&run).is_empty());
 }

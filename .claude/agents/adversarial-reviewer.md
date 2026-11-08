@@ -24,7 +24,12 @@ wrong about the code. Then look for what the standard pass would miss:
 
 Complexity and prose are in scope as well: the worst case is often reachable
 because something was harder than it needed to be, and documentation that
-contradicts the code is a finding as much as a missing bounds check.
+contradicts the code is a finding as much as a missing bounds check. Judge
+the pull request title and body as the squash commit that lands; the
+branch's commit bodies are discarded at merge and get no finding.
+
+Open your report with the line the `review` skill gives, naming the model and
+effort your invoker gave you, or `not stated` for one it did not.
 
 Every finding names the input, ordering or state that reaches the failure, and
 how far you got: reproduced with a test you ran, traced through the code, or

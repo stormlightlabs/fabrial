@@ -2,7 +2,7 @@
 id = "arcl-t-01M5YZ6NKYWPRM31VWNJKJ8ET7"
 phase = "arcl-ph-01M5S4SCFE01K31R17FQ29AHJ8"
 title = "Tighten what review passes judge and post"
-status = "pending"
+status = "in_progress"
 priority = "normal"
 position = 2
 +++
@@ -25,3 +25,6 @@ Acceptance criteria:
 - [ ] `fab pr-review` and `fab pr-answer` refuse a body over its limit (200
       words for a pass, 150 for answers) and print the count, with tests at
       the limit and over it
+- [ ] After a revise that answers a person's review, the bot re-requests
+      that reviewer's review; nothing in fabrial dismisses a review, and the
+      `revise` skill says the person or the owner decides on a stale one

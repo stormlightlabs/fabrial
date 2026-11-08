@@ -75,8 +75,13 @@ finding.
 ### Prose
 
 Documentation in the diff is a change like any other, and so are the pull
-request title and body, the branch's commit messages and the comments posted.
-Judge them against the `writing-docs` skill and its tells catalogue.
+request title and body and the comments posted. Judge them against the
+`writing-docs` skill and its tells catalogue.
+
+The squash commit on `main` takes the pull request's title and body, so judge
+those as the commit message that lands. The branch's commits are discarded at
+merge: raise no finding about a commit's body. A first commit's subject
+matters only as the title it gave the pull request, so judge the title.
 
 | What you find                                     | Severity |
 | ------------------------------------------------- | -------- |
@@ -117,13 +122,16 @@ case is speculation; drop it or mark it `nit`.
 ## Keep the report readable
 
 - Most severe first, with no preamble and no closing summary.
-- Under 200 words. Past ten findings, give the ten that matter and say how many
-  you left out. Cut a finding rather than compressing ten into denser prose.
+- Under 200 words: `fab pr-review` refuses a longer report and prints its
+  count. Past ten findings, give the ten that matter and say how many you
+  left out. Cut a finding rather than compressing ten into denser prose.
 - Cite `<path>:<line>` instead of quoting the diff back.
 - Group repeats: one finding naming every site.
 - Open with one line naming the pass, the target and what you ran as:
-  `Adversarial pass on #12 at 4f2a91c · <model> · <effort>`. Use the model
-  identifier the harness reports.
+  `Adversarial pass on #12 at 4f2a91c · <model> · <effort>`. Write the model
+  and effort your invoker gave you. A pass cannot see its own effort, so when
+  it was not told one, it writes `not stated` in its place, and the same for
+  a model it was not told and the harness does not report.
 
 Say `No findings` when there are none rather than inventing one.
 
