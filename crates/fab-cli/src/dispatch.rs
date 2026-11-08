@@ -15,6 +15,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use clap::Args;
+use fab_core::settings::{SETTINGS_PATH, Settings};
 use nix::sys::signal::{Signal, killpg};
 use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
@@ -269,24 +270,35 @@ fn role_input(root: &Path, role: &str) -> Result<(Vec<String>, Vec<String>, Stri
 }
 
 /// The skills a role's worker gets as read-only input. The implementer gets
-/// `implement` in place of `review`, and `arclightning` where the repository
-/// commits an arcl workspace and carries that skill; the reviser adds
-/// `revise` and `resync`.
-fn role_skills(root: &Path, role: &str) -> Vec<String> {
+/// `implement` in place of `review`, and the skill `tasks.skill` names in
+/// the trusted checkout's settings; the reviser adds `revise` and `resync`.
+/// Settings that are missing name no skill; settings that do not parse are
+/// an error.
+fn role_skills(root: &Path, role: &str) -> Result<Vec<String>> {
     let mut skills: Vec<String> = match role {
         "implementer" => vec!["implement".into(), "storm".into(), "writing-docs".into()],
         _ => vec!["review".into(), "storm".into(), "writing-docs".into()],
     };
     if role == "implementer"
-        && root.join(".arcl/workspace").is_dir()
-        && root.join(".claude/skills/arclightning").is_dir()
+        && let Some(skill) = task_skill(root)?
     {
-        skills.push("arclightning".into());
+        skills.push(skill);
     }
     if role == "reviser" {
         skills.extend(["revise".into(), "resync".into()]);
     }
-    skills
+    Ok(skills)
+}
+
+/// The skill the trusted checkout's settings give an implementer for its
+/// tracker, if they name one.
+fn task_skill(root: &Path) -> Result<Option<String>> {
+    if !root.join(SETTINGS_PATH).exists() {
+        return Ok(None);
+    }
+    let settings =
+        Settings::parse(&read(&trusted(root, SETTINGS_PATH)?)?).map_err(|e| format!("{SETTINGS_PATH}: {e}"))?;
+    Ok(settings.tasks.and_then(|t| t.skill))
 }
 
 fn role_config(root: &Path, role: &str) -> Result<(String, String)> {
@@ -1255,7 +1267,7 @@ fn dispatch(options: Options) -> Result<u8> {
     let (model, thinking) = role_config(&root, &options.role)?;
     let (tools, unmapped, body) = role_input(&root, &options.role)?;
     emit(&json!({"type": "progress", "event": format!("unmapped tools: {}", unmapped.join(", "))}));
-    let skills = role_skills(&root, &options.role);
+    let skills = role_skills(&root, &options.role)?;
     let interrupted = signals()?;
     let mut private = Private::new(&config.state_dir)?;
     let p = &private.path;
