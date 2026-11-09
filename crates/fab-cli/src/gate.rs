@@ -11,7 +11,9 @@
 //!   `/storm:ready <sha>` naming the head sets it to success, marks a draft
 //!   ready and sets the squash message in the status comment (see
 //!   `status.rs`). `/storm:done <sha>` is another name for `/storm:ready`.
-//!   A person or an outer loop merges, by hand or with auto-merge.
+//!   A person or an outer loop merges, by hand or with auto-merge. These
+//!   comments count only from the bot or a user with write access; the gate
+//!   ignores anyone else's without a reply.
 //! - `edit`: `SENDER` changed the title or body. On a ready pull request whose
 //!   head passed review, it sets the new squash message. Edits from anyone
 //!   without write access are ignored.
@@ -314,16 +316,28 @@ impl Gate {
         self.gh_write(&["pr", "comment", &self.pr, "--repo", &self.repo, "--body", &body])
     }
 
+    /// Whether a login is the bot or has write, maintain or admin access to
+    /// the repository. A failed read counts as no access.
+    fn can_write(&self, login: &str) -> bool {
+        if login == format!("{BOT_SLUG}[bot]") {
+            return true;
+        }
+        // An unknown author has no access; every name is some account's.
+        if login.is_empty() {
+            return false;
+        }
+        let path = format!("repos/{}/collaborators/{login}/permission", self.repo);
+        let permission = run::gh(&["api", &path, "--jq", ".permission"]).unwrap_or_default();
+        // The legacy `permission` field reports maintain as write; the arm
+        // keeps the check right if GitHub ever reports it as is.
+        matches!(permission.as_str(), "admin" | "maintain" | "write")
+    }
+
     fn edit(&self, sender: &str) -> Result<()> {
         // Only the bot, or someone who could push to the branch, changes the
         // message a reviewed pull request merges with. A fork's author cannot.
-        if sender != format!("{BOT_SLUG}[bot]") {
-            let sender = if sender.is_empty() { "none" } else { sender };
-            let path = format!("repos/{}/collaborators/{sender}/permission", self.repo);
-            let permission = run::gh(&["api", &path, "--jq", ".permission"]).unwrap_or_default();
-            if !matches!(permission.as_str(), "admin" | "maintain" | "write") {
-                return Ok(());
-            }
+        if !self.can_write(sender) {
+            return Ok(());
         }
         let draft = self.view("isDraft")?["isDraft"] == true;
         if !draft && !self.last_success(&self.head).is_empty() {
@@ -358,6 +372,14 @@ impl Gate {
     fn comment(&self, body: &str, author: &str) -> Result<()> {
         let line = body.lines().next().unwrap_or_default().replace('\r', "");
         let short = self.short().to_string();
+        let command = ["/storm:ready", "/storm:done"]
+            .into_iter()
+            .find(|c| is_command(&line, c));
+        // Only the bot, or someone who could push to the branch, accepts a
+        // head. Anyone else is ignored without a reply, as an edit is.
+        if (line.starts_with("Review finished at ") || command.is_some()) && !self.can_write(author) {
+            return Ok(());
+        }
         if line.starts_with("Review finished at ") {
             let named = named_sha(&line, 4);
             if !self.names_head(&named) {
@@ -369,10 +391,7 @@ impl Gate {
             // After the success, so an edit from here on finds the head
             // reviewed and posts its own message.
             self.post_squash_message()
-        } else if let Some(command) = ["/storm:ready", "/storm:done"]
-            .into_iter()
-            .find(|c| is_command(&line, c))
-        {
+        } else if let Some(command) = command {
             let named = named_sha(&line, 2);
             if !self.names_head(&named) {
                 return self.wrong_sha(command, &named);
@@ -440,7 +459,7 @@ pub fn run(options: Options) -> Result<()> {
         ),
         Event::Comment => gate.comment(
             &options.body.unwrap_or_default(),
-            &given(options.author).unwrap_or_else(|| "someone".into()),
+            &given(options.author).unwrap_or_default(),
         ),
     }
 }

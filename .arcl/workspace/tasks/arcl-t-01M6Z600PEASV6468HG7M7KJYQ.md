@@ -2,9 +2,10 @@
 id = "arcl-t-01M6Z600PEASV6468HG7M7KJYQ"
 phase = "arcl-ph-01M5S4SCFE01K31R17FQ29AHJ8"
 title = "Require write access for /storm:ready and /storm:done"
-status = "pending"
+status = "completed"
 priority = "high"
 position = 0
+evidence = "Done in #104 at 29b1ca6: the gate accepts a head only from a writer or the bot"
 +++
 
 The Review gate turns `storm/review` green on `/storm:ready <sha>`,

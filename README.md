@@ -110,8 +110,8 @@ repository, share its `THUNDERBOT_APP_ID` and `THUNDERBOT_PRIVATE_KEY`
 secrets with it, and set up the ruleset on `main`, as
 [docs/bot-setup.md](docs/bot-setup.md) says. The Review gate reads three
 comments: `Review finished at <sha>`, which the agent posts as the bot, and
-`/storm:ready <sha>` or `/storm:done <sha>`, with which the owner, a member
-or a collaborator, read-only included, accepts that head as it is. Either
+`/storm:ready <sha>` or `/storm:done <sha>`, with which a user with write
+access accepts that head as it is. Either
 one naming the head turns `storm/review` green, marks the draft ready and
 sets the squash message in one bot status comment. You merge it by hand or with auto-merge,
 if the repository allows it. The gate runs from `main`, so on the install

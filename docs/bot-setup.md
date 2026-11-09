@@ -94,13 +94,9 @@ The workflows assume a ruleset on `main` with these rules:
 Leave the App off the ruleset's bypass list, so no token minted from it can
 merge past these rules.
 
-The gate checks no permission on `/storm:ready`, `/storm:done` or a
-person's `Review finished at`. It takes them from anyone GitHub marks as
-the owner, a member or a collaborator, which includes read-only
-collaborators and every organization member. Any of them can turn
-`storm/review` green on the current head, so the ruleset's owner approval
-is what stops an unreviewed merge. An edit to the title or body counts only
-from a user with write access.
+`/storm:ready`, `/storm:done`, a person's `Review finished at` and an edit
+to the title or body count only from a user with write, maintain or admin
+access. The gate ignores the rest without a reply.
 
 The gate runs from `main` through `pull_request_target`. On the pull request
 that installs fabrial it does nothing, so mark that draft ready yourself and

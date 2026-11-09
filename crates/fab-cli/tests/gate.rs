@@ -17,7 +17,8 @@ const BOT: &str = "stormlight-thunderbot[bot]";
 /// REST API's shape, in the file `TEST_COMMENTS`: a POST adds a comment from
 /// the bot, a PATCH edits one, and a read lists them. It answers `pr view`
 /// with `TEST_PR`, or `TEST_PR_LATER` once the run has written a comment; a
-/// collaborator's permission with `TEST_PERMISSION`; and a commit's check
+/// collaborator's permission with `TEST_PERMISSION`, failing the read when it
+/// is `fail`; and a commit's check
 /// runs with `TEST_CHECK_RUNS`. It applies `--jq` as gh does and accepts the
 /// other writes the gate makes.
 const FAKE_GH: &str = r#"#!/usr/bin/env bash
@@ -67,7 +68,9 @@ case "$1 ${2:-}" in
     if [[ $path == --paginate ]]; then path=$3; fi
     case "$path" in
       */issues/*/comments*) out=$(cat "$TEST_COMMENTS") ;;
-      */collaborators/*/permission) out="{\"permission\": \"${TEST_PERMISSION:-none}\"}" ;;
+      */collaborators/*/permission)
+        if [[ ${TEST_PERMISSION:-} == fail ]]; then exit 1; fi
+        out="{\"permission\": \"${TEST_PERMISSION:-none}\"}" ;;
       */check-runs\?*) out=${TEST_CHECK_RUNS:-"{\"check_runs\": []}"} ;;
       */pulls/*/commits) out=${TEST_COMMITS:-[]} ;;
       *) exit 92 ;;
@@ -635,7 +638,12 @@ fn storm_ready_and_storm_done_accept_the_head_and_post_the_squash_message() {
     for command in ["/storm:ready", "/storm:done"] {
         let body = format!("{command} {}", &HEAD[..7]);
         let run = gate(
-            &[("EVENT", "comment"), ("AUTHOR", "desertthunder"), ("BODY", &body)],
+            &[
+                ("EVENT", "comment"),
+                ("AUTHOR", "desertthunder"),
+                ("BODY", &body),
+                ("TEST_PERMISSION", "admin"),
+            ],
             json!({}),
             None,
         );
@@ -653,6 +661,108 @@ fn storm_ready_and_storm_done_accept_the_head_and_post_the_squash_message() {
 }
 
 #[test]
+fn accepting_a_head_needs_write_access_or_the_bot() {
+    let ready = format!("/storm:ready {}", &HEAD[..7]);
+    let done = format!("/storm:done {}", &HEAD[..7]);
+    let reviewed = format!("Review finished at {HEAD}");
+    let wrong = "/storm:ready bbbbbbb".to_string();
+    // `none` is what GitHub answers for an organization member with no
+    // access to the repository.
+    for (permission, accepts) in [
+        ("admin", true),
+        ("maintain", true),
+        ("write", true),
+        ("triage", false),
+        ("read", false),
+        ("none", false),
+    ] {
+        for body in [&ready, &done, &reviewed] {
+            let env = [
+                ("EVENT", "comment"),
+                ("AUTHOR", "someone"),
+                ("BODY", body.as_str()),
+                ("TEST_PERMISSION", permission),
+            ];
+            let run = gate(&env, json!({}), None);
+            assert_eq!(run.code, Some(0), "{permission} {body}: {}", run.stderr);
+            assert_eq!(run.succeeded_check(), accepts, "{permission} {body}");
+            assert_eq!(
+                run.calls.iter().any(|c| c.is("pr", "ready")),
+                accepts,
+                "{permission} {body}"
+            );
+            assert_eq!(run.posts().is_empty(), !accepts, "{permission} {body}");
+            assert!(
+                run.calls
+                    .iter()
+                    .any(|c| c.args.iter().any(|a| a.contains("collaborators/someone/permission"))),
+                "{permission} {body}"
+            );
+        }
+        // An ignored commenter gets no reply, even naming the wrong commit.
+        let env = [
+            ("EVENT", "comment"),
+            ("AUTHOR", "someone"),
+            ("BODY", wrong.as_str()),
+            ("TEST_PERMISSION", permission),
+        ];
+        let run = gate(&env, json!({}), None);
+        assert_eq!(run.calls.iter().any(|c| c.is("pr", "comment")), accepts, "{permission}");
+    }
+    // A failed permission read counts as no access.
+    for body in [&ready, &done, &reviewed, &wrong] {
+        let env = [
+            ("EVENT", "comment"),
+            ("AUTHOR", "someone"),
+            ("BODY", body.as_str()),
+            ("TEST_PERMISSION", "fail"),
+        ];
+        let run = gate(&env, json!({}), None);
+        assert_eq!(run.code, Some(0), "{body}: {}", run.stderr);
+        assert!(!run.succeeded_check(), "{body}");
+        assert!(run.posts().is_empty(), "{body}");
+        assert!(
+            !run.calls.iter().any(|c| c.is("pr", "comment") || c.is("pr", "ready")),
+            "{body}"
+        );
+    }
+    // An empty author has no access, and reads no account's permission.
+    for body in [&ready, &done, &reviewed, &wrong] {
+        let env = [
+            ("EVENT", "comment"),
+            ("AUTHOR", ""),
+            ("BODY", body.as_str()),
+            ("TEST_PERMISSION", "admin"),
+        ];
+        let run = gate(&env, json!({}), None);
+        assert_eq!(run.code, Some(0), "{body}: {}", run.stderr);
+        assert!(!run.succeeded_check(), "{body}");
+        assert!(run.posts().is_empty(), "{body}");
+        assert!(
+            !run.calls
+                .iter()
+                .any(|c| c.args.iter().any(|a| a.contains("/permission"))),
+            "{body}"
+        );
+    }
+    // The bot needs no permission read.
+    let run = gate(&with(&finished(), &[("TEST_PERMISSION", "none")]), json!({}), None);
+    assert!(run.succeeded_check());
+    assert!(
+        !run.calls
+            .iter()
+            .any(|c| c.args.iter().any(|a| a.contains("/permission")))
+    );
+    // Other comments read no permission.
+    let run = gate(
+        &[("EVENT", "comment"), ("AUTHOR", "someone"), ("BODY", "Looks good")],
+        json!({}),
+        None,
+    );
+    assert!(run.calls.is_empty());
+}
+
+#[test]
 fn a_command_naming_another_commit_asks_again_and_accepts_nothing() {
     for body in [
         "Review finished at bbbbbbb",
@@ -663,7 +773,12 @@ fn a_command_naming_another_commit_asks_again_and_accepts_nothing() {
     ] {
         let author = if body.starts_with('/') { "desertthunder" } else { BOT };
         let run = gate(
-            &[("EVENT", "comment"), ("AUTHOR", author), ("BODY", body)],
+            &[
+                ("EVENT", "comment"),
+                ("AUTHOR", author),
+                ("BODY", body),
+                ("TEST_PERMISSION", "write"),
+            ],
             json!({}),
             None,
         );

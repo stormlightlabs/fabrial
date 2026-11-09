@@ -1,10 +1,12 @@
 # Keeps the storm/review check, which the ruleset on main requires. The agent
 # that opened a pull request reviews it in its own session with the `fab-storm`
 # skill and ends with `Review finished at <sha>`, posted as the bot through the
-# Bot comment workflow (or by the owner, a member or a collaborator). It runs
-# no model: `fab gate` marks each new head pending, turns the check green on
-# that comment or on `/storm:ready <sha>` (or `/storm:done <sha>`). An edit to
-# the title or body sets the squash message again, in the status comment.
+# Bot comment workflow (or by a person). It runs no model: `fab gate` marks
+# each new head pending, turns the check green on that comment or on
+# `/storm:ready <sha>` (or `/storm:done <sha>`). An edit to the title or body
+# sets the squash message again, in the status comment. The `if` below lets
+# in only the owner, members and collaborators; `fab gate` then ignores a
+# person without write access.
 #
 # pull_request_target runs this file from main, and `fab` is the release
 # .github/fabrial.toml names (in fabrial itself, built from main), so a change
