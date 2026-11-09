@@ -2,7 +2,7 @@
 id = "arcl-t-01M6Z600NWYSJ9WBBM4B43P1WB"
 parent = "arcl-t-01M6ZBSFYBJPAAR89R51V6A1R4"
 title = "Keep the App key out of workflows a pushed branch can edit"
-status = "pending"
+status = "in_progress"
 priority = "high"
 position = 0
 +++

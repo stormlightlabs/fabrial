@@ -22,7 +22,8 @@ Silicon. Homebrew users can run `brew install stormlightlabs/tap/fab`.
 
 1. Create a GitHub App in your account or organization, install it on the
    repository, and add its ID and key as the secrets `FABRIAL_APP_ID` and
-   `FABRIAL_PRIVATE_KEY`, or under your own prefix with `--secret-prefix`.
+   `FABRIAL_PRIVATE_KEY`, or under your own prefix with `--secret-prefix`,
+   in an environment named `fabrial` that only `main` may use.
    [docs/bot-setup.md](docs/bot-setup.md) walks
    through it, with the permissions and the ruleset on `main`.
 2. At the repository's root, run:
@@ -32,9 +33,10 @@ Silicon. Homebrew users can run `brew install stormlightlabs/tap/fab`.
      --trailer "Name <email>" --gates "<gate command>"
    ```
 
-3. Commit the result on a `claude/` branch and push it. The Branch PR
-   workflow opens a draft pull request as your App. Mark it ready and merge
-   it yourself, then require the `storm/review` check on `main`.
+3. Commit the result on a `claude/` branch, push it and open its pull
+   request yourself: the bot opens pull requests from `main`, which does not
+   have the workflows yet. Merge it, then require the `storm/review` check
+   on `main`.
 
 Later, `fab update` installs a newer release's files and `fab check`
 reports where the repository has drifted.
@@ -65,6 +67,7 @@ and names who acts at each one.
 | `owner`         | The GitHub login that approves pull requests; `CODEOWNERS` names it.           |
 | `app`           | The slug of the repository's GitHub App.                                       |
 | `secret_prefix` | The prefix of the App's secrets, `<PREFIX>_APP_ID` and `<PREFIX>_PRIVATE_KEY`. |
+| `environment`   | The GitHub environment that holds the App's secrets, open only to `main`.      |
 | `trailer`       | The `Co-authored-by` line on every squash commit.                              |
 | `gates`         | The command agents run before pushing, when no gates file exists.              |
 | `signoff`       | A `Signed-off-by` line to end every squash commit, for the DCO.                |

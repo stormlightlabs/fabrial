@@ -15,6 +15,9 @@ pub const DEFAULT_SECRET_PREFIX: &str = "FABRIAL";
 /// The secret prefix an install without the setting reads: the names
 /// fabrial 0.9.0 and earlier read, which `fab update` writes into it.
 pub const LEGACY_SECRET_PREFIX: &str = "THUNDERBOT";
+/// The GitHub environment the jobs that mint the App's token name when the
+/// settings name none. `fab init` and `fab update` write it.
+pub const DEFAULT_ENVIRONMENT: &str = "fabrial";
 
 /// The values the workflows, the gate and the skills read.
 ///
@@ -37,6 +40,12 @@ pub struct Settings {
     /// reads [`LEGACY_SECRET_PREFIX`]; see [`Settings::secret_prefix`].
     #[serde(default)]
     pub secret_prefix: Option<String>,
+    /// The GitHub environment every job that mints the App's token names.
+    /// Kept as environment secrets with a deployment rule of `main`, the
+    /// App's secrets reach no job on another ref. `None` names
+    /// [`DEFAULT_ENVIRONMENT`]; see [`Settings::environment`].
+    #[serde(default)]
+    pub environment: Option<String>,
     /// The `Co-authored-by` value on every squash commit.
     pub trailer: String,
     /// The command agents run before pushing. `fab gates` runs it when the
@@ -151,6 +160,14 @@ impl Settings {
                  underscores, not starting with a digit or GITHUB_)"
             )));
         }
+        if let Some(name) = &self.environment
+            && !(is_name(name) && name.len() <= 255)
+        {
+            return Err(Error::Settings(format!(
+                "`environment` is {name:?}, not an environment name (ASCII letters, digits, `-` and `_`, \
+                 up to 255 characters)"
+            )));
+        }
         if let Some(value) = &self.assisted_by
             && value != "on"
             && value != "off"
@@ -249,6 +266,12 @@ impl Settings {
         self.secret_prefix.as_deref().unwrap_or(LEGACY_SECRET_PREFIX)
     }
 
+    /// The environment the jobs that mint the App's token name: the
+    /// setting, or [`DEFAULT_ENVIRONMENT`] when it is not set.
+    pub fn environment(&self) -> &str {
+        self.environment.as_deref().unwrap_or(DEFAULT_ENVIRONMENT)
+    }
+
     /// Whether the squash commit names the agent models that worked on it.
     pub fn assisted(&self) -> bool {
         self.assisted_by.as_deref() == Some("on")
@@ -276,6 +299,13 @@ impl Settings {
                 "\n# The prefix of the secrets holding the App's ID and key: the workflows\n\
                  # read {p}_APP_ID and {p}_PRIVATE_KEY.\n\
                  secret_prefix = \"{p}\"\n"
+            )
+        });
+        let environment = self.environment.as_ref().map_or_else(String::new, |e| {
+            format!(
+                "\n# The GitHub environment the jobs that mint the App's token name. Keep\n\
+                 # the secrets in it, restricted to main, so no other ref reads them.\n\
+                 environment = \"{e}\"\n"
             )
         });
         let assisted = self.assisted_by.as_ref().map_or_else(String::new, |a| {
@@ -335,6 +365,7 @@ impl Settings {
              owner = \"{}\"\n\
              {app}\
              {prefix}\
+             {environment}\
              \n\
              # The Co-authored-by trailer on every squash commit.\n\
              trailer = \"{}\"\n\
@@ -419,6 +450,7 @@ mod tests {
             owner: "desertthunder".into(),
             app: Some("fabrial-bot".into()),
             secret_prefix: Some("FABRIAL".into()),
+            environment: Some("fabrial".into()),
             trailer: "Owais <desertthunder.dev@gmail.com>".into(),
             gates: "just check".into(),
             signoff: None,
@@ -647,6 +679,32 @@ mod tests {
             Settings::parse(&none.render("0.1.0")).unwrap().secret_prefix(),
             LEGACY_SECRET_PREFIX
         );
+    }
+
+    #[test]
+    fn the_environment_renders_parses_back_and_defaults() {
+        let text = Settings { environment: Some("own_env".into()), ..settings() }.render("0.1.0");
+        assert!(text.lines().any(|l| l == r#"environment = "own_env""#), "{text}");
+        assert_eq!(Settings::parse(&text).unwrap().environment(), "own_env");
+        let none = Settings { environment: None, ..settings() };
+        assert!(!none.render("0.1.0").contains("environment ="));
+        assert_eq!(
+            Settings::parse(&none.render("0.1.0")).unwrap().environment(),
+            DEFAULT_ENVIRONMENT
+        );
+    }
+
+    #[test]
+    fn the_environment_must_be_a_plain_name() {
+        for good in ["fabrial", "Bot-Secrets_2", &"x".repeat(255)] {
+            let s = Settings { environment: Some(good.to_string()), ..settings() };
+            assert!(s.validate().is_ok(), "{good}");
+        }
+        for bad in ["", "a b", "a/b", "a.b", "a\"b", "a:b", &"x".repeat(256)] {
+            let s = Settings { environment: Some(bad.to_string()), ..settings() };
+            let err = s.validate().unwrap_err().to_string();
+            assert!(err.contains("`environment`"), "{bad}: {err}");
+        }
     }
 
     #[test]

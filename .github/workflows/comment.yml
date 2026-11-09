@@ -25,6 +25,13 @@
 # whose outcome starts with `Fixed` or `Deferred`. With `reviewer` set to
 # the login of the person whose review the answers address, the bot then
 # requests that person's review again. Nothing here dismisses a review.
+#
+# A dispatch runs the copy of this file on the ref it names, so a run on a
+# branch would run that branch's copy. The job runs only on main, and it
+# names the environment the App's key is kept in, which only main may use.
+# The environment is what keeps the key from a branch's copy, which can drop
+# the `if`; it does so only once the secrets live in the environment, as
+# docs/bot-setup.md says.
 name: Bot comment
 
 on:
@@ -58,7 +65,11 @@ permissions:
 
 jobs:
   comment:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment:
+      name: fabrial
+      deployment: false
     steps:
       - uses: actions/create-github-app-token@v2
         id: app

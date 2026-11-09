@@ -188,3 +188,49 @@ fn update_gives_an_install_without_a_prefix_the_secrets_it_read() {
     assert!(review.contains("${{ secrets.THUNDERBOT_PRIVATE_KEY }}"), "{review}");
     let _ = fab(dir.path(), &["check"]);
 }
+
+#[test]
+fn environment_defaults_on_init_is_set_by_its_flag_and_kept_by_update() {
+    let line = |dir: &Path| {
+        let text = fs::read_to_string(dir.join(".github/fabrial.toml")).unwrap();
+        text.lines()
+            .find(|l| l.starts_with("environment = "))
+            .map(str::to_owned)
+    };
+    let init = [
+        "init",
+        "--owner",
+        "o",
+        "--app",
+        "own-bot",
+        "--trailer",
+        "A <a@b>",
+        "--gates",
+        "true",
+    ];
+    for (flag, name) in [(None, "fabrial"), (Some("bot-secrets"), "bot-secrets")] {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(
+            Command::new("git")
+                .arg("init")
+                .arg("-q")
+                .arg(dir.path())
+                .status()
+                .unwrap()
+                .success()
+        );
+        let mut args = init.to_vec();
+        args.extend(flag.iter().flat_map(|f| ["--environment", *f]));
+        let _ = fab(dir.path(), &args);
+        assert_eq!(line(dir.path()), Some(format!("environment = \"{name}\"")));
+        let comment = fs::read_to_string(dir.path().join(".github/workflows/comment.yml")).unwrap();
+        assert!(
+            comment.contains(&format!("    environment:\n      name: {name}\n")),
+            "{comment}"
+        );
+        let _ = fab(dir.path(), &["update"]);
+        assert_eq!(line(dir.path()), Some(format!("environment = \"{name}\"")));
+        let _ = fab(dir.path(), &["update", "--environment", "other"]);
+        assert_eq!(line(dir.path()), Some("environment = \"other\"".into()));
+    }
+}

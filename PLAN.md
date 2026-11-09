@@ -62,9 +62,11 @@ a paid plan, so rulesets on `main` are enforced.
 - **Each repository's bot is its own GitHub App,** named by `app` in
   `.github/fabrial.toml`, with its App ID and private key as the secrets
   `<PREFIX>_APP_ID` and `<PREFIX>_PRIVATE_KEY`, where `secret_prefix`
-  names the prefix and defaults to `FABRIAL`. fabrial's is
-  `stormlight-thunderbot`, with the prefix `THUNDERBOT` and org secrets
-  shared with stormlightlabs repositories that use fabrial.
+  names the prefix and defaults to `FABRIAL`. The secrets live in a GitHub
+  environment that only `main` may use, named by `environment` and
+  defaulting to `fabrial`, and only jobs that run from `main`'s copy of
+  their workflow name it. fabrial's App is `stormlight-thunderbot`, with the
+  prefix `THUNDERBOT` and the environment `fabrial`.
 - **Pull requests.** The bot opens each PR as a draft, and it stays one until
   its review finishes, so it cannot merge partway through. The bot then posts
   a suggested squash message: the PR title and number, a short summary and the

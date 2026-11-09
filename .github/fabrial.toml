@@ -13,6 +13,10 @@ app = "stormlight-thunderbot"
 # read THUNDERBOT_APP_ID and THUNDERBOT_PRIVATE_KEY.
 secret_prefix = "THUNDERBOT"
 
+# The GitHub environment the jobs that mint the App's token name. Keep
+# the secrets in it, restricted to main, so no other ref reads them.
+environment = "fabrial"
+
 # The Co-authored-by trailer on every squash commit.
 trailer = "Owais <desertthunder.dev@gmail.com>"
 

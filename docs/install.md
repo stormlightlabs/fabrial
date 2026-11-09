@@ -26,16 +26,18 @@ On another platform, build it:
 fab init --owner <github-login> --app <app-slug> --trailer "Name <email>" --gates "<gate command>"
 ```
 
-It writes the Branch PR, Review gate and Bot comment workflows, the action
-that installs `fab` for them, the review stages in
+It writes the Branch PR, Branch PR open, Review gate and Bot comment
+workflows, the action that installs `fab` for them, the review stages in
 `.github/fabrial-sequence.toml`, `shot.sh` and its `sgr.pl`, `CODEOWNERS`,
 `.github/fabrial.toml`, the skills and agents, and a section of `AGENTS.md`.
 Each skill is named `fab-<name>`, such as `fab-review`, so it does not take
-the name of a skill the repository keeps. Branch PR and the Review gate
-install the `fab` release that `.github/fabrial.toml` names and run
-`fab branch-pr` and `fab gate`.
+the name of a skill the repository keeps. Branch PR open and the Review
+gate install the `fab` release that `.github/fabrial.toml` names and run
+`fab branch-pr` and `fab gate`. Branch PR open runs only once it is on
+`main`, so open the pull request that installs fabrial yourself.
 
-`--app` names the repository's GitHub App by its slug, as
+`--app` names the repository's GitHub App by its slug, and `--environment`
+the GitHub environment that holds its secrets, `fabrial` by default, as
 [bot-setup.md](bot-setup.md) says.
 
 A repository that uses the Developer Certificate of Origin adds
@@ -104,12 +106,12 @@ and require `storm/review` on `main` only after it merges.
 
 To take a newer release, install that `fab` and run `fab update`. It keeps
 the settings in `.github/fabrial.toml`, unless `--owner`, `--app`,
-`--secret-prefix`, `--trailer`, `--gates`, `--signoff` or `--assisted-by`
+`--secret-prefix`, `--environment`, `--trailer`, `--gates`, `--signoff` or `--assisted-by`
 changes one, and replaces the files with this build's. `--signoff ""`
 removes the sign-off. An install with no `app` needs `--app`. An install
 with no `secret_prefix` gets `THUNDERBOT`, the secret names 0.9.0 and
-earlier read, as [bot-setup.md](bot-setup.md#moving-from-an-older-release)
-says. It refuses to install an older release over a newer one unless you
+earlier read, and one with no `environment` gets `fabrial`, as
+[bot-setup.md](bot-setup.md#moving-from-an-older-release) says. It refuses to install an older release over a newer one unless you
 pass `--force`.
 
 It deletes a file only older releases installed, such as

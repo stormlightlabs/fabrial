@@ -6,7 +6,8 @@ posts the bot's comments and sets the `storm/review` check. A repository
 needs four things before its first agent pull request:
 
 1. An App with the permissions below, installed on the repository.
-2. Two secrets holding the App's ID and private key.
+2. Two secrets holding the App's ID and private key, in an environment only
+   `main` may use.
 3. The App's slug as `app` in `.github/fabrial.toml`.
 4. A ruleset on `main`.
 
@@ -30,14 +31,14 @@ App**, in your account or your organization's settings:
 Then generate a private key on the App's page. GitHub downloads it as a
 `.pem` file. Note the App ID at the top of the same page.
 
-| Workflow    | Calls                                                              | Permission it needs       |
-| ----------- | ------------------------------------------------------------------ | ------------------------- |
-| Branch PR   | `gh pr list`, `gh pr create --draft`                               | Pull requests write       |
-| Review gate | reads and creates `storm/review` check runs                        | Checks write              |
-| Review gate | `gh pr ready`, `gh pr comment`, edits the status comment           | Pull requests write       |
-| Review gate | reads the pull request's commits through `pulls/<n>/commits`       | Pull requests read        |
-| Review gate | reads an editor's permission through `collaborators/<user>/permission` | Metadata read         |
-| Bot comment | posts comments, edits the status comment, posts reviews, requests a reviewer, resolves review threads | Pull requests write |
+| Workflow       | Calls                                                              | Permission it needs       |
+| -------------- | ------------------------------------------------------------------ | ------------------------- |
+| Branch PR open | `gh pr list`, `gh pr create --draft`                               | Pull requests write       |
+| Review gate    | reads and creates `storm/review` check runs                        | Checks write              |
+| Review gate    | `gh pr ready`, `gh pr comment`, edits the status comment           | Pull requests write       |
+| Review gate    | reads the pull request's commits through `pulls/<n>/commits`       | Pull requests read        |
+| Review gate    | reads an editor's permission through `collaborators/<user>/permission` | Metadata read         |
+| Bot comment    | posts comments, edits the status comment, posts reviews, requests a reviewer, resolves review threads | Pull requests write |
 
 Comments on a pull request go through the issues API
 (`issues/<n>/comments`), which takes Issues write or Pull requests write.
@@ -63,19 +64,39 @@ The workflows read two secrets and no variables. Their names start with
 unless you choose another, and a file without the setting reads
 `THUNDERBOT`:
 
-| Secret                 | Holds                 | Read by                             |
-| ---------------------- | --------------------- | ----------------------------------- |
-| `<PREFIX>_APP_ID`      | the App ID            | Branch PR, Review gate, Bot comment |
-| `<PREFIX>_PRIVATE_KEY` | the whole `.pem` file | Branch PR, Review gate, Bot comment |
+| Secret                 | Holds                 | Read by                                  |
+| ---------------------- | --------------------- | ---------------------------------------- |
+| `<PREFIX>_APP_ID`      | the App ID            | Branch PR open, Review gate, Bot comment |
+| `<PREFIX>_PRIVATE_KEY` | the whole `.pem` file | Branch PR open, Review gate, Bot comment |
 
-Add them under the repository's **Settings > Secrets and variables >
-Actions**, or once as organization secrets shared with each repository that
-uses fabrial. To use secrets you already have, such as `MY_BOT_APP_ID` and
+Keep them in a GitHub environment that only `main` may use. Each job that
+reads them names the environment `environment` in `.github/fabrial.toml`
+gives, `fabrial` unless you choose another:
+
+1. Under the repository's **Settings > Environments**, create an
+   environment with that name.
+2. Under **Deployment branches and tags**, choose **Selected branches and
+   tags** and add the branch `main`.
+3. Under **Environment secrets**, add the two secrets.
+4. Delete any repository or organization secrets of the same names, or
+   take the repository off an organization secret's list.
+
+A job on any other ref then cannot start in the environment, so it never
+sees the secrets. Repository and organization secrets reach every job on
+every ref, whether or not it names an environment, so the rule protects
+nothing until the secrets live only in the environment. GitHub Free offers
+environment secrets and deployment rules only in public repositories; a
+private repository on Free keeps repository secrets and the exposure
+[Who can use the key](#who-can-use-the-key) describes.
+
+To use secrets you already have, such as `MY_BOT_APP_ID` and
 `MY_BOT_PRIVATE_KEY`, pass `fab init --secret-prefix MY_BOT`, or change it
 later with `fab update --secret-prefix MY_BOT`. The prefix is uppercase
 letters, digits and underscores, and cannot start with a digit or
-`GITHUB_`. `fab init` and `fab update` write the names into the installed
-workflows, so `fab check` reports a workflow that reads others.
+`GITHUB_`. `--environment` sets the environment the same way; its name is
+ASCII letters, digits, `-` and `_`. `fab init` and `fab update` write both
+into the installed workflows, so `fab check` reports a workflow that reads
+others.
 
 Agent sessions never hold the key. They post through the Bot comment
 workflow.
@@ -97,7 +118,7 @@ request's head:
   checking its access, and from no other App.
 - The gate counts only `storm/review` runs the App posted.
 - The status comment is the one `<app>[bot]` posted.
-- Branch PR, the Review gate and a Bot comment run that sets a status
+- Branch PR open, the Review gate and a Bot comment run that sets a status
   section stop with an error when the secrets belong to an App other than
   the one `app` names.
 
@@ -109,18 +130,43 @@ fabrial 0.9.0 and earlier read `THUNDERBOT_APP_ID` and
 there is nothing to rename. An install with no `app` needs
 `fab update --app <slug>`.
 
+An install with no `environment` gets `fabrial`. GitHub creates an
+environment a job names the first time the job runs, with no rules, and the
+job still reads repository and organization secrets, so the workflows keep
+working after the update merges. Then set up the environment as
+[Add the secrets](#add-the-secrets) says, in that order: create it, restrict
+it to `main`, add the secrets to it, and only then delete the old secrets.
+Moving the secrets before the update merges stops the workflows on `main`,
+which name no environment until then. The update's own pull request does not
+open itself, since Branch PR open is not on `main` yet: open it by hand.
+
 ## Who can use the key
 
-Installing the App does not keep its key from anyone who can push a
-workflow change. Branch PR runs on push from the pushed branch's own copy of
-`branch-pr.yml`, with both secrets. A branch that edits that file can mint
-the App's token, or read the key, before any review, and post a green
-`storm/review` as the App. Pushing a workflow file takes the `workflow`
-scope on a personal token, Workflows write on an App token, or write access
-over SSH; Pi workers' tokens have none of these. Code owners on
-`.github/workflows/` do not help, since the edit runs before any pull
-request merges. Treat everyone who can push a workflow change to a branch
-as holding the App's key.
+A workflow runs from the copy of its file that GitHub picks for the event,
+and a push or a dispatch picks the copy on the branch. A branch that edits
+that copy controls what the job does with any secret it can read.
+
+- Branch PR (`branch-pr.yml`) runs on push from the pushed branch's copy,
+  so it reads no secrets. It decides whether to open a pull request and
+  nothing else.
+- Branch PR open (`branch-pr-open.yml`) runs on `workflow_run` when Branch
+  PR finishes. GitHub runs it from `main`'s copy, with `main` as the ref,
+  whatever branch triggered it. It treats the branch as data: `fab branch-pr`
+  refuses a name outside `claude/`, `codex/` and `storm/`, and git reads the
+  branch's commits without running anything from it. An edited Branch PR
+  can at most make it open a pull request for that branch.
+- The Review gate runs on `pull_request_target` and `issue_comment`, both
+  from `main`'s copy with `main` as the ref.
+- Bot comment runs on dispatch, from the copy on the ref dispatched. Its job
+  runs only on `main`, but a branch's copy can drop that check. The
+  environment is the guard: a job on that branch cannot start in it.
+
+Each job that reads the secrets names the environment, so with the secrets
+kept there as [Add the secrets](#add-the-secrets) says, no copy of a
+workflow a branch can edit reaches the key. Pushing a workflow change still
+takes the `workflow` scope on a personal token, Workflows write on an App
+token, or write access over SSH. Anyone who can push to `main`, or change
+the environment's rules, still holds the key.
 
 ## The ruleset on `main`
 
@@ -136,9 +182,9 @@ The workflows assume a ruleset on `main` with these rules:
   the source of `storm/review` to your App. Any App with Checks write can
   post a check of that name, including `GITHUB_TOKEN` in a workflow on a
   branch that asks for `checks: write`. The gate ignores those runs, but the
-  ruleset counts them unless the source is set. Setting it does not stop a
-  branch that edits Branch PR, as [Who can use the key](#who-can-use-the-key)
-  says.
+  ruleset counts them unless the source is set. A branch cannot post one
+  as the App while the App's secrets live in the environment, as
+  [Who can use the key](#who-can-use-the-key) says.
 - Block force pushes and deletion.
 
 Leave the App off the ruleset's bypass list, so no token minted from it can
@@ -158,16 +204,20 @@ need to reach github.com.
 
 ## fabrial's own repository
 
-fabrial's App is stormlight-thunderbot, and its secrets are organization
-secrets in stormlightlabs. Its release workflows need more than the table
-above, and an installing repository does not run them: Release PR and
-Release tag push a branch and a tag with Contents write, and the Homebrew
-publish job mints a token with Contents write on stormlightlabs/homebrew-tap.
+fabrial's App is stormlight-thunderbot, and its secrets are
+`THUNDERBOT_APP_ID` and `THUNDERBOT_PRIVATE_KEY` in the environment
+`fabrial`. Its release workflows need more than the table above, and an
+installing repository does not run them: Release PR and Release tag push a
+branch and a tag with Contents write, and the Homebrew publish job mints a
+token with Contents write on stormlightlabs/homebrew-tap. Release PR and
+Release tag run only on `main`. The Homebrew job runs on the release's tag,
+so the environment also allows the tag pattern `v*`.
 
 fabrial's own `main` requires the `check` job, owner approval with code owner
 review, and squash merges. It does not require `storm/review`.
 
-fabrial's `v*` tags start its Release workflow. A tag ruleset on `v*` that
-blocks creating, updating and deleting tags, with the owner and the App on
-its bypass list, keeps other writers from publishing a release. An
-installing repository needs this only if it publishes on tags too.
+fabrial's `v*` tags start its Release workflow, and a job on one can read
+the App's secrets. A tag ruleset on `v*` that blocks creating, updating and
+deleting tags, with the owner and the App on its bypass list, keeps other
+writers from publishing a release or reaching the key. An installing
+repository needs this only if it publishes on tags too.

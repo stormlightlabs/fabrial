@@ -11,10 +11,12 @@
 //!
 //! It runs from a checkout of main, whose `.github/fabrial.toml` names the
 //! App, with the branch checked out in `HEAD_DIR`, `origin/main` fetched
-//! there, and talks to GitHub through `gh` with `GH_TOKEN`. It stops before
-//! opening anything when the App whose token it holds is not the one the
-//! settings name. With `DRY_RUN=1`,
-//! the pull request is printed instead of opened.
+//! there, and talks to GitHub through `gh` with `GH_TOKEN`. The branch is
+//! only data: git reads its commits, and nothing from it runs. It stops
+//! before opening anything when the branch is not an agent branch
+//! ([`PREFIXES`]), or when the App whose token it holds is not the one the
+//! settings name. With `DRY_RUN=1`, the pull request is printed instead of
+//! opened.
 
 use std::path::PathBuf;
 
@@ -27,6 +29,8 @@ use crate::squash;
 
 /// The note below the footer line of a new pull request's body.
 const NOTE: &str = "Draft until the review finishes; the owner merges it.";
+/// The branch prefixes Branch PR opens pull requests for.
+const PREFIXES: &[&str] = &["claude/", "codex/", "storm/"];
 
 /// What the Branch PR workflow passes, each also read from its environment
 /// variable.
@@ -53,6 +57,13 @@ pub struct Options {
 /// Opens the branch's draft pull request, unless one is open or the branch
 /// has no commits ahead of main besides claim commits.
 pub fn run(options: Options) -> Result<()> {
+    if !is_agent_branch(&options.branch) {
+        return Err(format!(
+            "{:?} is not an agent branch: one of {} followed by ASCII letters, digits, `.`, `_`, `-` and `/`",
+            options.branch,
+            PREFIXES.join(", ")
+        ));
+    }
     run::app(&run::settings()?, options.app_slug.as_deref())?;
     let git = |args: &[&str]| run::git(&options.head_dir, args);
     let commits = git(&["rev-list", "--reverse", "origin/main..HEAD"])?;
@@ -123,6 +134,23 @@ pub fn run(options: Options) -> Result<()> {
     Ok(())
 }
 
+/// Whether `branch` is an agent branch Branch PR may open a pull request
+/// for: a [`PREFIXES`] prefix, then a name of ASCII letters, digits, `.`,
+/// `_`, `-` and `/` with no empty, `.` or `..` part. The workflow takes the
+/// name from the run that triggered it, which the pushed branch controls.
+fn is_agent_branch(branch: &str) -> bool {
+    let Some(rest) = PREFIXES.iter().find_map(|p| branch.strip_prefix(p)) else {
+        return false;
+    };
+    !rest.is_empty()
+        && rest
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-' | b'/'))
+        && rest
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
+}
+
 /// A new pull request's body: the kept text of the first commit's body, then
 /// the footer line and the note.
 fn body(commit_body: &str, branch: &str) -> String {
@@ -146,6 +174,28 @@ mod tests {
             "Why it changed.\n\n<!-- fabrial:footer: the text above becomes the squash commit body. -->\n\
              From `storm/x`. Draft until the review finishes; the owner merges it.\n"
         );
+    }
+
+    #[test]
+    fn only_an_agent_branch_gets_a_pull_request() {
+        for good in ["claude/app-key", "codex/x", "storm/arcl-t-01M6", "storm/a/b.c_d-e"] {
+            assert!(is_agent_branch(good), "{good}");
+        }
+        for bad in [
+            "main",
+            "claude/",
+            "claudex/a",
+            "feature/a",
+            "storm/a b",
+            "storm/a..b/../c",
+            "storm/a//b",
+            "storm/a/",
+            "storm/$(id)",
+            "storm/a;b",
+            "storm/a\nb",
+        ] {
+            assert!(!is_agent_branch(bad), "{bad:?}");
+        }
     }
 
     #[test]
