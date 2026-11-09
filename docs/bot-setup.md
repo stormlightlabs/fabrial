@@ -96,7 +96,7 @@ request's head:
 
 ## Moving from the old secret names
 
-Releases before this one read `THUNDERBOT_APP_ID` and
+fabrial 0.9.0 and earlier read `THUNDERBOT_APP_ID` and
 `THUNDERBOT_PRIVATE_KEY`. When `fab update` replaces workflows that read
 those, it says so. Add `FABRIAL_APP_ID` and `FABRIAL_APP_PRIVATE_KEY` with
 the same values before the updated workflows run, and delete the old ones

@@ -432,6 +432,7 @@ impl Gate {
 pub fn run(options: Options) -> Result<()> {
     let settings = run::settings()?;
     let app = run::app(&settings, options.app_slug.as_deref())?;
+    let bot = settings.bot().unwrap_or_default();
     let assisted = settings.assisted();
     let Settings { trailer, signoff, .. } = settings;
     let given = |v: Option<String>| v.filter(|s| !s.is_empty());
@@ -440,7 +441,7 @@ pub fn run(options: Options) -> Result<()> {
         pr: options.pr,
         head: String::new(),
         head_dir: options.head_dir,
-        bot: format!("{app}[bot]"),
+        bot,
         app,
         trailer,
         signoff,

@@ -176,7 +176,9 @@ impl Status {
 /// workflow. The bot's login comes from main's `.github/fabrial.toml`, in
 /// the working directory.
 pub fn run(options: Options) -> Result<()> {
-    let app = run::app(&run::settings()?, options.app_slug.as_deref())?;
+    let settings = run::settings()?;
+    run::app(&settings, options.app_slug.as_deref())?;
+    let bot = settings.bot().unwrap_or_default();
     let text = std::fs::read_to_string(&options.body_file)
         .map_err(|e| format!("cannot read {}: {e}", options.body_file.display()))?;
     if !is_section_name(&options.section) {
@@ -186,7 +188,7 @@ pub fn run(options: Options) -> Result<()> {
         ));
     }
     let scratch = tempfile::tempdir().map_err(|e| format!("cannot make a scratch directory: {e}"))?;
-    let mut status = Status::read(&options.repo, &options.pr, &format!("{app}[bot]"))?;
+    let mut status = Status::read(&options.repo, &options.pr, &bot)?;
     if !status.set(&options.section, &text, scratch.path(), options.dry_run)? {
         println!("The {} section already says that.", options.section);
     }
