@@ -15,7 +15,7 @@ const BOT: &str = "stormlight-thunderbot[bot]";
 /// The fake `gh`. It fails `pr <TEST_FAIL>`, and with `TEST_FAIL=comment`
 /// also a write to a comment. It keeps the pull request's comments, in the
 /// REST API's shape, in the file `TEST_COMMENTS`: a POST adds a comment from
-/// the bot, a PATCH edits one, and a read lists them. It answers `pr view`
+/// `TEST_BOT`, the bot whose token the run holds, a PATCH edits one, and a read lists them. It answers `pr view`
 /// with `TEST_PR`, or `TEST_PR_LATER` once the run has written a comment; a
 /// collaborator's permission with `TEST_PERMISSION`, failing the read when it
 /// is `fail`; and a commit's check
@@ -51,8 +51,8 @@ case "$1 ${2:-}" in
     case "$4" in
       */issues/*/comments)
         id=$((100 + $(jq length "$TEST_COMMENTS")))
-        jq -c --arg body "$body" --argjson id "$id" \
-          '. + [{id: $id, user: {login: "stormlight-thunderbot[bot]"}, body: $body}]' "$TEST_COMMENTS" > "$TEST_COMMENTS.new"
+        jq -c --arg body "$body" --argjson id "$id" --arg login "${TEST_BOT:-stormlight-thunderbot[bot]}" \
+          '. + [{id: $id, user: {login: $login}, body: $body}]' "$TEST_COMMENTS" > "$TEST_COMMENTS.new"
         mv "$TEST_COMMENTS.new" "$TEST_COMMENTS"
         reply "{\"id\": $id}" ;;
       */issues/comments/*)
@@ -285,7 +285,7 @@ fn a_signoff_in_the_settings_ends_the_squash_message() {
     fs::create_dir(settings.path().join(".github")).unwrap();
     fs::write(
         settings.path().join(".github/fabrial.toml"),
-        "owner = \"o\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\nsignoff = \"A <a@b>\"\n",
+        "owner = \"o\"\napp = \"stormlight-thunderbot\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\nsignoff = \"A <a@b>\"\n",
     )
     .unwrap();
     let body = "A change.\nSigned-off-by: Agent <agent@x>";
@@ -306,7 +306,7 @@ fn assisted_by_names_each_agent_model_in_the_commits() {
     let toml = settings.path().join(".github/fabrial.toml");
     fs::write(
         &toml,
-        "owner = \"o\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\nassisted_by = \"on\"\n",
+        "owner = \"o\"\napp = \"stormlight-thunderbot\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\nassisted_by = \"on\"\n",
     )
     .unwrap();
     let commits = json!([
@@ -346,7 +346,11 @@ fn assisted_by_names_each_agent_model_in_the_commits() {
         "{message}"
     );
     // Off without the setting: the gate does not read the commits.
-    fs::write(&toml, "owner = \"o\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\n").unwrap();
+    fs::write(
+        &toml,
+        "owner = \"o\"\napp = \"stormlight-thunderbot\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\n",
+    )
+    .unwrap();
     let run = gate_in(settings.path(), &env, json!({}), None);
     assert!(!run.posts()[0].contains("Assisted-by"), "{}", run.posts()[0]);
     assert!(!run.calls.iter().any(|c| c.args.iter().any(|a| a.ends_with("/commits"))));
@@ -450,6 +454,108 @@ fn an_edit_from_the_bot_posts_only_for_a_reviewed_ready_pull_request() {
             "{name}"
         );
     }
+}
+
+/// Settings, in a scratch directory, that name the App `own-bot`.
+fn own_app() -> tempfile::TempDir {
+    let settings = tempfile::tempdir().unwrap();
+    fs::create_dir(settings.path().join(".github")).unwrap();
+    fs::write(
+        settings.path().join(".github/fabrial.toml"),
+        "owner = \"o\"\napp = \"own-bot\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\n",
+    )
+    .unwrap();
+    settings
+}
+
+#[test]
+fn the_gate_knows_the_app_the_settings_name_and_not_another() {
+    let settings = own_app();
+    let ours = [("TEST_BOT", "own-bot[bot]")];
+    let reviewed = format!("Review finished at {HEAD}");
+    // The App the settings name accepts a head without a permission read,
+    // and its status comment is the one it edits.
+    let old = json!([bot_comment(5, "<!-- fabrial:status -->")]);
+    let mut env = vec![
+        ("EVENT", "comment"),
+        ("AUTHOR", "own-bot[bot]"),
+        ("BODY", reviewed.as_str()),
+    ];
+    env.extend(ours);
+    let run = gate_in(settings.path(), &env, json!({"comments": old}), None);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(run.succeeded_check());
+    assert!(
+        !run.calls
+            .iter()
+            .any(|c| c.args.iter().any(|a| a.contains("/permission")))
+    );
+    // stormlight-thunderbot's status comment is someone else's here, so the
+    // run posts its own rather than editing that one.
+    let write = run.status_writes().next().unwrap();
+    assert!(
+        write.has("POST") && write.has("repos/owner/repo/issues/1/comments"),
+        "{:?}",
+        write.args
+    );
+    // Another App's bot accepts nothing, and has no permission to read.
+    let env = [
+        ("EVENT", "comment"),
+        ("AUTHOR", BOT),
+        ("BODY", reviewed.as_str()),
+        ("TEST_PERMISSION", "admin"),
+    ];
+    let run = gate_in(settings.path(), &env, json!({}), None);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(!run.succeeded_check());
+    assert!(
+        run.calls.is_empty(),
+        "{:?}",
+        run.calls.iter().map(|c| &c.args).collect::<Vec<_>>()
+    );
+    // Only the named App's check runs count as a passed review.
+    for (app, posts) in [("own-bot", true), ("stormlight-thunderbot", false)] {
+        let runs = check_runs(&[(app, "success", "Reviewed")]);
+        let mut env = vec![
+            ("EVENT", "edit"),
+            ("SENDER", "own-bot[bot]"),
+            ("TEST_CHECK_RUNS", runs.as_str()),
+        ];
+        env.extend(ours);
+        let run = gate_in(settings.path(), &env, json!({"isDraft": false}), None);
+        assert_eq!(run.code, Some(0), "{app}: {}", run.stderr);
+        assert_eq!(!run.posts().is_empty(), posts, "{app}");
+    }
+}
+
+#[test]
+fn the_gate_stops_when_the_token_is_another_apps() {
+    let settings = own_app();
+    let run = gate_in(
+        settings.path(),
+        &with(&finished(), &[("APP_SLUG", "stormlight-thunderbot")]),
+        json!({}),
+        None,
+    );
+    assert_ne!(run.code, Some(0));
+    assert!(run.stderr.contains("names own-bot"), "{}", run.stderr);
+    assert!(run.calls.is_empty());
+    let run = gate(
+        &with(&finished(), &[("APP_SLUG", "stormlight-thunderbot")]),
+        json!({}),
+        None,
+    );
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    // Settings that name no App stop the gate before it reads anything.
+    fs::write(
+        settings.path().join(".github/fabrial.toml"),
+        "owner = \"o\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\n",
+    )
+    .unwrap();
+    let run = gate_in(settings.path(), &with(&finished(), &[]), json!({}), None);
+    assert_ne!(run.code, Some(0));
+    assert!(run.stderr.contains("names no `app`"), "{}", run.stderr);
+    assert!(run.calls.is_empty());
 }
 
 #[test]
@@ -841,6 +947,7 @@ fn pr_status_keeps_one_comment_and_edits_its_sections() {
         let output = Command::new(env!("CARGO_BIN_EXE_fab"))
             .args(["pr-status", "--section", section, "--body-file"])
             .arg(&file)
+            .current_dir(root())
             .env_clear()
             .env("PATH", &path)
             .env("HOME", temp.path())
@@ -869,6 +976,54 @@ fn pr_status_keeps_one_comment_and_edits_its_sections() {
     );
     assert!(
         body.contains("<!-- fabrial:section Squash message -->\nWhen you merge") && !body.contains("abc"),
+        "{body}"
+    );
+}
+
+#[test]
+fn pr_status_reads_only_the_named_apps_comments() {
+    let settings = own_app();
+    let temp = tempfile::tempdir_in(root().join("target")).unwrap();
+    fs::write(temp.path().join("gh"), FAKE_GH).unwrap();
+    fs::set_permissions(temp.path().join("gh"), fs::Permissions::from_mode(0o700)).unwrap();
+    let comments = temp.path().join("comments.json");
+    let old = "<!-- fabrial:status -->\n<!-- fabrial:section Kept -->\nfrom another App";
+    fs::write(&comments, json!([bot_comment(5, old)]).to_string()).unwrap();
+    let file = temp.path().join("section.md");
+    fs::write(&file, "Standard pass on abc\n").unwrap();
+    let path = format!("{}:{}", temp.path().display(), std::env::var("PATH").unwrap());
+    let fab = |slug: &str| {
+        Command::new(env!("CARGO_BIN_EXE_fab"))
+            .args(["pr-status", "--section", "Standard pass", "--body-file"])
+            .arg(&file)
+            .current_dir(settings.path())
+            .env_clear()
+            .env("PATH", &path)
+            .env("HOME", temp.path())
+            .envs([
+                ("REPO", "owner/repo"),
+                ("PR", "1"),
+                ("TEST_BOT", "own-bot[bot]"),
+                ("APP_SLUG", slug),
+            ])
+            .env("TEST_GH_LOG", temp.path().join("calls.jsonl"))
+            .env("TEST_COMMENTS", &comments)
+            .output()
+            .unwrap()
+    };
+    let output = fab("stormlight-thunderbot");
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("names own-bot"));
+    let output = fab("own-bot");
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let comments: Value = serde_json::from_str(&fs::read_to_string(&comments).unwrap()).unwrap();
+    let comments = comments.as_array().unwrap();
+    assert_eq!(comments.len(), 2, "{comments:?}");
+    assert_eq!(comments[0]["body"], old);
+    assert_eq!(comments[1]["user"]["login"], "own-bot[bot]");
+    let body = comments[1]["body"].as_str().unwrap();
+    assert!(
+        body.contains("Standard pass on abc") && !body.contains("from another App"),
         "{body}"
     );
 }

@@ -51,6 +51,19 @@ esac
         fixture
     }
 
+    /// [`Fixture::new`] with settings naming the App `own-bot`, which
+    /// `fab branch-pr` reads from the working directory, as from main.
+    fn branch() -> Self {
+        let fixture = Fixture::new();
+        fs::create_dir(fixture.repo().join(".github")).unwrap();
+        fs::write(
+            fixture.repo().join(".github/fabrial.toml"),
+            "owner = \"o\"\napp = \"own-bot\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\n",
+        )
+        .unwrap();
+        fixture
+    }
+
     fn repo(&self) -> PathBuf {
         self.temp.path().join("repo")
     }
@@ -137,7 +150,7 @@ const BRANCH_ENV: [(&str, &str); 3] = [("REPO", "o/r"), ("BRANCH", "storm/x"), (
 
 #[test]
 fn branch_pr_with_no_commits_ahead_asks_nothing() {
-    let fixture = Fixture::new();
+    let fixture = Fixture::branch();
     let output = fixture.fab(&["branch-pr"], &BRANCH_ENV);
     assert!(output.status.success());
     assert_eq!(stdout(&output), "No commits ahead of main.");
@@ -146,7 +159,7 @@ fn branch_pr_with_no_commits_ahead_asks_nothing() {
 
 #[test]
 fn branch_pr_leaves_an_open_pull_request_alone() {
-    let fixture = Fixture::new();
+    let fixture = Fixture::branch();
     fixture.commit(&[], "Add a thing");
     let output = fixture.fab(
         &["branch-pr"],
@@ -159,7 +172,7 @@ fn branch_pr_leaves_an_open_pull_request_alone() {
 
 #[test]
 fn branch_pr_opens_a_draft_from_the_first_commit() {
-    let fixture = Fixture::new();
+    let fixture = Fixture::branch();
     fixture.git(&[
         "commit",
         "-q",
@@ -181,7 +194,7 @@ fn branch_pr_opens_a_draft_from_the_first_commit() {
     assert!(body.starts_with("Why it changed.\n\n<!-- fabrial:footer: "), "{body}");
     assert!(!body.contains("Co-Authored-By"));
 
-    let dry = Fixture::new();
+    let dry = Fixture::branch();
     dry.commit(&[], "Add a thing");
     let output = dry.fab(&["branch-pr"], &[BRANCH_ENV.as_slice(), &[("DRY_RUN", "1")]].concat());
     assert!(output.status.success());
@@ -193,7 +206,7 @@ fn branch_pr_opens_a_draft_from_the_first_commit() {
 fn branch_pr_skips_claim_commits() {
     let claim = "Claim x for run r until 1970-01-01T01:00:00Z\n\n\
                  Fabrial-Claim: x\nFabrial-Machine: m\nFabrial-Run: r\nFabrial-Expires: 3600";
-    let fixture = Fixture::new();
+    let fixture = Fixture::branch();
     fixture.commit(&[], claim);
     let output = fixture.fab(&["branch-pr"], &BRANCH_ENV);
     assert!(output.status.success());
@@ -210,6 +223,38 @@ fn branch_pr_skips_claim_commits() {
     let calls = fixture.calls();
     let (args, _) = calls.iter().find(|(args, _)| args.starts_with("pr create")).unwrap();
     assert!(args.contains("--title=Add a thing --body-file"), "{args}");
+}
+
+#[test]
+fn branch_pr_needs_the_app_the_settings_name() {
+    let fixture = Fixture::branch();
+    fixture.commit(&[], "Add a thing");
+    let output = fixture.fab(
+        &["branch-pr"],
+        &[BRANCH_ENV.as_slice(), &[("APP_SLUG", "stormlight-thunderbot")]].concat(),
+    );
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("belong to stormlight-thunderbot") && stderr.contains("names own-bot"),
+        "{stderr}"
+    );
+    assert!(fixture.calls().is_empty());
+
+    let output = fixture.fab(
+        &["branch-pr"],
+        &[BRANCH_ENV.as_slice(), &[("APP_SLUG", "own-bot")]].concat(),
+    );
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(fixture.calls().iter().any(|(args, _)| args.starts_with("pr create")));
+
+    fs::write(
+        fixture.repo().join(".github/fabrial.toml"),
+        "owner = \"o\"\ntrailer = \"A <a@b>\"\ngates = \"true\"\n",
+    )
+    .unwrap();
+    let output = fixture.fab(&["branch-pr"], &BRANCH_ENV);
+    assert!(String::from_utf8_lossy(&output.stderr).contains("names no `app`"));
 }
 
 /// A repository whose newest commit sets the workspace version to `now`

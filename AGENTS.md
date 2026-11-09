@@ -86,14 +86,17 @@ package.json      the Pi package manifest, at the root so git installs find it
 .github/          CODEOWNERS and the Check, Branch PR and Review gate workflows
 .github/actions/fab/  the action that puts `fab` on the PATH for workflows
 .github/storm/    shot.sh, which captures a terminal UI as a PNG, and sgr.pl, its color filter
-.github/fabrial.toml  the owner, the squash trailer and the gate command
+.github/fabrial.toml  the owner, the App (here stormlight-thunderbot), the
+                  squash trailer and the gate command
 .github/fabrial-sequence.toml  the review stages the fab-storm skill runs
 .github/fabrial-gates.toml  the checks fab gates runs for the paths a change touches
+docs/install.md   what fab init writes, and what fab update and fab check do
 docs/task-flow.md one task from claim to merge, and who acts at each step
-docs/bot-setup.md the bot's App, secrets and ruleset for a repository
+docs/bot-setup.md a repository's own App, its secrets and the ruleset
 docs/hosts.md     what each host reads, and where they differ
 docs/pi.md        how to set up a host and run Pi workers
 docs/pi-design.md Pi design notes, kept as they were when the Pi harness froze
+docs/releases.md  how fabrial itself is released
 PLAN.md           decisions, and how to read the open work
 .arcl/            arcl's config; workspace/ holds the tasks, arcl.db is local
 AGENTS.md         this file (CLAUDE.md links to it)
@@ -170,7 +173,8 @@ drifted.
 
 - Never commit to `main`. Push a `claude/<topic>`, `codex/<topic>` or
   `storm/<task>` branch; the Branch PR workflow opens the pull request as a
-  draft from stormlight-thunderbot.
+  draft from the repository's GitHub App, which `app` in
+  `.github/fabrial.toml` names.
 - Commits on those branches may carry the agent's attribution trailers. The
   squash commit replaces them with the PR title and number, such as
   `Add Pi dispatch (#21)`, the PR body above its
@@ -195,9 +199,8 @@ drifted.
   their own edit of it. Agents never approve or merge.
 - Keep the PR body to what changed and why. Put verification in a PR comment.
   Leave out attribution lines and session links.
-- Agents post PR comments as stormlight-thunderbot through the Bot comment
-  workflow (`.github/workflows/comment.yml`), never with their own GitHub
-  access.
+- Agents post PR comments as the App through the Bot comment workflow
+  (`.github/workflows/comment.yml`), never with their own GitHub access.
 - The agent that opens a PR reviews it with the `fab-storm` skill and ends
   with a `Review finished at <sha>` comment. That turns `storm/review` green
   for that head, marks the draft ready and sets the squash message in the

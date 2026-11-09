@@ -6,7 +6,8 @@ drifted.
 
 - Never commit to `main`. Push a `claude/<topic>`, `codex/<topic>` or
   `storm/<task>` branch; the Branch PR workflow opens the pull request as a
-  draft from stormlight-thunderbot.
+  draft from the repository's GitHub App, which `app` in
+  `.github/fabrial.toml` names.
 - Commits on those branches may carry the agent's attribution trailers. The
   squash commit replaces them with the PR title and number, such as
   `Add Pi dispatch (#21)`, the PR body above its
@@ -31,9 +32,8 @@ drifted.
   their own edit of it. Agents never approve or merge.
 - Keep the PR body to what changed and why. Put verification in a PR comment.
   Leave out attribution lines and session links.
-- Agents post PR comments as stormlight-thunderbot through the Bot comment
-  workflow (`.github/workflows/comment.yml`), never with their own GitHub
-  access.
+- Agents post PR comments as the App through the Bot comment workflow
+  (`.github/workflows/comment.yml`), never with their own GitHub access.
 - The agent that opens a PR reviews it with the `fab-storm` skill and ends
   with a `Review finished at <sha>` comment. That turns `storm/review` green
   for that head, marks the draft ready and sets the squash message in the

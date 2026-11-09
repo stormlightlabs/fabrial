@@ -4,6 +4,8 @@
 use std::path::Path;
 use std::process::Command;
 
+use fab_core::settings::{SETTINGS_PATH, Settings};
+
 /// A failure, as the message `fab` prints.
 pub type Result<T> = std::result::Result<T, String>;
 
@@ -16,6 +18,30 @@ pub fn gh(args: &[&str]) -> Result<String> {
 /// newline.
 pub fn git(dir: &Path, args: &[&str]) -> Result<String> {
     output("git", Command::new("git").arg("-C").arg(dir).args(args), args)
+}
+
+/// Reads the settings from the working directory, where the workflows check
+/// out main, so a pull request cannot change what its own run trusts.
+pub fn settings() -> Result<Settings> {
+    let text = std::fs::read_to_string(SETTINGS_PATH).map_err(|e| format!("cannot read {SETTINGS_PATH}: {e}"))?;
+    Settings::parse(&text).map_err(|e| e.to_string())
+}
+
+/// The slug of the App the settings name. `minted` is the slug of the App
+/// whose token the workflow made, from `APP_SLUG`; when given, it must be
+/// the same App, or the bot would not know its own comments.
+pub fn app(settings: &Settings, minted: Option<&str>) -> Result<String> {
+    let Some(app) = settings.app.clone() else {
+        return Err(format!(
+            "{SETTINGS_PATH} names no `app`; run fab update --app <slug> with the repository's GitHub App"
+        ));
+    };
+    match minted.filter(|m| !m.is_empty()) {
+        Some(minted) if minted != app => Err(format!(
+            "the App secrets belong to {minted}, but {SETTINGS_PATH} names {app}; set `app` or the secrets so they agree"
+        )),
+        _ => Ok(app),
+    }
 }
 
 /// Prints a write to GitHub instead of sending it, with the text of any

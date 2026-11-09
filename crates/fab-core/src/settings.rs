@@ -21,6 +21,12 @@ pub const CONFIG_DIRS: &[&str] = &[".github", ".claude", ".agents", ".codex"];
 pub struct Settings {
     /// GitHub login of the person who approves pull requests.
     pub owner: String,
+    /// The slug of the repository's GitHub App, the one the workflows act
+    /// as: `fabrial-bot` in `github.com/apps/fabrial-bot`. Its bot login is
+    /// [`Settings::bot`]. `fab init` and `fab update` need it; the file
+    /// still parses without it so `fab update --app` can add it.
+    #[serde(default)]
+    pub app: Option<String>,
     /// The `Co-authored-by` value on every squash commit.
     pub trailer: String,
     /// The command agents run before pushing. `fab gates` runs it when the
@@ -118,6 +124,15 @@ impl Settings {
     /// Checks that every value can be written in the one-line form the
     /// workflows read.
     pub fn validate(&self) -> Result<(), Error> {
+        if let Some(app) = &self.app
+            && !is_app_slug(app)
+        {
+            let hint = if app.ends_with("[bot]") { "; give the slug without `[bot]`" } else { "" };
+            return Err(Error::Settings(format!(
+                "`app` is {app:?}, not a GitHub App slug (lowercase letters, digits and hyphens, \
+                 not at either end, up to 34 characters){hint}"
+            )));
+        }
         if let Some(value) = &self.assisted_by
             && value != "on"
             && value != "off"
@@ -204,6 +219,12 @@ impl Settings {
         Ok(())
     }
 
+    /// The login the App's comments and commits carry, `<app>[bot]`, or
+    /// `None` when the settings name no App.
+    pub fn bot(&self) -> Option<String> {
+        self.app.as_ref().map(|app| format!("{app}[bot]"))
+    }
+
     /// Whether the squash commit names the agent models that worked on it.
     pub fn assisted(&self) -> bool {
         self.assisted_by.as_deref() == Some("on")
@@ -217,6 +238,13 @@ impl Settings {
                 "\n# The Signed-off-by trailer that ends every squash commit; the owner\n\
                  # certifies agent work at merge.\n\
                  signoff = \"{s}\"\n"
+            )
+        });
+        let app = self.app.as_ref().map_or_else(String::new, |a| {
+            format!(
+                "\n# The slug of the GitHub App the workflows act as, from its page\n\
+                 # github.com/apps/<slug>. Its comments come from <slug>[bot].\n\
+                 app = \"{a}\"\n"
             )
         });
         let assisted = self.assisted_by.as_ref().map_or_else(String::new, |a| {
@@ -274,6 +302,7 @@ impl Settings {
              # GitHub login of the person who approves pull requests; `fab init` writes\n\
              # CODEOWNERS from it.\n\
              owner = \"{}\"\n\
+             {app}\
              \n\
              # The Co-authored-by trailer on every squash commit.\n\
              trailer = \"{}\"\n\
@@ -303,6 +332,19 @@ fn is_relative(path: &str) -> bool {
         || path.contains(['"', '\\', '\n', '\r']))
 }
 
+/// Whether `app` is a GitHub App slug: lowercase ASCII letters, digits and
+/// hyphens, not starting or ending with a hyphen, up to the 34 characters an
+/// App's name may hold.
+fn is_app_slug(app: &str) -> bool {
+    !app.is_empty()
+        && app.len() <= 34
+        && app
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && !app.starts_with('-')
+        && !app.ends_with('-')
+}
+
 /// Whether a skill name is a plain directory name: ASCII letters, digits,
 /// `-` and `_`, so it cannot leave `.claude/skills`.
 fn is_name(name: &str) -> bool {
@@ -330,6 +372,7 @@ mod tests {
     fn settings() -> Settings {
         Settings {
             owner: "desertthunder".into(),
+            app: Some("fabrial-bot".into()),
             trailer: "Owais <desertthunder.dev@gmail.com>".into(),
             gates: "just check".into(),
             signoff: None,
@@ -517,6 +560,33 @@ mod tests {
         let mut bad = settings();
         bad.signoff = Some(String::new());
         assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn the_app_renders_parses_back_and_names_its_bot() {
+        let text = settings().render("0.1.0");
+        assert!(text.lines().any(|l| l == r#"app = "fabrial-bot""#), "{text}");
+        let parsed = Settings::parse(&text).unwrap();
+        assert_eq!(parsed.app.as_deref(), Some("fabrial-bot"));
+        assert_eq!(parsed.bot().as_deref(), Some("fabrial-bot[bot]"));
+        let none = Settings { app: None, ..settings() };
+        assert!(!none.render("0.1.0").contains("app ="));
+        assert_eq!(Settings::parse(&none.render("0.1.0")).unwrap().bot(), None);
+    }
+
+    #[test]
+    fn the_app_must_be_a_slug() {
+        for good in ["stormlight-thunderbot", "a", "bot2", &"x".repeat(34)] {
+            let s = Settings { app: Some(good.to_string()), ..settings() };
+            assert!(s.validate().is_ok(), "{good}");
+        }
+        for bad in ["", "-a", "a-", "My-App", "a b", "a_b", "a\"b", &"x".repeat(35)] {
+            let s = Settings { app: Some(bad.to_string()), ..settings() };
+            let err = s.validate().unwrap_err().to_string();
+            assert!(err.contains("`app`"), "{bad}: {err}");
+        }
+        let s = Settings { app: Some("fabrial-bot[bot]".into()), ..settings() };
+        assert!(s.validate().unwrap_err().to_string().contains("without `[bot]`"));
     }
 
     #[test]

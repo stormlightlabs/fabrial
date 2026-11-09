@@ -75,6 +75,10 @@ enum Command {
         /// GitHub login of the person who approves pull requests.
         #[arg(long)]
         owner: String,
+        /// The slug of the repository's GitHub App, which the workflows act
+        /// as: `my-bot` for github.com/apps/my-bot.
+        #[arg(long)]
+        app: String,
         /// The squash commit's Co-authored-by value, as "Name <email>".
         #[arg(long)]
         trailer: String,
@@ -102,6 +106,10 @@ enum Command {
         /// A new GitHub login for the person who approves pull requests.
         #[arg(long)]
         owner: Option<String>,
+        /// The slug of the repository's GitHub App; an install without one
+        /// needs it.
+        #[arg(long)]
+        app: Option<String>,
         /// A new Co-authored-by value for the squash commit.
         #[arg(long)]
         trailer: Option<String>,
@@ -172,9 +180,10 @@ struct Repo {
 
 fn main() -> ExitCode {
     let result = match Cli::parse().command {
-        Command::Init { repo, owner, trailer, gates, signoff, assisted_by, force } => in_repo(&repo, |dir| {
+        Command::Init { repo, owner, app, trailer, gates, signoff, assisted_by, force } => in_repo(&repo, |dir| {
             let settings = Settings {
                 owner,
+                app: Some(app),
                 trailer,
                 gates,
                 signoff,
@@ -186,10 +195,13 @@ fn main() -> ExitCode {
             };
             install::install(dir, &settings, force).map(|r| written(&r, "installed"))
         }),
-        Command::Update { repo, owner, trailer, gates, signoff, assisted_by, force } => in_repo(&repo, |dir| {
+        Command::Update { repo, owner, app, trailer, gates, signoff, assisted_by, force } => in_repo(&repo, |dir| {
             let change = |s: &mut Settings| {
                 if let Some(owner) = owner {
                     s.owner = owner;
+                }
+                if let Some(app) = app {
+                    s.app = Some(app);
                 }
                 if let Some(trailer) = trailer {
                     s.trailer = trailer;
@@ -302,6 +314,24 @@ fn written(report: &Report, done: &str) -> ExitCode {
                 eprintln!("fab: could not remove {path}, which this release no longer installs: {error}");
             }
         }
+    }
+    if !report.renamed_secrets.is_empty() {
+        let names = |new: bool| {
+            let pick = |&(old, renamed): &(&'static str, &'static str)| if new { renamed } else { old };
+            report
+                .renamed_secrets
+                .iter()
+                .map(pick)
+                .collect::<Vec<_>>()
+                .join(" and ")
+        };
+        println!(
+            "The workflows now read the secrets {} instead of {}. Add the new ones with the same values \
+             before the workflows next run, as docs/bot-setup.md says, then delete the old ones once no \
+             workflow reads them.",
+            names(true),
+            names(false)
+        );
     }
     println!(
         "fabrial {} {done}: {} written, {} unchanged.",

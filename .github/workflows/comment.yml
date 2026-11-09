@@ -1,7 +1,8 @@
-# Posts a comment on a pull request as stormlight-thunderbot. Agent sessions
-# never hold the App's key, so they post through this workflow instead of with
-# their own GitHub access, which would show the comment as the person whose
-# account the session uses:
+# Posts a comment on a pull request as the repository's GitHub App, the one
+# `app` in .github/fabrial.toml names. Agent sessions never hold the App's
+# key, so they post through this workflow instead of with their own GitHub
+# access, which would show the comment as the person whose account the
+# session uses:
 #
 #   gh workflow run comment.yml -f pr=<n> -f body="$(cat comment.md)"
 #
@@ -62,8 +63,8 @@ jobs:
       - uses: actions/create-github-app-token@v2
         id: app
         with:
-          app-id: ${{ secrets.THUNDERBOT_APP_ID }}
-          private-key: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}
+          app-id: ${{ secrets.FABRIAL_APP_ID }}
+          private-key: ${{ secrets.FABRIAL_APP_PRIVATE_KEY }}
 
       - name: Check the pull request
         env:
@@ -114,6 +115,7 @@ jobs:
           HEAD_SHA: ${{ inputs.review }}
           ANSWERS: ${{ inputs.answers }}
           REVIEWER: ${{ inputs.reviewer }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
         run: |
           if [[ -n $SECTION ]]; then
             fab pr-status --body-file "$RUNNER_TEMP/body.md"

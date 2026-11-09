@@ -5,6 +5,10 @@
 # CODEOWNERS from it.
 owner = "desertthunder"
 
+# The slug of the GitHub App the workflows act as, from its page
+# github.com/apps/<slug>. Its comments come from <slug>[bot].
+app = "stormlight-thunderbot"
+
 # The Co-authored-by trailer on every squash commit.
 trailer = "Owais <desertthunder.dev@gmail.com>"
 

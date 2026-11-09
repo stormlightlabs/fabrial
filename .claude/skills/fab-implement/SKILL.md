@@ -154,8 +154,8 @@ commit's body.
 git push -u origin <branch>
 ```
 
-The Branch PR workflow then opens the pull request as a draft from
-stormlight-thunderbot, on the push that creates the branch, or on a claimed
+The Branch PR workflow then opens the pull request as a draft from the
+repository's App, on the push that creates the branch, or on a claimed
 branch the push that first adds work above the claim. Do not open one
 yourself. If no pull request appears, because the branch had no commits
 ahead of `main` on that push or the run failed, run

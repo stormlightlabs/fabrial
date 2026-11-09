@@ -12,8 +12,9 @@
 //!   ready and sets the squash message in the status comment (see
 //!   `status.rs`). `/storm:done <sha>` is another name for `/storm:ready`.
 //!   A person or an outer loop merges, by hand or with auto-merge. These
-//!   comments count only from the bot or a user with write access; the gate
-//!   ignores anyone else's without a reply.
+//!   comments count only from the bot, the App `app` in main's
+//!   `.github/fabrial.toml` names, or a user with write access; the gate
+//!   ignores anyone else's, another App's included, without a reply.
 //! - `edit`: `SENDER` changed the title or body. On a ready pull request whose
 //!   head passed review, it sets the new squash message. Edits from anyone
 //!   without write access are ignored.
@@ -39,7 +40,6 @@ use crate::squash;
 use crate::status::Status;
 
 const CHECK_NAME: &str = "storm/review";
-const BOT_SLUG: &str = "stormlight-thunderbot";
 const INTRO: &str = "When you merge, by hand or with auto-merge, squash with this message:";
 const AUTO_MERGE_NOTE: &str = "Auto-merge is on and squashes with the message it was turned on with. \
                                To use this one, turn auto-merge off and on again with it.";
@@ -95,6 +95,10 @@ pub struct Options {
     /// Who edited the pull request.
     #[arg(long, env = "SENDER")]
     sender: Option<String>,
+    /// The slug of the App whose token the workflow made, checked against
+    /// the settings' `app`.
+    #[arg(long, env = "APP_SLUG")]
+    app_slug: Option<String>,
     /// Print writes to GitHub instead of sending them. `DRY_RUN=1` sets it.
     #[arg(long, env = "DRY_RUN", action = ArgAction::SetTrue, value_parser = FalseyValueParser::new())]
     dry_run: bool,
@@ -106,6 +110,10 @@ struct Gate {
     pr: String,
     head: String,
     head_dir: PathBuf,
+    /// The App's slug, which its check runs carry.
+    app: String,
+    /// The App's login, which its comments carry.
+    bot: String,
     trailer: String,
     signoff: Option<String>,
     assisted: bool,
@@ -161,8 +169,9 @@ impl Gate {
     fn last_success(&self, sha: &str) -> String {
         let path = format!("repos/{}/commits/{sha}/check-runs?check_name={CHECK_NAME}", self.repo);
         let filter = format!(
-            "[.check_runs[] | select(.status == \"completed\" and .app.slug == \"{BOT_SLUG}\")] \
-             | sort_by(.completed_at) | last | select(.conclusion == \"success\") | .output.summary"
+            "[.check_runs[] | select(.status == \"completed\" and .app.slug == \"{}\")] \
+             | sort_by(.completed_at) | last | select(.conclusion == \"success\") | .output.summary",
+            self.app
         );
         run::gh(&["api", &path, "--jq", &filter]).unwrap_or_default()
     }
@@ -298,7 +307,7 @@ impl Gate {
         }
         // A section of the status comment, which an edit changes without a
         // notification, so a run that changes nothing posts nothing.
-        let mut status = Status::read(&self.repo, &self.pr)?;
+        let mut status = Status::read(&self.repo, &self.pr, &self.bot)?;
         let wrote = status.set(SQUASH_SECTION, &text, self.scratch.path(), self.dry_run)?;
         match unread {
             Some(e) => Err(format!("cannot read the pull request's commits for Assisted-by: {e}")),
@@ -317,13 +326,14 @@ impl Gate {
     }
 
     /// Whether a login is the bot or has write, maintain or admin access to
-    /// the repository. A failed read counts as no access.
+    /// the repository. Another App's bot has none, and a failed read counts
+    /// as no access.
     fn can_write(&self, login: &str) -> bool {
-        if login == format!("{BOT_SLUG}[bot]") {
+        if login == self.bot {
             return true;
         }
         // An unknown author has no access; every name is some account's.
-        if login.is_empty() {
+        if login.is_empty() || login.ends_with("[bot]") {
             return false;
         }
         let path = format!("repos/{}/collaborators/{login}/permission", self.repo);
@@ -420,9 +430,8 @@ impl Gate {
 /// Runs the gate for one event. The settings come from main's
 /// `.github/fabrial.toml`, in the working directory.
 pub fn run(options: Options) -> Result<()> {
-    let text = std::fs::read_to_string(".github/fabrial.toml")
-        .map_err(|e| format!("cannot read .github/fabrial.toml: {e}"))?;
-    let settings = Settings::parse(&text).map_err(|e| e.to_string())?;
+    let settings = run::settings()?;
+    let app = run::app(&settings, options.app_slug.as_deref())?;
     let assisted = settings.assisted();
     let Settings { trailer, signoff, .. } = settings;
     let given = |v: Option<String>| v.filter(|s| !s.is_empty());
@@ -431,6 +440,8 @@ pub fn run(options: Options) -> Result<()> {
         pr: options.pr,
         head: String::new(),
         head_dir: options.head_dir,
+        bot: format!("{app}[bot]"),
+        app,
         trailer,
         signoff,
         assisted,

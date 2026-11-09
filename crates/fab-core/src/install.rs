@@ -26,6 +26,13 @@ const AGENTS_PATH: &str = "AGENTS.md";
 const CODEOWNERS_PATH: &str = ".github/CODEOWNERS";
 const SKILLS_TARGET: &str = "../.claude/skills";
 const AGENTS_SECTION: &str = include_str!("agents-section.md");
+/// Secrets the installed workflows read under a new name, as `(old, new)`.
+/// The old names named one App; the new ones name the role, so each
+/// repository can keep its own App's ID and key under them.
+const RENAMED_SECRETS: &[(&str, &str)] = &[
+    ("THUNDERBOT_APP_ID", "FABRIAL_APP_ID"),
+    ("THUNDERBOT_PRIVATE_KEY", "FABRIAL_APP_PRIVATE_KEY"),
+];
 
 /// The files copied as they are, with whether each is executable.
 const EMBEDDED: &[(&str, &str, bool)] = &[
@@ -389,6 +396,10 @@ pub struct Report {
     pub removed: Vec<PathBuf>,
     /// Retired files [`update`] kept, each with the reason.
     pub kept: Vec<Kept>,
+    /// Secrets the workflows this run replaced read under a new name, as
+    /// `(old, new)`: the repository needs the new ones before the workflows
+    /// run, and can delete the old ones once no workflow reads them.
+    pub renamed_secrets: Vec<(&'static str, &'static str)>,
 }
 
 /// A retired file [`update`] kept.
@@ -494,6 +505,12 @@ pub fn update(root: &Path, change: impl FnOnce(&mut Settings), downgrade: bool) 
 /// `force`, and is never followed or deleted.
 pub fn init(root: &Path, settings: &Settings, force: bool) -> Result<Report, Error> {
     settings.validate()?;
+    if settings.app.is_none() {
+        return Err(Error::Settings(
+            "`app` is not set; pass --app with the slug of the repository's GitHub App, as docs/bot-setup.md says"
+                .into(),
+        ));
+    }
     // Everything that can refuse is decided before the first write.
     let bad = unmanageable(root, managed_paths())?;
     if !bad.is_empty() {
@@ -531,9 +548,19 @@ pub fn init(root: &Path, settings: &Settings, force: bool) -> Result<Report, Err
     let mut report = Report::default();
     for (path, contents, executable) in &files {
         let full = root.join(path);
-        if fs::read(&full).is_ok_and(|existing| existing == contents.as_bytes()) {
+        let existing = fs::read(&full).ok();
+        if existing.as_deref() == Some(contents.as_bytes()) {
             report.unchanged.push(path.clone());
             continue;
+        }
+        if let Some(existing) = &existing {
+            let old = String::from_utf8_lossy(existing);
+            for &(from, to) in RENAMED_SECRETS {
+                let reads = |text: &str| text.contains(&format!("secrets.{from}"));
+                if reads(&old) && !reads(contents) && !report.renamed_secrets.contains(&(from, to)) {
+                    report.renamed_secrets.push((from, to));
+                }
+            }
         }
         if let Some(parent) = full.parent() {
             fs::create_dir_all(parent).map_err(|source| Error::Io { path: parent.into(), source })?;
@@ -892,8 +919,9 @@ fn expected_files(settings: &Settings, version: &str) -> Vec<(PathBuf, String, b
 fn codeowners(owner: &str) -> String {
     format!(
         "# Every pull request requests a review from the owner. Pull requests are\n\
-         # opened by stormlight-thunderbot, so the owner is never the author and can\n\
-         # approve them. `fab init` writes this file from `.github/fabrial.toml`.\n\
+         # opened by the repository's GitHub App, so the owner is never the author\n\
+         # and can approve them. `fab init` writes this file from\n\
+         # `.github/fabrial.toml`.\n\
          * @{owner}\n"
     )
 }
@@ -1032,9 +1060,68 @@ mod tests {
         }
     }
 
+    #[test]
+    fn installed_files_name_no_app() {
+        // fabrial's own App is stormlight-thunderbot, but each repository
+        // that installs fabrial names its own in `.github/fabrial.toml`.
+        let files = EMBEDDED.iter().map(|(p, c, _)| (*p, *c));
+        let owners = codeowners("someone");
+        let fixed = [("agents-section.md", AGENTS_SECTION), ("CODEOWNERS", owners.as_str())];
+        for (path, contents) in files.chain(fixed) {
+            assert!(!contents.to_lowercase().contains("thunderbot"), "{path} names an App");
+        }
+    }
+
+    #[test]
+    fn init_needs_an_app() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = init(dir.path(), &Settings { app: None, ..settings() }, false).unwrap_err();
+        assert!(err.to_string().contains("--app"), "{err}");
+        assert!(!dir.path().join(SETTINGS_PATH).exists());
+    }
+
+    #[test]
+    fn update_adds_an_app_to_an_install_without_one() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let path = dir.path().join(SETTINGS_PATH);
+        let old: String = fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.starts_with("app = "))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        fs::write(&path, old).unwrap();
+        let err = update(dir.path(), |_| {}, false).unwrap_err();
+        assert!(err.to_string().contains("--app"), "{err}");
+        update(dir.path(), |s| s.app = Some("own-bot".into()), false).unwrap();
+        assert!(fs::read_to_string(&path).unwrap().contains("app = \"own-bot\"\n"));
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn update_names_the_secrets_the_workflows_now_read() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        for workflow in ["branch-pr.yml", "review.yml", "comment.yml"] {
+            let path = dir.path().join(".github/workflows").join(workflow);
+            let text = fs::read_to_string(&path).unwrap();
+            assert!(text.contains("secrets.FABRIAL_APP_ID") && text.contains("secrets.FABRIAL_APP_PRIVATE_KEY"));
+            let old = text
+                .replace("secrets.FABRIAL_APP_ID", "secrets.THUNDERBOT_APP_ID")
+                .replace("secrets.FABRIAL_APP_PRIVATE_KEY", "secrets.THUNDERBOT_PRIVATE_KEY");
+            fs::write(&path, old).unwrap();
+        }
+        let report = update(dir.path(), |_| {}, false).unwrap();
+        assert_eq!(report.renamed_secrets, RENAMED_SECRETS);
+        let again = update(dir.path(), |_| {}, false).unwrap();
+        assert_eq!(again.renamed_secrets, vec![]);
+    }
+
     fn settings() -> Settings {
         Settings {
             owner: "desertthunder".into(),
+            app: Some("fabrial-bot".into()),
             trailer: "Owais <desertthunder.dev@gmail.com>".into(),
             signoff: None,
             assisted_by: None,

@@ -5,8 +5,9 @@
 # each new head pending, turns the check green on that comment or on
 # `/storm:ready <sha>` (or `/storm:done <sha>`). An edit to the title or body
 # sets the squash message again, in the status comment. The `if` below lets
-# in only the owner, members and collaborators; `fab gate` then ignores a
-# person without write access.
+# in only the owner, members and collaborators, and any App's bot; `fab gate`
+# then ignores a person without write access and every App but the one
+# `app` in .github/fabrial.toml names.
 #
 # pull_request_target runs this file from main, and `fab` is the release
 # .github/fabrial.toml names (in fabrial itself, built from main), so a change
@@ -35,7 +36,7 @@ jobs:
       github.event_name == 'pull_request_target' ||
       (github.event.issue.pull_request &&
        ((startsWith(github.event.comment.body, 'Review finished at ') &&
-         github.event.comment.user.login == 'stormlight-thunderbot[bot]') ||
+         github.event.comment.user.type == 'Bot') ||
         ((startsWith(github.event.comment.body, 'Review finished at ') ||
           startsWith(github.event.comment.body, '/storm:ready') ||
           startsWith(github.event.comment.body, '/storm:done')) &&
@@ -46,8 +47,8 @@ jobs:
       - uses: actions/create-github-app-token@v2
         id: app
         with:
-          app-id: ${{ secrets.THUNDERBOT_APP_ID }}
-          private-key: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}
+          app-id: ${{ secrets.FABRIAL_APP_ID }}
+          private-key: ${{ secrets.FABRIAL_APP_PRIVATE_KEY }}
 
       # A push run works on the head its event names, not the newest one, so
       # runs need no ordering: each sets the check on its own commit. A comment
@@ -92,4 +93,5 @@ jobs:
           BODY: ${{ github.event.comment.body }}
           AUTHOR: ${{ github.event.comment.user.login }}
           SENDER: ${{ github.event.sender.login }}
+          APP_SLUG: ${{ steps.app.outputs.app-slug }}
         run: fab gate
