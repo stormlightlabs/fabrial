@@ -69,12 +69,24 @@ const COMMAND_PAGES: &[CommandPage] = &[
 const FILE_PAGES_ORDER: usize = COMMAND_PAGES.len() + 1;
 
 /// What `fab manual` writes.
+/// A piece of a line of Markdown, split at its code spans.
+#[derive(Debug, PartialEq)]
+enum Part<'a> {
+    /// Text outside any code span.
+    Prose(&'a str),
+    /// A code span, its backticks included.
+    Code(&'a str),
+    /// A backtick run that no run of the same length closes, and the text
+    /// after it. CommonMark reads it as prose.
+    Unclosed(&'a str),
+}
+
 #[derive(Args)]
 pub struct Options {
     /// The directory to write the pages into, such as
     /// packages/website/src/content/docs/reference. It holds only generated
     /// pages: fab manual leaves other files alone, and the reference test
-    /// fails on any other `.md` file in it.
+    /// fails on any other `.md` or `.svx` file under it.
     #[arg(long)]
     out: PathBuf,
 }
@@ -556,17 +568,18 @@ fn wrap(text: &str) -> String {
 fn spans(text: &str) -> Vec<String> {
     let mut words = Vec::new();
     let mut word = String::new();
-    let mut in_code = false;
-    for c in text.chars() {
-        if c == '`' {
-            in_code = !in_code;
-        }
-        if c.is_whitespace() && !in_code {
-            if !word.is_empty() {
-                words.push(std::mem::take(&mut word));
+    for part in parts(text) {
+        match part {
+            Part::Code(code) => word.extend(code.chars().map(|c| if c.is_whitespace() { ' ' } else { c })),
+            Part::Prose(prose) | Part::Unclosed(prose) => {
+                for c in prose.chars() {
+                    if !c.is_whitespace() {
+                        word.push(c);
+                    } else if !word.is_empty() {
+                        words.push(std::mem::take(&mut word));
+                    }
+                }
             }
-        } else {
-            word.push(if c.is_whitespace() { ' ' } else { c });
         }
     }
     if !word.is_empty() {
@@ -575,8 +588,100 @@ fn spans(text: &str) -> Vec<String> {
     words
 }
 
-/// Refuses a page whose prose, outside code spans and blocks, holds `<`,
-/// `{` or `}`, which the docs site reads as markup, naming each such line.
+/// `text` split into prose and code spans. As in CommonMark, a code span
+/// opens with a run of backticks and closes at the next run of the same
+/// length; a run with no such close starts an `Unclosed` part that runs to
+/// the end.
+fn parts(text: &str) -> Vec<Part<'_>> {
+    let run_at = |i: usize| text[i..].bytes().take_while(|&b| b == b'`').count();
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut i = 0;
+    while i < text.len() {
+        if text.as_bytes()[i] != b'`' {
+            i += 1;
+            continue;
+        }
+        let open = run_at(i);
+        let mut j = i + open;
+        let close = loop {
+            match text[j..].find('`') {
+                None => break None,
+                Some(k) => {
+                    let len = run_at(j + k);
+                    if len == open {
+                        break Some(j + k + len);
+                    }
+                    j += k + len;
+                }
+            }
+        };
+        if start < i {
+            out.push(Part::Prose(&text[start..i]));
+        }
+        match close {
+            Some(end) => {
+                out.push(Part::Code(&text[i..end]));
+                start = end;
+                i = end;
+            }
+            None => {
+                out.push(Part::Unclosed(&text[i..]));
+                return out;
+            }
+        }
+    }
+    if start < text.len() {
+        out.push(Part::Prose(&text[start..]));
+    }
+    out
+}
+
+/// Whether `prose` holds a character reference, such as `&lt;` or `&#123;`,
+/// which the docs site decodes before reading the text as markup.
+fn has_reference(prose: &str) -> bool {
+    prose.match_indices('&').any(|(i, _)| {
+        let rest = &prose[i + 1..];
+        let Some(end) = rest.find(';') else { return false };
+        let name = &rest[..end];
+        let digits = |n: &str, hex: bool| {
+            !n.is_empty()
+                && n.chars()
+                    .all(|c| if hex { c.is_ascii_hexdigit() } else { c.is_ascii_digit() })
+        };
+        match name.strip_prefix('#') {
+            Some(n) => match n.strip_prefix(['x', 'X']) {
+                Some(h) => digits(h, true),
+                None => digits(n, false),
+            },
+            None => {
+                name.starts_with(|c: char| c.is_ascii_alphabetic()) && name.chars().all(|c| c.is_ascii_alphanumeric())
+            }
+        }
+    })
+}
+
+/// Why the docs site would misread `line`, if it would.
+fn markup_problem(line: &str) -> Option<&'static str> {
+    let table_row = line.starts_with('|');
+    for part in parts(line) {
+        match part {
+            Part::Unclosed(_) => return Some("a backtick with no closing run of the same length"),
+            Part::Prose(p) if p.contains(['<', '{', '}']) => return Some("`<`, `{` or `}` outside a code span"),
+            Part::Prose(p) if has_reference(p) => {
+                return Some("a character reference such as `&lt;` outside a code span");
+            }
+            Part::Code(c) if table_row && c.contains('|') => {
+                return Some("a `|` in a code span in a table cell, which the docs site shows as `\\|`");
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Refuses a page that the docs site would read as markup or show other
+/// than as written, outside code blocks, naming each such line and why.
 fn check_markup(page: &Page) -> Result<()> {
     let body = page.text.splitn(3, "---\n").nth(2).unwrap_or(&page.text);
     let mut fenced = false;
@@ -584,16 +689,16 @@ fn check_markup(page: &Page) -> Result<()> {
     for line in body.lines() {
         if line.starts_with("```") {
             fenced = !fenced;
-        } else if !fenced && line.split('`').step_by(2).any(|prose| prose.contains(['<', '{', '}'])) {
-            bad.push(line.trim());
+        } else if let Some(problem) = markup_problem(line).filter(|_| !fenced) {
+            bad.push(format!("{problem}: {}", line.trim()));
         }
     }
     if bad.is_empty() {
         return Ok(());
     }
     Err(format!(
-        "fab manual: {} has `<`, `{{` or `}}` outside a code span, which the docs site reads as markup; \
-         put it in backticks:\n{}",
+        "fab manual: {} has text the docs site would misread; put markup in backticks, and keep `|` \
+         out of code spans in tables:\n{}",
         page.file,
         bad.join("\n")
     ))
@@ -638,6 +743,60 @@ mod tests {
         let err = check_markup(&page("a storm/<task> branch\n")).unwrap_err();
         assert!(err.contains("p.md") && err.contains("storm/<task>"), "{err}");
         assert!(check_markup(&page("given {id}\n")).is_err());
+    }
+
+    #[test]
+    fn backtick_runs_close_only_at_the_same_length() {
+        assert_eq!(
+            parts("a ``x ` y`` b `z`"),
+            [
+                Part::Prose("a "),
+                Part::Code("``x ` y``"),
+                Part::Prose(" b "),
+                Part::Code("`z`")
+            ]
+        );
+        assert_eq!(parts("a `` b ` c"), [Part::Prose("a "), Part::Unclosed("`` b ` c")]);
+        assert_eq!(
+            markup_problem("``a ` b`` with {id}"),
+            Some("`<`, `{` or `}` outside a code span")
+        );
+        assert!(markup_problem("``a ` {b}``").is_none());
+        assert!(markup_problem("an ` unclosed `<task>`").is_some());
+        assert!(markup_problem("a `` run then `<task>`").is_some());
+    }
+
+    #[test]
+    fn character_references_outside_code_are_refused() {
+        for text in [
+            "&#123;x&#125;",
+            "&#x7b;",
+            "&#X7D;",
+            "&lbrace;",
+            "&rcub;",
+            "&lt;b",
+            "&#60;",
+            "&amp;",
+        ] {
+            assert!(markup_problem(&format!("say {text} here")).is_some(), "{text}");
+        }
+        assert!(markup_problem("`&#123;x&#125;` and R&D, a & b").is_none());
+    }
+
+    #[test]
+    fn a_pipe_in_a_table_code_span_is_refused() {
+        let rows = vec![vec!["`a|b`".into()]];
+        let text = format!("---\ntitle: t\n---\n\n{}", table(&["Key"], rows));
+        let err = check_markup(&Page { file: "p.md", text }).unwrap_err();
+        assert!(err.contains("a `|` in a code span in a table cell"), "{err}");
+        assert!(markup_problem("| a \\| b | `c` |").is_none());
+        assert!(markup_problem("prose with `a|b`").is_none());
+    }
+
+    #[test]
+    fn wrap_keeps_double_backtick_spans_whole() {
+        let text = format!("{} ``a ` b c``", "word ".repeat(15).trim());
+        assert_eq!(wrap(&text), format!("{}\n``a ` b c``\n", "word ".repeat(15).trim()));
     }
 
     #[test]

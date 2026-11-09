@@ -46,14 +46,26 @@ fn the_committed_reference_pages_match_fab_manual() {
     );
 }
 
-/// The `.md` files in `dir` that are not among the `written` pages, sorted.
+/// The pages under `dir`, at any depth, that are not among the `written`
+/// pages, as paths relative to `dir`, sorted. A page is any `.md` or `.svx`
+/// file, the files the docs site loads.
 fn extra_pages(dir: &Path, written: &[OsString]) -> Vec<String> {
-    let mut extra: Vec<String> = fs::read_dir(dir)
-        .unwrap()
-        .map(|e| e.unwrap().file_name())
-        .filter(|name| Path::new(name).extension().is_some_and(|e| e == "md") && !written.contains(name))
-        .map(|name| name.to_string_lossy().into_owned())
-        .collect();
+    let mut extra = Vec::new();
+    let mut dirs = vec![dir.to_path_buf()];
+    while let Some(next) = dirs.pop() {
+        for entry in fs::read_dir(&next).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                dirs.push(path);
+                continue;
+            }
+            let page = path.extension().is_some_and(|e| e == "md" || e == "svx");
+            let relative = path.strip_prefix(dir).unwrap();
+            if page && !written.iter().any(|w| Path::new(w) == relative) {
+                extra.push(relative.to_string_lossy().into_owned());
+            }
+        }
+    }
     extra.sort();
     extra
 }
@@ -61,10 +73,28 @@ fn extra_pages(dir: &Path, written: &[OsString]) -> Vec<String> {
 #[test]
 fn a_committed_page_fab_manual_does_not_write_is_named() {
     let dir = tempfile::tempdir().unwrap();
-    for name in ["settings.md", "old-name.md", "notes.txt"] {
+    fs::create_dir_all(dir.path().join("old/deeper")).unwrap();
+    for name in [
+        "settings.md",
+        "old-name.md",
+        "old.svx",
+        "notes.txt",
+        "old/x.md",
+        "old/deeper/y.svx",
+        "old/settings.md",
+    ] {
         fs::write(dir.path().join(name), "").unwrap();
     }
-    assert_eq!(extra_pages(dir.path(), &["settings.md".into()]), ["old-name.md"]);
+    assert_eq!(
+        extra_pages(dir.path(), &["settings.md".into()]),
+        [
+            "old-name.md",
+            "old.svx",
+            "old/deeper/y.svx",
+            "old/settings.md",
+            "old/x.md"
+        ]
+    );
 }
 
 #[test]
