@@ -47,7 +47,7 @@ there is none, a local session adds one on that branch beside the repository,
 and a cloud session checks the branch out in its container. Never edit the
 user's primary checkout.
 
-If the base has moved and the branch no longer applies cleanly, run the
+If the base has moved and the branch no longer merges cleanly, run the
 `fab-resync` skill first.
 
 ## Decide on each finding
@@ -139,4 +139,4 @@ Each stop is an escalation to the user, not a reason to force a change through.
 
 - Approve or merge the pull request.
 - Review your own revision. The next review is a separate run.
-- Force-push, except after the `fab-resync` skill's rebase.
+- Force-push, except after a `fab-resync` rebase.
