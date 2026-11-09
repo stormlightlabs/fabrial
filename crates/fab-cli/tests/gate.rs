@@ -635,7 +635,12 @@ fn storm_ready_and_storm_done_accept_the_head_and_post_the_squash_message() {
     for command in ["/storm:ready", "/storm:done"] {
         let body = format!("{command} {}", &HEAD[..7]);
         let run = gate(
-            &[("EVENT", "comment"), ("AUTHOR", "desertthunder"), ("BODY", &body)],
+            &[
+                ("EVENT", "comment"),
+                ("AUTHOR", "desertthunder"),
+                ("BODY", &body),
+                ("TEST_PERMISSION", "admin"),
+            ],
             json!({}),
             None,
         );
@@ -653,6 +658,72 @@ fn storm_ready_and_storm_done_accept_the_head_and_post_the_squash_message() {
 }
 
 #[test]
+fn accepting_a_head_needs_write_access_or_the_bot() {
+    let ready = format!("/storm:ready {}", &HEAD[..7]);
+    let done = format!("/storm:done {}", &HEAD[..7]);
+    let reviewed = format!("Review finished at {HEAD}");
+    let wrong = "/storm:ready bbbbbbb".to_string();
+    // `none` is what GitHub answers for an organization member with no
+    // access to the repository.
+    for (permission, accepts) in [
+        ("admin", true),
+        ("maintain", true),
+        ("write", true),
+        ("triage", false),
+        ("read", false),
+        ("none", false),
+    ] {
+        for body in [&ready, &done, &reviewed] {
+            let env = [
+                ("EVENT", "comment"),
+                ("AUTHOR", "someone"),
+                ("BODY", body.as_str()),
+                ("TEST_PERMISSION", permission),
+            ];
+            let run = gate(&env, json!({}), None);
+            assert_eq!(run.code, Some(0), "{permission} {body}: {}", run.stderr);
+            assert_eq!(run.succeeded_check(), accepts, "{permission} {body}");
+            assert_eq!(
+                run.calls.iter().any(|c| c.is("pr", "ready")),
+                accepts,
+                "{permission} {body}"
+            );
+            assert_eq!(run.posts().is_empty(), !accepts, "{permission} {body}");
+            assert!(
+                run.calls
+                    .iter()
+                    .any(|c| c.args.iter().any(|a| a.contains("collaborators/someone/permission"))),
+                "{permission} {body}"
+            );
+        }
+        // An ignored commenter gets no reply, even naming the wrong commit.
+        let env = [
+            ("EVENT", "comment"),
+            ("AUTHOR", "someone"),
+            ("BODY", wrong.as_str()),
+            ("TEST_PERMISSION", permission),
+        ];
+        let run = gate(&env, json!({}), None);
+        assert_eq!(run.calls.iter().any(|c| c.is("pr", "comment")), accepts, "{permission}");
+    }
+    // The bot needs no permission read.
+    let run = gate(&with(&finished(), &[("TEST_PERMISSION", "none")]), json!({}), None);
+    assert!(run.succeeded_check());
+    assert!(
+        !run.calls
+            .iter()
+            .any(|c| c.args.iter().any(|a| a.contains("/permission")))
+    );
+    // Other comments read no permission.
+    let run = gate(
+        &[("EVENT", "comment"), ("AUTHOR", "someone"), ("BODY", "Looks good")],
+        json!({}),
+        None,
+    );
+    assert!(run.calls.is_empty());
+}
+
+#[test]
 fn a_command_naming_another_commit_asks_again_and_accepts_nothing() {
     for body in [
         "Review finished at bbbbbbb",
@@ -663,7 +734,12 @@ fn a_command_naming_another_commit_asks_again_and_accepts_nothing() {
     ] {
         let author = if body.starts_with('/') { "desertthunder" } else { BOT };
         let run = gate(
-            &[("EVENT", "comment"), ("AUTHOR", author), ("BODY", body)],
+            &[
+                ("EVENT", "comment"),
+                ("AUTHOR", author),
+                ("BODY", body),
+                ("TEST_PERMISSION", "write"),
+            ],
             json!({}),
             None,
         );

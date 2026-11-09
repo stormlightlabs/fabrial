@@ -2,7 +2,7 @@
 id = "arcl-t-01M6Z600PEASV6468HG7M7KJYQ"
 phase = "arcl-ph-01M5S4SCFE01K31R17FQ29AHJ8"
 title = "Require write access for /storm:ready and /storm:done"
-status = "pending"
+status = "in_progress"
 priority = "high"
 position = 0
 +++
