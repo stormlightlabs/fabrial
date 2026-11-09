@@ -16,12 +16,12 @@ use serde_json::{Value, json};
 
 use crate::run::{self, Result};
 
-/// The severities a finding line opens with: the `review` skill's five,
+/// The severities a finding line opens with: the `fab-review` skill's five,
 /// plus `major` and `minor`, which reviewers also write.
 const SEVERITIES: &[&str] = &["blocker", "high", "major", "medium", "minor", "low", "nit"];
-/// The most words a review pass's report may hold, as the `review` skill says.
+/// The most words a review pass's report may hold, as the `fab-review` skill says.
 const REVIEW_WORDS: usize = 200;
-/// The most words a revise pass's answers may hold, as the `revise` skill says.
+/// The most words a revise pass's answers may hold, as the `fab-revise` skill says.
 const ANSWER_WORDS: usize = 150;
 /// The outcomes that close a thread. A finding declined as not a defect
 /// stays open for the owner to judge.

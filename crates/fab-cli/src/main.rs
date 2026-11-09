@@ -294,6 +294,9 @@ fn written(report: &Report, done: &str) -> ExitCode {
             KeptReason::NotAFile => {
                 println!("kept {path}: it is not a regular file, and this release no longer installs it")
             }
+            KeptReason::SkillChanged => println!(
+                "kept {path}: this skill's old name holds files no release wrote as they are, so fab left all of it; move what you need into its fab- skill and delete it"
+            ),
             KeptReason::Failed(error) => {
                 failed = true;
                 eprintln!("fab: could not remove {path}, which this release no longer installs: {error}");

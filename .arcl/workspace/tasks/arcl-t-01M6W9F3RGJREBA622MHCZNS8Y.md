@@ -23,3 +23,10 @@ Acceptance criteria:
       reports no drift
 - [ ] PLAN.md's **Shipped** list names what v0.9.0 shipped
 - [ ] The README documents `fab gates`, `signoff` and `assisted_by`
+- [ ] A page covers setting up stormlight-thunderbot for a repository: the
+      App, its permissions, the secrets and the ruleset
+- [ ] A page walks one task from claim to merge, naming who acts at each
+      step
+- [ ] The docs describe fabrial as the contract, skills, workflows and `fab`
+      commands, and leave worker dispatch, the sandbox and the Pi package to
+      the harness

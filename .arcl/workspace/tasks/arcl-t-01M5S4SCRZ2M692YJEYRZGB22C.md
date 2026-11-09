@@ -2,7 +2,7 @@
 id = "arcl-t-01M5S4SCRZ2M692YJEYRZGB22C"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Make sandbox settings configurable"
-status = "pending"
+status = "cancelled"
 priority = "low"
 position = 6
 +++

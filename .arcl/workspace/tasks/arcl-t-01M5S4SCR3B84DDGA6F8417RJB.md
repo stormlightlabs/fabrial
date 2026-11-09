@@ -2,7 +2,7 @@
 id = "arcl-t-01M5S4SCR3B84DDGA6F8417RJB"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Queue messages in Pi while a task is active"
-status = "pending"
+status = "cancelled"
 priority = "low"
 position = 4
 +++

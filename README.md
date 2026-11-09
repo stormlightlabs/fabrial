@@ -36,6 +36,8 @@ It writes the Branch PR, Review gate and Bot comment workflows, the action
 that installs `fab` for them, the review stages in
 `.github/fabrial-sequence.toml`, `shot.sh` and its `sgr.pl`, `CODEOWNERS`,
 `.github/fabrial.toml`, the skills and agents, and a section of `AGENTS.md`.
+Each skill is named `fab-<name>`, such as `fab-review`, so it does not take
+the name of a skill the repository keeps.
 Branch PR and the Review gate install the `fab` release that
 `.github/fabrial.toml` names and run `fab branch-pr` and `fab gate`. Commit
 the result on a `claude/` branch and push it; the Branch PR workflow opens the
@@ -52,11 +54,11 @@ starter has no scopes, so every change runs `full`, the `--gates` command.
 The skills take a task from wherever the repository keeps its work. Name the
 tracker in a **Tasks** section of `AGENTS.md`, outside fabrial's section, with
 the commands that read a task and its readiness, start it, complete it with
-evidence, hand it off, pick it up and record new work. For `rubber-duck` and
-`decompose`, add the commands that record an idea and a spec, and map each
-primitive `decompose` writes (collection, run unit, task and dependency) to a
+evidence, hand it off, pick it up and record new work. For `fab-rubber-duck` and
+`fab-decompose`, add the commands that record an idea and a spec, and map each
+primitive `fab-decompose` writes (collection, run unit, task and dependency) to a
 record in the tracker. Without that section, a task is a GitHub issue or a
-description, ideas and specs go under `docs/`, and `decompose` writes
+description, ideas and specs go under `docs/`, and `fab-decompose` writes
 milestones, issues with sub-issues and blocked-by links. fabrial tracks its
 own work in [arclightning](https://github.com/stormlightlabs/arclightning),
 and its `AGENTS.md` shows such a section.
@@ -67,9 +69,14 @@ settings in `.github/fabrial.toml`, unless `--owner`, `--trailer`,
 with this build's. `--signoff ""` removes the sign-off. It refuses to install
 an older release over a newer one unless you pass `--force`. It deletes a
 file only older releases installed, such as `.github/storm/gate.sh`, if you
-have not edited it. It keeps and lists an edited one, and `fab check`
-reports each one still there. `CHANGELOG.md` says what each
-release changes. A repository moving to this release from one that named
+have not edited it. The same goes for a skill under its name from before
+the `fab-` prefix, such as `.claude/skills/review/`: an unedited copy goes
+and `fab-review` replaces it. When an unedited `SKILL.md` there sits beside
+any other file, or an edited one, the whole skill stays, and `fab update`
+and `fab check` name it. A skill whose `SKILL.md` no release wrote is the
+repository's own, and is left alone and not reported. `fab check` reports
+each other retired file still there. `CHANGELOG.md` says what each release
+changes. A repository moving to this release from one that named
 its tracker in the skills adds a **Tasks** section to its `AGENTS.md`;
 without it the skills stop and ask when given a task ID.
 

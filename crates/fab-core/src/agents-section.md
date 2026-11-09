@@ -34,11 +34,12 @@ drifted.
 - Agents post PR comments as stormlight-thunderbot through the Bot comment
   workflow (`.github/workflows/comment.yml`), never with their own GitHub
   access.
-- The agent that opens a PR reviews it with the `storm` skill and ends with a
-  `Review finished at <sha>` comment. That turns `storm/review` green for that
-  head, marks the draft ready and sets the squash message in the bot's status
-  comment, which it edits rather than posting anew. The owner merges, by hand
-  or with auto-merge they turn on; agents and the gate never turn it on.
+- The agent that opens a PR reviews it with the `fab-storm` skill and ends
+  with a `Review finished at <sha>` comment. That turns `storm/review` green
+  for that head, marks the draft ready and sets the squash message in the
+  bot's status comment, which it edits rather than posting anew. The owner
+  merges, by hand or with auto-merge they turn on; agents and the gate never
+  turn it on.
   `/storm:ready <sha>` or `/storm:done <sha>` from the owner, a member or a
   collaborator accepts that head as it is.
 
@@ -54,6 +55,6 @@ bodies, comments, and replies. Keep it short and plain:
 - Stay inside the length targets: a PR body around 150 words, a review comment
   200, any other comment 100.
 
-`.claude/skills/writing-docs/` holds the full standard, and its
+`.claude/skills/fab-writing-docs/` holds the full standard, and its
 `references/tells.md` lists the patterns that make text read as generated.
 Check a draft against both before committing or posting.

@@ -270,14 +270,15 @@ fn role_input(root: &Path, role: &str) -> Result<(Vec<String>, Vec<String>, Stri
 }
 
 /// The skills a role's worker gets as read-only input. The implementer gets
-/// `implement` in place of `review`, and the skill `tasks.skill` names in
-/// the trusted checkout's settings; the reviser adds `revise` and `resync`.
+/// `fab-implement` in place of `fab-review`, and the skill `tasks.skill`
+/// names in the trusted checkout's settings; the reviser adds `fab-revise`
+/// and `fab-resync`.
 /// Settings that are missing name no skill; settings that do not parse are
 /// an error.
 fn role_skills(root: &Path, role: &str) -> Result<Vec<String>> {
     let mut skills: Vec<String> = match role {
-        "implementer" => vec!["implement".into(), "storm".into(), "writing-docs".into()],
-        _ => vec!["review".into(), "storm".into(), "writing-docs".into()],
+        "implementer" => vec!["fab-implement".into(), "fab-storm".into(), "fab-writing-docs".into()],
+        _ => vec!["fab-review".into(), "fab-storm".into(), "fab-writing-docs".into()],
     };
     if role == "implementer"
         && let Some(skill) = task_skill(root)?
@@ -285,7 +286,7 @@ fn role_skills(root: &Path, role: &str) -> Result<Vec<String>> {
         skills.push(skill);
     }
     if role == "reviser" {
-        skills.extend(["revise".into(), "resync".into()]);
+        skills.extend(["fab-revise".into(), "fab-resync".into()]);
     }
     Ok(skills)
 }

@@ -1,4 +1,4 @@
-//! The review sequence: the stages the `storm` skill runs on a pull request,
+//! The review sequence: the stages the `fab-storm` skill runs on a pull request,
 //! read from `.github/fabrial-sequence.toml`, cut to the pull request's
 //! review depth. The file is the one place the stages, their roles and what
 //! each posts are written down; the skills point to `fab sequence` instead of
@@ -223,7 +223,7 @@ mod tests {
         assert!(err.contains("unknown field `model`"), "{err}");
         let bad_depth = FILE.replacen("depth = \"full\"", "depth = \"deep\"", 1);
         assert!(parse(&bad_depth, |_| true).is_err());
-        let outside = FILE.replacen("role = \"reviewer\"", "role = \"../skills/review/SKILL\"", 1);
+        let outside = FILE.replacen("role = \"reviewer\"", "role = \"../skills/fab-review/SKILL\"", 1);
         assert!(parse(&outside, |_| true).unwrap_err().contains("../skills"));
         let twice = FILE.replacen("name = \"adversarial review\"", "name = \"standard review\"", 1);
         let err = parse(&twice, |_| true).unwrap_err();

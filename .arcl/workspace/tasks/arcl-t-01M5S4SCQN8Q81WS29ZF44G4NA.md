@@ -2,7 +2,7 @@
 id = "arcl-t-01M5S4SCQN8Q81WS29ZF44G4NA"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Add an implementer role to Pi dispatch"
-status = "in_progress"
+status = "cancelled"
 priority = "low"
 position = 3
 +++

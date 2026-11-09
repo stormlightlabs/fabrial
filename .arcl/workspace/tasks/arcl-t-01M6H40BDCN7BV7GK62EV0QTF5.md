@@ -2,7 +2,7 @@
 id = "arcl-t-01M6H40BDCN7BV7GK62EV0QTF5"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Spike Cursor agents and Grok models as workers"
-status = "pending"
+status = "cancelled"
 priority = "low"
 position = 0
 +++

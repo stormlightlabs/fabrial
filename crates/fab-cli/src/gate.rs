@@ -1,6 +1,6 @@
 //! The Review gate: sets the `storm/review` check that the ruleset on main
 //! requires. No model runs here: the agent that opened the pull request
-//! reviews it in its own session (the `storm` skill) and ends by commenting
+//! reviews it in its own session (the `fab-storm` skill) and ends by commenting
 //! `Review finished at <sha>`.
 //!
 //! - `push`: a new head is pending, unless it is the change last reviewed with

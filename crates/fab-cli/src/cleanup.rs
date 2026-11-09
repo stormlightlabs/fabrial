@@ -14,7 +14,7 @@
 //! merged at its tip. A deleted branch takes its `branch.<name>` settings
 //! with it. Anything that fails stops that item, which stays as it was, and
 //! is reported. It never forces a removal, rebases, resets or stashes;
-//! resyncing is the caller's, with the `resync` skill.
+//! resyncing is the caller's, with the `fab-resync` skill.
 //!
 //! Exit codes: 0 when everything was handled or needs nothing, 1 when
 //! something was kept or needs a resync, 2 when something failed.
