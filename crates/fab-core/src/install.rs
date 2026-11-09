@@ -31,6 +31,9 @@ const AGENTS_SECTION: &str = include_str!("agents-section.md");
 const SOURCE_SECRET_PREFIX: &str = "THUNDERBOT";
 /// The secrets the workflows read, without their prefix.
 const SECRET_SUFFIXES: &[&str] = &["_APP_ID", "_PRIVATE_KEY"];
+/// The step that marks a job as one that mints the App's token, which
+/// [`with_environment`] puts in the repository's environment.
+const MINT_STEP: &str = "uses: actions/create-github-app-token@";
 
 /// The files copied as they are, with whether each is executable.
 const EMBEDDED: &[(&str, &str, bool)] = &[
@@ -47,6 +50,11 @@ const EMBEDDED: &[(&str, &str, bool)] = &[
     (
         ".github/workflows/branch-pr.yml",
         include_str!("../../../.github/workflows/branch-pr.yml"),
+        false,
+    ),
+    (
+        ".github/workflows/branch-pr-open.yml",
+        include_str!("../../../.github/workflows/branch-pr-open.yml"),
         false,
     ),
     (
@@ -907,11 +915,15 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 /// Every file `init` writes, with its contents and whether it is executable.
-/// The workflows read the secrets under the repository's prefix.
+/// The workflows read the secrets under the repository's prefix, in the
+/// repository's environment when the settings name one.
 fn expected_files(settings: &Settings, version: &str) -> Vec<(PathBuf, String, bool)> {
     let mut files: Vec<(PathBuf, String, bool)> = EMBEDDED
         .iter()
-        .map(|(path, contents, executable)| ((*path).into(), with_secrets(contents, settings), *executable))
+        .map(|(path, contents, executable)| {
+            let contents = with_environment(&with_secrets(contents, settings), settings);
+            ((*path).into(), contents, *executable)
+        })
         .collect();
     files.push((CODEOWNERS_PATH.into(), codeowners(&settings.owner), false));
     files.push((SETTINGS_PATH.into(), settings.render(version), false));
@@ -945,6 +957,39 @@ fn with_secrets(contents: &str, settings: &Settings) -> String {
         }
     }
     out.push_str(rest);
+    out
+}
+
+/// `contents` with each job that mints the App's token ([`MINT_STEP`])
+/// naming the settings' environment, in a block put directly under the
+/// job's `runs-on:` line. fabrial's own workflows name none, so with no
+/// environment set the text comes back as it is. A job is the text from one
+/// line indented two spaces to the next.
+fn with_environment(contents: &str, settings: &Settings) -> String {
+    let Some(name) = &settings.environment else {
+        return contents.to_string();
+    };
+    let block = format!("    environment:\n      name: {name}\n      deployment: false\n");
+    let mut jobs: Vec<Vec<&str>> = vec![Vec::new()];
+    for line in contents.split_inclusive('\n') {
+        let opens = line.starts_with("  ") && !line[2..].starts_with([' ', '\n', '#']);
+        if opens {
+            jobs.push(Vec::new());
+        }
+        jobs.last_mut().unwrap().push(line);
+    }
+    let mut out = String::with_capacity(contents.len() + block.len());
+    for job in jobs {
+        let mints = job.iter().any(|l| l.contains(MINT_STEP));
+        let mut placed = !mints;
+        for line in job {
+            out.push_str(line);
+            if !placed && line.starts_with("    runs-on:") {
+                out.push_str(&block);
+                placed = true;
+            }
+        }
+    }
     out
 }
 
@@ -1116,12 +1161,94 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let own = Settings { secret_prefix: Some("OWN_BOT".into()), ..settings() };
         install(dir.path(), &own, false).unwrap();
-        for workflow in ["branch-pr.yml", "review.yml", "comment.yml"] {
+        for workflow in ["branch-pr-open.yml", "review.yml", "comment.yml"] {
             let text = fs::read_to_string(dir.path().join(".github/workflows").join(workflow)).unwrap();
             assert!(text.contains("${{ secrets.OWN_BOT_APP_ID }}"), "{workflow}");
             assert!(text.contains("${{ secrets.OWN_BOT_PRIVATE_KEY }}"), "{workflow}");
             assert!(!text.contains(SOURCE_SECRET_PREFIX), "{workflow}");
         }
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+    }
+
+    /// The jobs that mint the App's token, as `(workflow, job)`, each of
+    /// which must name the environment.
+    const MINTING_JOBS: &[(&str, &str)] = &[
+        ("branch-pr-open.yml", "pr"),
+        ("review.yml", "gate"),
+        ("comment.yml", "comment"),
+    ];
+
+    #[test]
+    fn every_job_that_mints_the_token_names_the_environment() {
+        let dir = tempfile::tempdir().unwrap();
+        let own = Settings { environment: Some("own-env".into()), ..settings() };
+        install(dir.path(), &own, false).unwrap();
+        let workflows = dir.path().join(".github/workflows");
+        for (workflow, job) in MINTING_JOBS {
+            let text = fs::read_to_string(workflows.join(workflow)).unwrap();
+            let start = text
+                .find(&format!("\n  {job}:\n"))
+                .unwrap_or_else(|| panic!("{workflow}: no {job}"));
+            let steps = start + text[start..].find("\n    steps:\n").unwrap() + 1;
+            assert!(
+                text[start..steps].contains(
+                    "\n    runs-on: ubuntu-latest\n    environment:\n      name: own-env\n      deployment: false\n"
+                ),
+                "{workflow}: {job} names no environment"
+            );
+            assert_eq!(text.matches("create-github-app-token").count(), 1, "{workflow}");
+            assert_eq!(text.matches("environment:").count(), 1, "{workflow}");
+        }
+        // The half a push runs, from the pushed branch, reads no secrets.
+        let push = fs::read_to_string(workflows.join("branch-pr.yml")).unwrap();
+        assert!(!push.contains("secrets.") && !push.contains("create-github-app-token"));
+        assert!(!push.contains("environment:"));
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn without_an_environment_no_workflow_names_one() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &Settings { environment: None, ..settings() }, false).unwrap();
+        for (workflow, _) in MINTING_JOBS {
+            let text = fs::read_to_string(dir.path().join(".github/workflows").join(workflow)).unwrap();
+            assert!(!text.contains("environment:"), "{workflow}");
+        }
+        assert!(
+            !fs::read_to_string(dir.path().join(SETTINGS_PATH))
+                .unwrap()
+                .contains("environment =")
+        );
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn only_a_job_that_mints_the_token_gets_the_environment() {
+        let own = Settings { environment: Some("own".into()), ..settings() };
+        let text = "jobs:\n  a:\n    runs-on: x\n    steps:\n      - run: true\n  \
+                    b:\n    runs-on: x\n    steps:\n      - uses: actions/create-github-app-token@v2\n";
+        assert_eq!(
+            with_environment(text, &own),
+            "jobs:\n  a:\n    runs-on: x\n    steps:\n      - run: true\n  \
+             b:\n    runs-on: x\n    environment:\n      name: own\n      deployment: false\n    steps:\n      \
+             - uses: actions/create-github-app-token@v2\n"
+        );
+        assert_eq!(with_environment(text, &settings()), text);
+    }
+
+    #[test]
+    fn update_adds_no_environment_and_keeps_one_set() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let path = dir.path().join(SETTINGS_PATH);
+        update(dir.path(), |_| {}, false).unwrap();
+        assert!(!fs::read_to_string(&path).unwrap().contains("environment ="));
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+        update(dir.path(), |s| s.environment = Some("own".into()), false).unwrap();
+        update(dir.path(), |_| {}, false).unwrap();
+        assert!(fs::read_to_string(&path).unwrap().contains("environment = \"own\"\n"));
+        let review = fs::read_to_string(dir.path().join(".github/workflows/review.yml")).unwrap();
+        assert!(review.contains("    environment:\n      name: own\n"), "{review}");
         assert_eq!(check(dir.path()).unwrap(), vec![]);
     }
 
@@ -1200,6 +1327,7 @@ mod tests {
             owner: "desertthunder".into(),
             app: Some("fabrial-bot".into()),
             secret_prefix: Some(crate::settings::DEFAULT_SECRET_PREFIX.into()),
+            environment: None,
             trailer: "Owais <desertthunder.dev@gmail.com>".into(),
             signoff: None,
             assisted_by: None,

@@ -101,7 +101,9 @@ Dispatch the `implementer` agent with the task ID and a worktree you created
 for it, as the `fab-implement` skill's **Take a working tree** says. A cloud
 session that holds the work in its own checkout implements there itself.
 
-The push opens the pull request as a draft through the Branch PR workflow.
+The push opens the pull request as a draft through Branch PR open, after
+Branch PR's run, except as the `fab-implement` skill's **Commit and push**
+says.
 Find it with `gh pr list --head <branch>`, or `list_pull_requests` with `head`
 in a cloud session.
 

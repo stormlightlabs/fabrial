@@ -2,9 +2,10 @@
 id = "arcl-t-01M6Z600NWYSJ9WBBM4B43P1WB"
 parent = "arcl-t-01M6ZBSFYBJPAAR89R51V6A1R4"
 title = "Keep the App key out of workflows a pushed branch can edit"
-status = "pending"
+status = "completed"
 priority = "high"
 position = 0
+evidence = "Done in #108 at 29f2fa4: Branch PR splits so the App key runs only from main, behind an environment"
 +++
 
 Branch PR (`.github/workflows/branch-pr.yml`) runs on `push` to `claude/**`,

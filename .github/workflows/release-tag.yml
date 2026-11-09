@@ -5,8 +5,8 @@
 # starts the dist workflow (release.yml): that builds fab and publishes the
 # GitHub release with the version's section of CHANGELOG.md. A revert or a
 # hand edit of the version tags nothing. To tag a release merge a run missed, run this
-# from the Actions tab with that commit; a re-run uses the workflow as it was
-# at that commit.
+# from the Actions tab on main with that commit; a re-run uses the workflow as
+# it was at that commit. It runs only on main.
 name: Release tag
 
 on:
@@ -24,6 +24,7 @@ permissions:
 
 jobs:
   tag:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/create-github-app-token@v2

@@ -6,8 +6,8 @@ Four parties take part:
 - The driver is the person who asks a session for the work.
 - The agent session runs the `fab-` skills in Claude Code, Codex or Pi.
 - The bot is the repository's GitHub App, which `app` in
-  `.github/fabrial.toml` names, acting through the Branch PR, Bot comment
-  and Review gate workflows.
+  `.github/fabrial.toml` names, acting through the Branch PR open, Bot
+  comment and Review gate workflows.
 - The owner is the person `owner` in `.github/fabrial.toml` names, who
   approves and merges. The driver and the owner can be the same person.
 
@@ -35,9 +35,11 @@ its body the pull request body.
 
 ## 3. The bot opens a draft
 
-The push starts the Branch PR workflow, which runs `fab branch-pr` and opens
-the pull request as a draft from the bot. On a `storm/` branch this happens
-on the first push that adds work above the claim commits.
+The push starts the Branch PR workflow, which holds no secrets and decides
+whether to open a pull request. When it finishes, Branch PR open runs from
+`main`, runs `fab branch-pr` and opens the pull request as a draft from the
+bot. On a `storm/` branch this happens on the first push that adds work
+above the claim commits.
 
 Opening the pull request starts the Review gate, which sets `storm/review` to
 pending on the head. Any CI the repository runs, such as fabrial's Check

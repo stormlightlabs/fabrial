@@ -146,7 +146,7 @@ are discarded at merge.
 Add a body to the first commit when the subject alone leaves out the why: the
 reason for the change, a decision that is not obvious from the diff, or a
 change in behaviour. Skip it when the subject says it all. Keep it under about
-150 words, in plain prose. The Branch PR workflow makes it the pull request's
+150 words, in plain prose. Branch PR open makes it the pull request's
 description, without your trailers, and the description becomes the squash
 commit's body.
 
@@ -154,13 +154,20 @@ commit's body.
 git push -u origin <branch>
 ```
 
-The Branch PR workflow then opens the pull request as a draft from the
-repository's App, on the push that creates the branch, or on a claimed
-branch the push that first adds work above the claim. Do not open one
+Branch PR open then opens the pull request as a draft from the repository's
+App, after Branch PR's run on the push that creates the branch, or on a
+claimed branch the push that first adds work above the claim. Do not open one
 yourself. If no pull request appears, because the branch had no commits
 ahead of `main` on that push or the run failed, run
 `gh workflow run branch-pr.yml --ref <branch>`, or ask the owner to run Branch
-PR on it from the Actions tab. It stays a draft until the
+PR on it from the Actions tab. GitHub runs `branch-pr-open.yml` only from
+`main`, so it opens nothing for the branch that adds it, as an update to this
+release does. Commit that update with `main`'s `branch-pr.yml`
+(`git checkout origin/main -- .github/workflows/branch-pr.yml`) and push, so
+`main`'s Branch PR opens the pull request, or run it with the command above.
+Once it is open, commit the new `branch-pr.yml` and push. A fresh install has
+no Branch PR on `main`: ask a person other than the code owner to open that
+pull request by hand. It stays a draft until the
 `fab-storm` skill's review finishes; GitHub requests the owner's review when it is
 marked ready. When the task is an issue, add `Closes #<n>` as the
 description's last line above the footer; GitHub reads the closing keyword

@@ -4,7 +4,7 @@
 # subjects since the last tag (`fab release changelog`), and pushes
 # storm/release-<version>, which Branch PR opens. The owner edits the lines
 # there before accepting it. Release tag tags the merge commit. Nothing here
-# writes to main.
+# writes to main. It runs only when dispatched on main.
 name: Release PR
 
 on:
@@ -19,6 +19,7 @@ permissions:
 
 jobs:
   release:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/create-github-app-token@v2

@@ -257,6 +257,79 @@ fn branch_pr_needs_the_app_the_settings_name() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("names no `app`"));
 }
 
+#[test]
+fn branch_pr_refuses_a_branch_that_is_not_an_agent_branch() {
+    let fixture = Fixture::branch();
+    fixture.commit(&[], "Add a thing");
+    for branch in ["main", "feature/x", "storm/../main", "storm/a b"] {
+        let env = [("REPO", "o/r"), ("BRANCH", branch), ("HEAD_DIR", ".")];
+        let output = fixture.fab(&["branch-pr"], &env);
+        assert!(!output.status.success(), "{branch}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("is not an agent branch"), "{branch}: {stderr}");
+    }
+    assert!(fixture.calls().is_empty());
+}
+
+/// Branch PR's two halves: the push half, which runs from the pushed
+/// branch, holds no secrets, and the half that opens the pull request runs
+/// from main on its completion, reading the step the push half names.
+#[test]
+fn branch_pr_keeps_the_app_key_in_the_half_main_runs() {
+    let push = include_str!("../../../.github/workflows/branch-pr.yml");
+    let open = include_str!("../../../.github/workflows/branch-pr-open.yml");
+    assert!(push.contains("\nname: Branch PR\n"));
+    assert!(push.contains("\n  push:\n"));
+    assert!(!push.contains("secrets.") && !push.contains("create-github-app-token") && !push.contains("environment:"));
+    assert!(push.contains("\n  decide:\n") && push.contains("\n      - name: Open\n"));
+    assert!(push.contains("    if: >-\n      startsWith(github.ref, 'refs/heads/') &&\n"));
+
+    // The only trigger is the push half's completion.
+    let on = &open[open.find("\non:\n").unwrap()..open.find("\npermissions:").unwrap()];
+    assert_eq!(
+        on,
+        "\non:\n  workflow_run:\n    workflows: [Branch PR]\n    types: [completed]\n"
+    );
+    assert!(open.contains(r#"select(.name == "decide")"#) && open.contains(r#"select(.name == "Open""#));
+    // fabrial names no environment; `fab init --environment` adds one.
+    assert!(!open.contains("environment:"));
+    // It opens nothing unless the branch's tip is still the run's commit,
+    // read from the branch ref, so a tag of the same name never matches.
+    assert!(open.contains("HEAD_SHA: ${{ github.event.workflow_run.head_sha }}\n"));
+    assert!(open.contains(r#"select(.ref == "refs/heads/" + env.BRANCH) | .object.sha"#));
+    assert!(open.contains(r#"if [ "$opened" -gt 0 ] && [ "$tip" = "$HEAD_SHA" ]; then"#));
+    assert!(open.contains("BRANCH: ${{ github.event.workflow_run.head_branch }}"));
+    assert!(open.contains("head_repository.full_name == github.repository"));
+    // The branch is checked out in head/ only; fab and its action come from
+    // main at the root.
+    assert!(open.contains("          ref: main\n"));
+    assert!(open.contains("          ref: ${{ github.event.workflow_run.head_sha }}\n          path: head\n"));
+    assert!(!open.contains("${{ github.event.workflow_run.head_branch }}\n          path"));
+}
+
+/// Workflows started by a dispatch run the copy on the ref dispatched, so
+/// each that mints the App's token runs only on main.
+#[test]
+fn dispatched_workflows_that_mint_the_token_run_only_on_main() {
+    for (name, text) in [
+        ("comment.yml", include_str!("../../../.github/workflows/comment.yml")),
+        (
+            "release-pr.yml",
+            include_str!("../../../.github/workflows/release-pr.yml"),
+        ),
+        (
+            "release-tag.yml",
+            include_str!("../../../.github/workflows/release-tag.yml"),
+        ),
+    ] {
+        assert!(text.contains("workflow_dispatch"), "{name}");
+        assert!(
+            text.contains("    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n"),
+            "{name}"
+        );
+    }
+}
+
 /// A repository whose newest commit sets the workspace version to `now`
 /// after `before`, with notes for `now`, and a bare `origin`. Returns the
 /// fixture and the commit.
