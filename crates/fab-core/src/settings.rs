@@ -3,6 +3,7 @@
 use serde::Deserialize;
 
 use crate::Error;
+use crate::keys::Key;
 
 /// Where the settings live, relative to the repository root.
 pub const SETTINGS_PATH: &str = ".github/fabrial.toml";
@@ -15,6 +16,129 @@ pub const DEFAULT_SECRET_PREFIX: &str = "FABRIAL";
 /// The secret prefix an install without the setting reads: the names
 /// fabrial 0.9.0 and earlier read, which `fab update` writes into it.
 pub const LEGACY_SECRET_PREFIX: &str = "THUNDERBOT";
+/// The top-level keys of [`Settings`], as the reference pages describe them.
+pub const KEYS: &[Key] = &[
+    Key {
+        name: "owner",
+        kind: "string",
+        default: "required",
+        about: "GitHub login of the person who approves pull requests. `fab init` writes `CODEOWNERS` from it.",
+    },
+    Key {
+        name: "app",
+        kind: "string",
+        default: "unset",
+        about: "Slug of the repository's GitHub App, which the workflows act as: `fabrial-bot` for \
+                `github.com/apps/fabrial-bot`, whose comments come from `fabrial-bot[bot]`. `fab init` and \
+                `fab update` need it.",
+    },
+    Key {
+        name: "secret_prefix",
+        kind: "string",
+        default: "`THUNDERBOT`",
+        about: "Prefix of the secrets that hold the App's ID and key: the workflows read `<prefix>_APP_ID` and \
+                `<prefix>_PRIVATE_KEY`. `fab init` writes `FABRIAL`. Unset, the workflows read the \
+                `THUNDERBOT_` names fabrial 0.9.0 and earlier used.",
+    },
+    Key {
+        name: "environment",
+        kind: "string",
+        default: "unset",
+        about: "GitHub environment that every job minting the App's token names. Keep the App's secrets there \
+                with a deployment rule of `main`, so no job on another ref reads them. Unset, the jobs read \
+                repository and organization secrets.",
+    },
+    Key {
+        name: "trailer",
+        kind: "string",
+        default: "required",
+        about: "`Co-authored-by` value on every squash commit, as `Name <email>`.",
+    },
+    Key {
+        name: "gates",
+        kind: "string",
+        default: "required",
+        about: "Command agents run before pushing. `fab gates` runs it when the repository has no \
+                `.github/fabrial-gates.toml`, and `fab init` writes it into that file's starter as `full`.",
+    },
+    Key {
+        name: "signoff",
+        kind: "string",
+        default: "unset",
+        about: "`Signed-off-by` value that ends every squash commit, for repositories that use the Developer \
+                Certificate of Origin. Unset leaves the line out.",
+    },
+    Key {
+        name: "assisted_by",
+        kind: "`on` or `off`",
+        default: "`off`",
+        about: "`on` adds an `Assisted-by: <model>` line to the squash commit for each agent model the pull \
+                request's commits name. `off` keeps model names off `main`.",
+    },
+    Key {
+        name: "disposable",
+        kind: "list of strings",
+        default: "unset",
+        about: "Ignored paths, relative to a worktree's root, that `fab cleanup` may delete with a merged \
+                worktree beside Cargo's `target/`: caches a tool rebuilds, such as a tracker's local database. \
+                A path ending in `/` names a directory.",
+    },
+    Key {
+        name: "planning",
+        kind: "list of strings",
+        default: "unset",
+        about: "Directories, relative to the repository root and each ending in `/`, whose Markdown and TOML \
+                files are planning records, such as a tracker's task files. `fab review-depth` gives a pull \
+                request that changes only those, documentation and tests the standard pass. None may sit \
+                under `.github`, `.claude`, `.agents` or `.codex`.",
+    },
+    Key {
+        name: "version",
+        kind: "string",
+        default: "unset",
+        about: "fabrial version that last wrote the installed files. `fab init` and `fab update` write it, and \
+                `fab check` compares it with its own.",
+    },
+    Key {
+        name: "tasks",
+        kind: "table",
+        default: "unset",
+        about: "Commands `fab run` uses to reach the repository's task source. Unset leaves a run to GitHub \
+                issues and description files.",
+    },
+];
+/// The keys of the `[tasks]` table, [`Tasks`], as the reference pages
+/// describe them.
+pub const TASK_KEYS: &[Key] = &[
+    Key {
+        name: "init",
+        kind: "string",
+        default: "unset",
+        about: "Prepares a new worktree for the other commands, run once before `start`, such as a tracker \
+                that keeps a local cache per checkout. Takes no placeholders.",
+    },
+    Key {
+        name: "skill",
+        kind: "string",
+        default: "unset",
+        about: "Skill under `.claude/skills` that `fab dispatch` gives an implementer for working the \
+                tracker, such as `arclightning`. A plain directory name.",
+    },
+    Key { name: "show", kind: "string", default: "required", about: "Prints the task, given `{id}`." },
+    Key { name: "start", kind: "string", default: "required", about: "Starts the task, given `{id}`." },
+    Key {
+        name: "complete",
+        kind: "string",
+        default: "required",
+        about: "Completes the task, given `{id}` and `{evidence}`.",
+    },
+    Key {
+        name: "handoff",
+        kind: "string",
+        default: "required",
+        about: "Records a handoff note, given `{id}` and the note's `{file}`.",
+    },
+];
 
 /// The values the workflows, the gate and the skills read.
 ///
@@ -436,6 +560,37 @@ fn is_login(owner: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::keys::{fields, names};
+
+    /// Fails when a table of keys names other fields than its struct, or
+    /// marks a key required that the struct does not require.
+    fn assert_keys_match<T: for<'de> Deserialize<'de>>(keys: &[Key], line: impl Fn(&str) -> String) {
+        assert_eq!(
+            names(keys),
+            fields::<T>(),
+            "the table of keys and the struct's fields differ"
+        );
+        let required: Vec<&Key> = keys.iter().filter(|k| k.default == "required").collect();
+        let all: String = required.iter().map(|k| line(k.name)).collect();
+        assert!(
+            toml::from_str::<T>(&all).is_ok(),
+            "the required keys alone do not parse"
+        );
+        for key in &required {
+            let without: String = required
+                .iter()
+                .filter(|k| k.name != key.name)
+                .map(|k| line(k.name))
+                .collect();
+            assert!(toml::from_str::<T>(&without).is_err(), "`{}` is not required", key.name);
+        }
+    }
+
+    #[test]
+    fn the_key_tables_match_the_settings_structs() {
+        assert_keys_match::<Settings>(KEYS, |k| format!("{k} = \"x\"\n"));
+        assert_keys_match::<Tasks>(TASK_KEYS, |k| format!("{k} = \"x\"\n"));
+    }
 
     fn settings() -> Settings {
         Settings {

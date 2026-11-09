@@ -7,14 +7,15 @@
 #
 # fab builds skills, agents, workflows and other .github files into its
 # binary, so a change to them names no scope and runs `full`. The rust scope
-# names PLAN.md because a test reads its arcl install line.
+# names PLAN.md because a test reads its arcl install line, and the reference
+# pages because a test compares them with what `fab manual` writes.
 
 full = "just check"
 unmatched = "full"
 
 [[scoped]]
 name = "rust"
-paths = ["crates/**", "Cargo.toml", "Cargo.lock", "packages/pi/worker.ts", "conf/sandbox/worker.nix", "PLAN.md"]
+paths = ["crates/**", "Cargo.toml", "Cargo.lock", "packages/pi/worker.ts", "conf/sandbox/worker.nix", "PLAN.md", "packages/website/src/content/docs/reference/**"]
 run = "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && cargo run -q --bin fab -- check"
 
 [[scoped]]

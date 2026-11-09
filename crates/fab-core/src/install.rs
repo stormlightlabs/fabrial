@@ -426,6 +426,14 @@ pub fn embedded(path: &str) -> Option<&'static str> {
     EMBEDDED.iter().find(|(p, _, _)| *p == path).map(|(_, text, _)| *text)
 }
 
+/// The text of each `SKILL.md` this build installs, in install order.
+pub fn skills() -> impl Iterator<Item = &'static str> {
+    EMBEDDED
+        .iter()
+        .filter(|(path, _, _)| path.starts_with(".claude/skills/") && path.ends_with("/SKILL.md"))
+        .map(|(_, text, _)| *text)
+}
+
 /// Refuses a `root` with no `.git` entry. A worktree's `.git` is a file, so
 /// any kind of entry counts.
 pub fn require_repo_root(root: &Path) -> Result<(), Error> {

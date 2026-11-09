@@ -6,9 +6,55 @@
 use serde::Deserialize;
 
 use crate::Error;
+use crate::keys::Key;
 
 /// Where the gates live, relative to the repository root.
 pub const GATES_PATH: &str = ".github/fabrial-gates.toml";
+/// The top-level keys of [`Gates`], as the reference pages describe them.
+pub const KEYS: &[Key] = &[
+    Key {
+        name: "full",
+        kind: "string",
+        default: "required",
+        about: "Command that runs every check. `fab gates --full` runs it, and so does a changed file no \
+                scope names when `unmatched` is `full`.",
+    },
+    Key {
+        name: "unmatched",
+        kind: "`full` or `skip`",
+        default: "`full`",
+        about: "What a changed file that no scope names runs: the `full` command, or nothing.",
+    },
+    Key {
+        name: "scoped",
+        kind: "array of tables",
+        default: "none",
+        about: "Checks for parts of the repository, as `[[scoped]]` tables, in the order they run.",
+    },
+];
+/// The keys of each `[[scoped]]` table, [`Scope`], as the reference pages
+/// describe them.
+pub const SCOPE_KEYS: &[Key] = &[
+    Key {
+        name: "name",
+        kind: "string",
+        default: "required",
+        about: "Scope's name, as `fab gates` prints it. No two scopes share one.",
+    },
+    Key {
+        name: "paths",
+        kind: "list of strings",
+        default: "required",
+        about: "Globs over paths from the repository root. `*` and `?` match within one path segment, and a \
+                `**` segment matches any number of segments.",
+    },
+    Key {
+        name: "run",
+        kind: "string",
+        default: "required",
+        about: "Command, run with `sh -c` at the repository root.",
+    },
+];
 
 /// What a changed file that no scope names runs.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -136,6 +182,13 @@ fn segment_match(glob: &[u8], text: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::keys::{fields, names};
+
+    #[test]
+    fn the_key_tables_match_the_gates_structs() {
+        assert_eq!(names(KEYS), fields::<Gates>());
+        assert_eq!(names(SCOPE_KEYS), fields::<Scope>());
+    }
 
     #[test]
     fn globs_match_whole_paths_by_segment() {

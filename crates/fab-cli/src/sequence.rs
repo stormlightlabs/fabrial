@@ -8,6 +8,7 @@ use std::path::Path;
 
 use clap::Args;
 use fab_core::install;
+use fab_core::keys::Key;
 use serde::Deserialize;
 
 use crate::depth::{self, Depth};
@@ -15,6 +16,61 @@ use crate::run::{self, Result};
 
 /// Where the sequence lives, relative to the repository root.
 pub const SEQUENCE_PATH: &str = ".github/fabrial-sequence.toml";
+/// The top-level keys of [`Sequence`], as the reference pages describe them.
+pub const KEYS: &[Key] = &[
+    Key {
+        name: "stage",
+        kind: "array of tables",
+        default: "required",
+        about: "The stages, as `[[stage]]` tables, in the order they run. At least one.",
+    },
+    Key { name: "finish", kind: "table", default: "required", about: "The last step, after every stage." },
+];
+/// The keys of each `[[stage]]` table, [`Stage`], as the reference pages
+/// describe them.
+pub const STAGE_KEYS: &[Key] = &[
+    Key {
+        name: "name",
+        kind: "string",
+        default: "required",
+        about: "Stage's name, such as `standard review`. No two stages share one: `fab run` tells them \
+                apart by name.",
+    },
+    Key {
+        name: "role",
+        kind: "string",
+        default: "required",
+        about: "Agent role that runs the stage: a file in `.claude/agents/`, named in lowercase letters and \
+                hyphens.",
+    },
+    Key {
+        name: "depth",
+        kind: "`standard` or `full`",
+        default: "required",
+        about: "Lowest review depth that runs the stage. A depth of `none` runs no stage.",
+    },
+    Key {
+        name: "when",
+        kind: "string",
+        default: "unset",
+        about: "Condition the stage needs to run, such as the stage before it finding anything above nit. \
+                Unset, the stage always runs.",
+    },
+    Key {
+        name: "posts",
+        kind: "string",
+        default: "required",
+        about: "What the stage leaves on the pull request.",
+    },
+];
+/// The keys of the `[finish]` table, [`Finish`], as the reference pages
+/// describe them.
+pub const FINISH_KEYS: &[Key] = &[Key {
+    name: "posts",
+    kind: "string",
+    default: "required",
+    about: "What the last step leaves on the pull request: the `Review finished` comment.",
+}];
 
 /// What `fab sequence` reads.
 #[derive(Args)]
@@ -30,31 +86,35 @@ pub struct Options {
 /// The sequence file.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Sequence {
-    stage: Vec<Stage>,
-    finish: Finish,
+pub struct Sequence {
+    /// The stages, in the order they run.
+    pub stage: Vec<Stage>,
+    /// The last step.
+    pub finish: Finish,
 }
 
 /// One stage: a fresh agent in a role, run once.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Stage {
-    name: String,
+pub struct Stage {
+    /// The stage's name, unique in the file.
+    pub name: String,
     /// The agent role, a file in `.claude/agents/`.
-    role: String,
+    pub role: String,
     /// The lowest depth that runs the stage.
-    depth: Depth,
+    pub depth: Depth,
     /// The condition the stage needs to run; without one it always runs.
-    when: Option<String>,
+    pub when: Option<String>,
     /// What the stage leaves on the pull request.
-    posts: String,
+    pub posts: String,
 }
 
 /// The last step, after every stage the depth gives.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Finish {
-    posts: String,
+pub struct Finish {
+    /// What the last step leaves on the pull request.
+    pub posts: String,
 }
 
 /// The stages a depth gives, in order, as `fab run` drives them.
@@ -102,6 +162,14 @@ pub fn plan(diff: &depth::Options) -> Result<Plan> {
         .map(|s| Step { name: s.name, role: s.role, conditional: s.when.is_some(), posts: s.posts })
         .collect();
     Ok(Plan { depth, reason, steps })
+}
+
+/// The sequence this release installs.
+pub fn installed() -> Result<Sequence> {
+    let text = install::embedded(SEQUENCE_PATH).ok_or(format!("fab installs no {SEQUENCE_PATH}."))?;
+    parse(text, |role| {
+        install::embedded(&format!(".claude/agents/{role}.md")).is_some()
+    })
 }
 
 /// Reads the sequence from the merge base, or the one this release installs
@@ -175,6 +243,8 @@ fn render(sequence: &Sequence, depth: Depth, reason: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use fab_core::keys::{fields, names};
+
     use super::*;
 
     const FILE: &str = include_str!("../../../.github/fabrial-sequence.toml");
@@ -184,6 +254,14 @@ mod tests {
         let agents = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.claude/agents");
         let sequence = parse(FILE, |role| agents.join(format!("{role}.md")).is_file()).unwrap();
         assert_eq!(sequence.stage.len(), 4);
+    }
+
+    #[test]
+    fn the_key_tables_match_the_sequence_structs() {
+        assert_eq!(names(KEYS), fields::<Sequence>());
+        assert_eq!(names(STAGE_KEYS), fields::<Stage>());
+        assert_eq!(names(FINISH_KEYS), fields::<Finish>());
+        assert_eq!(installed().unwrap().stage.len(), 4);
     }
 
     #[test]

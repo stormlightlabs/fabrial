@@ -57,16 +57,22 @@ type Result<T> = std::result::Result<T, String>;
 /// Explicit operator-selected dispatch inputs. No model or credential fallback.
 #[derive(Args)]
 pub struct Options {
+    /// The agent role the worker runs, a file in `.claude/agents/`.
     #[arg(value_parser = clap::builder::PossibleValuesParser::new(ROLES))]
     role: String,
+    /// A file holding the task the worker is given.
     #[arg(long)]
     task: PathBuf,
+    /// The task's linked worktree, on its agent branch.
     #[arg(long)]
     worktree: PathBuf,
+    /// The trusted checkout the role and skills are read from.
     #[arg(long)]
     trusted_checkout: PathBuf,
+    /// The host's dispatch configuration.
     #[arg(long)]
     config: PathBuf,
+    /// Seconds the worker may run, from 1 to 3000.
     #[arg(long, default_value_t = 1800, value_parser = clap::value_parser!(u64).range(1..=3000))]
     timeout: u64,
     /// Return the worker identity once tmux accepts the launch.
