@@ -15,9 +15,6 @@ pub const DEFAULT_SECRET_PREFIX: &str = "FABRIAL";
 /// The secret prefix an install without the setting reads: the names
 /// fabrial 0.9.0 and earlier read, which `fab update` writes into it.
 pub const LEGACY_SECRET_PREFIX: &str = "THUNDERBOT";
-/// The GitHub environment the jobs that mint the App's token name when the
-/// settings name none. `fab init` and `fab update` write it.
-pub const DEFAULT_ENVIRONMENT: &str = "fabrial";
 
 /// The values the workflows, the gate and the skills read.
 ///
@@ -40,10 +37,11 @@ pub struct Settings {
     /// reads [`LEGACY_SECRET_PREFIX`]; see [`Settings::secret_prefix`].
     #[serde(default)]
     pub secret_prefix: Option<String>,
-    /// The GitHub environment every job that mints the App's token names.
-    /// Kept as environment secrets with a deployment rule of `main`, the
-    /// App's secrets reach no job on another ref. `None` names
-    /// [`DEFAULT_ENVIRONMENT`]; see [`Settings::environment`].
+    /// The GitHub environment every job that mints the App's token names,
+    /// an opt-in guard. Kept as environment secrets with a deployment rule
+    /// of `main`, the App's secrets reach no job on another ref. `None`
+    /// names no environment, and the jobs read repository and organization
+    /// secrets.
     #[serde(default)]
     pub environment: Option<String>,
     /// The `Co-authored-by` value on every squash commit.
@@ -264,12 +262,6 @@ impl Settings {
     /// [`LEGACY_SECRET_PREFIX`] when it is not set.
     pub fn secret_prefix(&self) -> &str {
         self.secret_prefix.as_deref().unwrap_or(LEGACY_SECRET_PREFIX)
-    }
-
-    /// The environment the jobs that mint the App's token name: the
-    /// setting, or [`DEFAULT_ENVIRONMENT`] when it is not set.
-    pub fn environment(&self) -> &str {
-        self.environment.as_deref().unwrap_or(DEFAULT_ENVIRONMENT)
     }
 
     /// Whether the squash commit names the agent models that worked on it.
@@ -682,16 +674,13 @@ mod tests {
     }
 
     #[test]
-    fn the_environment_renders_parses_back_and_defaults() {
+    fn the_environment_renders_and_parses_back_only_when_set() {
         let text = Settings { environment: Some("own_env".into()), ..settings() }.render("0.1.0");
         assert!(text.lines().any(|l| l == r#"environment = "own_env""#), "{text}");
-        assert_eq!(Settings::parse(&text).unwrap().environment(), "own_env");
+        assert_eq!(Settings::parse(&text).unwrap().environment.as_deref(), Some("own_env"));
         let none = Settings { environment: None, ..settings() };
         assert!(!none.render("0.1.0").contains("environment ="));
-        assert_eq!(
-            Settings::parse(&none.render("0.1.0")).unwrap().environment(),
-            DEFAULT_ENVIRONMENT
-        );
+        assert_eq!(Settings::parse(&none.render("0.1.0")).unwrap().environment, None);
     }
 
     #[test]

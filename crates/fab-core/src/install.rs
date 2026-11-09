@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use crate::Error;
 use crate::gates::{GATES_PATH, Gates};
-use crate::settings::{DEFAULT_ENVIRONMENT, LEGACY_SECRET_PREFIX, SETTINGS_PATH, Settings};
+use crate::settings::{LEGACY_SECRET_PREFIX, SETTINGS_PATH, Settings};
 
 /// The line that opens fabrial's section of `AGENTS.md`.
 pub const AGENTS_BEGIN: &str = "<!-- fabrial:begin -->";
@@ -31,9 +31,9 @@ const AGENTS_SECTION: &str = include_str!("agents-section.md");
 const SOURCE_SECRET_PREFIX: &str = "THUNDERBOT";
 /// The secrets the workflows read, without their prefix.
 const SECRET_SUFFIXES: &[&str] = &["_APP_ID", "_PRIVATE_KEY"];
-/// The environment fabrial's own workflows name in each job that mints the
-/// App's token. [`expected_files`] replaces it with the repository's.
-const SOURCE_ENVIRONMENT: &str = "fabrial";
+/// The step that marks a job as one that mints the App's token, which
+/// [`with_environment`] puts in the repository's environment.
+const MINT_STEP: &str = "uses: actions/create-github-app-token@";
 
 /// The files copied as they are, with whether each is executable.
 const EMBEDDED: &[(&str, &str, bool)] = &[
@@ -501,10 +501,6 @@ pub fn update(root: &Path, change: impl FnOnce(&mut Settings), downgrade: bool) 
     settings
         .secret_prefix
         .get_or_insert_with(|| LEGACY_SECRET_PREFIX.into());
-    // GitHub creates an environment a job names, with no rules, on its first
-    // run, and such a job still reads repository and organization secrets,
-    // so the workflows keep working until the owner moves the secrets.
-    settings.environment.get_or_insert_with(|| DEFAULT_ENVIRONMENT.into());
     change(&mut settings);
     let mut report = init(root, &settings, false)?;
     remove_retired(root, &mut report);
@@ -920,7 +916,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 /// Every file `init` writes, with its contents and whether it is executable.
 /// The workflows read the secrets under the repository's prefix, in the
-/// repository's environment.
+/// repository's environment when the settings name one.
 fn expected_files(settings: &Settings, version: &str) -> Vec<(PathBuf, String, bool)> {
     let mut files: Vec<(PathBuf, String, bool)> = EMBEDDED
         .iter()
@@ -964,24 +960,35 @@ fn with_secrets(contents: &str, settings: &Settings) -> String {
     out
 }
 
-/// `contents` with the environment fabrial's own workflows name renamed to
-/// the repository's. Only a `name:` line directly under an `environment:`
-/// line is renamed, keeping its indent.
+/// `contents` with each job that mints the App's token ([`MINT_STEP`])
+/// naming the settings' environment, in a block put directly under the
+/// job's `runs-on:` line. fabrial's own workflows name none, so with no
+/// environment set the text comes back as it is. A job is the text from one
+/// line indented two spaces to the next.
 fn with_environment(contents: &str, settings: &Settings) -> String {
-    let source = format!("name: {SOURCE_ENVIRONMENT}");
-    let mut out = String::with_capacity(contents.len());
-    let mut under = false;
+    let Some(name) = &settings.environment else {
+        return contents.to_string();
+    };
+    let block = format!("    environment:\n      name: {name}\n      deployment: false\n");
+    let mut jobs: Vec<Vec<&str>> = vec![Vec::new()];
     for line in contents.split_inclusive('\n') {
-        let text = line.trim_end_matches('\n');
-        let trimmed = text.trim_start();
-        if under && trimmed == source {
-            let indent = &text[..text.len() - trimmed.len()];
-            let end = if line.ends_with('\n') { "\n" } else { "" };
-            out.push_str(&format!("{indent}name: {}{end}", settings.environment()));
-        } else {
-            out.push_str(line);
+        let opens = line.starts_with("  ") && !line[2..].starts_with([' ', '\n', '#']);
+        if opens {
+            jobs.push(Vec::new());
         }
-        under = trimmed == "environment:";
+        jobs.last_mut().unwrap().push(line);
+    }
+    let mut out = String::with_capacity(contents.len() + block.len());
+    for job in jobs {
+        let mints = job.iter().any(|l| l.contains(MINT_STEP));
+        let mut placed = !mints;
+        for line in job {
+            out.push_str(line);
+            if !placed && line.starts_with("    runs-on:") {
+                out.push_str(&block);
+                placed = true;
+            }
+        }
     }
     out
 }
@@ -1184,54 +1191,65 @@ mod tests {
                 .unwrap_or_else(|| panic!("{workflow}: no {job}"));
             let steps = start + text[start..].find("\n    steps:\n").unwrap() + 1;
             assert!(
-                text[start..steps].contains("\n    environment:\n      name: own-env\n      deployment: false\n"),
+                text[start..steps].contains(
+                    "\n    runs-on: ubuntu-latest\n    environment:\n      name: own-env\n      deployment: false\n"
+                ),
                 "{workflow}: {job} names no environment"
             );
             assert_eq!(text.matches("create-github-app-token").count(), 1, "{workflow}");
-            assert!(!text.contains(&format!("name: {SOURCE_ENVIRONMENT}")), "{workflow}");
+            assert_eq!(text.matches("environment:").count(), 1, "{workflow}");
         }
         // The half a push runs, from the pushed branch, reads no secrets.
         let push = fs::read_to_string(workflows.join("branch-pr.yml")).unwrap();
         assert!(!push.contains("secrets.") && !push.contains("create-github-app-token"));
+        assert!(!push.contains("environment:"));
         assert_eq!(check(dir.path()).unwrap(), vec![]);
     }
 
     #[test]
-    fn only_a_name_under_an_environment_is_renamed() {
-        let own = Settings { environment: Some("own".into()), ..settings() };
-        let text =
-            "name: fabrial\n    environment:\n      name: fabrial\n      deployment: false\n  x:\n    name: fabrial";
-        assert_eq!(
-            with_environment(text, &own),
-            "name: fabrial\n    environment:\n      name: own\n      deployment: false\n  x:\n    name: fabrial"
+    fn without_an_environment_no_workflow_names_one() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &Settings { environment: None, ..settings() }, false).unwrap();
+        for (workflow, _) in MINTING_JOBS {
+            let text = fs::read_to_string(dir.path().join(".github/workflows").join(workflow)).unwrap();
+            assert!(!text.contains("environment:"), "{workflow}");
+        }
+        assert!(
+            !fs::read_to_string(dir.path().join(SETTINGS_PATH))
+                .unwrap()
+                .contains("environment =")
         );
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
     }
 
     #[test]
-    fn update_gives_an_install_without_an_environment_the_default() {
+    fn only_a_job_that_mints_the_token_gets_the_environment() {
+        let own = Settings { environment: Some("own".into()), ..settings() };
+        let text = "jobs:\n  a:\n    runs-on: x\n    steps:\n      - run: true\n  \
+                    b:\n    runs-on: x\n    steps:\n      - uses: actions/create-github-app-token@v2\n";
+        assert_eq!(
+            with_environment(text, &own),
+            "jobs:\n  a:\n    runs-on: x\n    steps:\n      - run: true\n  \
+             b:\n    runs-on: x\n    environment:\n      name: own\n      deployment: false\n    steps:\n      \
+             - uses: actions/create-github-app-token@v2\n"
+        );
+        assert_eq!(with_environment(text, &settings()), text);
+    }
+
+    #[test]
+    fn update_adds_no_environment_and_keeps_one_set() {
         let dir = tempfile::tempdir().unwrap();
         install(dir.path(), &settings(), false).unwrap();
         let path = dir.path().join(SETTINGS_PATH);
-        let old: String = fs::read_to_string(&path)
-            .unwrap()
-            .lines()
-            .filter(|l| !l.starts_with("environment = "))
-            .map(|l| format!("{l}\n"))
-            .collect();
-        fs::write(&path, old).unwrap();
         update(dir.path(), |_| {}, false).unwrap();
-        assert!(
-            fs::read_to_string(&path)
-                .unwrap()
-                .contains("environment = \"fabrial\"\n")
-        );
+        assert!(!fs::read_to_string(&path).unwrap().contains("environment ="));
         assert_eq!(check(dir.path()).unwrap(), vec![]);
-        // An environment the install sets is kept.
         update(dir.path(), |s| s.environment = Some("own".into()), false).unwrap();
         update(dir.path(), |_| {}, false).unwrap();
         assert!(fs::read_to_string(&path).unwrap().contains("environment = \"own\"\n"));
         let review = fs::read_to_string(dir.path().join(".github/workflows/review.yml")).unwrap();
-        assert!(review.contains("      name: own\n"), "{review}");
+        assert!(review.contains("    environment:\n      name: own\n"), "{review}");
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
     }
 
     #[test]
@@ -1309,7 +1327,7 @@ mod tests {
             owner: "desertthunder".into(),
             app: Some("fabrial-bot".into()),
             secret_prefix: Some(crate::settings::DEFAULT_SECRET_PREFIX.into()),
-            environment: Some(DEFAULT_ENVIRONMENT.into()),
+            environment: None,
             trailer: "Owais <desertthunder.dev@gmail.com>".into(),
             signoff: None,
             assisted_by: None,

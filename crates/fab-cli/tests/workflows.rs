@@ -282,6 +282,7 @@ fn branch_pr_keeps_the_app_key_in_the_half_main_runs() {
     assert!(push.contains("\n  push:\n"));
     assert!(!push.contains("secrets.") && !push.contains("create-github-app-token") && !push.contains("environment:"));
     assert!(push.contains("\n  decide:\n") && push.contains("\n      - name: Open\n"));
+    assert!(push.contains("    if: >-\n      startsWith(github.ref, 'refs/heads/') &&\n"));
 
     // The only trigger is the push half's completion.
     let on = &open[open.find("\non:\n").unwrap()..open.find("\npermissions:").unwrap()];
@@ -290,7 +291,13 @@ fn branch_pr_keeps_the_app_key_in_the_half_main_runs() {
         "\non:\n  workflow_run:\n    workflows: [Branch PR]\n    types: [completed]\n"
     );
     assert!(open.contains(r#"select(.name == "decide")"#) && open.contains(r#"select(.name == "Open""#));
-    assert!(open.contains("\n    environment:\n      name: fabrial\n      deployment: false\n"));
+    // fabrial names no environment; `fab init --environment` adds one.
+    assert!(!open.contains("environment:"));
+    // It opens nothing unless the branch's tip is still the run's commit,
+    // read from the branch ref, so a tag of the same name never matches.
+    assert!(open.contains("HEAD_SHA: ${{ github.event.workflow_run.head_sha }}\n"));
+    assert!(open.contains(r#"select(.ref == "refs/heads/" + env.BRANCH) | .object.sha"#));
+    assert!(open.contains(r#"if [ "$opened" -gt 0 ] && [ "$tip" = "$HEAD_SHA" ]; then"#));
     assert!(open.contains("BRANCH: ${{ github.event.workflow_run.head_branch }}"));
     assert!(open.contains("head_repository.full_name == github.repository"));
     // The branch is checked out in head/ only; fab and its action come from
@@ -301,7 +308,7 @@ fn branch_pr_keeps_the_app_key_in_the_half_main_runs() {
 }
 
 /// Workflows started by a dispatch run the copy on the ref dispatched, so
-/// each that mints the App's token runs only on main, in the environment.
+/// each that mints the App's token runs only on main.
 #[test]
 fn dispatched_workflows_that_mint_the_token_run_only_on_main() {
     for (name, text) in [
@@ -317,7 +324,7 @@ fn dispatched_workflows_that_mint_the_token_run_only_on_main() {
     ] {
         assert!(text.contains("workflow_dispatch"), "{name}");
         assert!(
-            text.contains("    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n    environment:\n      name: fabrial\n"),
+            text.contains("    if: github.ref == 'refs/heads/main'\n    runs-on: ubuntu-latest\n"),
             "{name}"
         );
     }

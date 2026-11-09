@@ -91,8 +91,9 @@ Install the App on the named repository with Actions write, Contents write and
 Pull requests read. Every worker gets a token with Actions write, for the Bot
 comment workflow, Contents read and Pull requests read, so no worker can push.
 Actions write lets a worker run a workflow on a branch, but the jobs that
-hold the App's key run only from `main`, in the environment that keeps the
-key, and check the branch out only for Git to read, as
+hold the App's key run only from `main`, in an environment that keeps the
+key when the repository sets one, and check the branch out only for Git to
+read, as
 [bot-setup.md](bot-setup.md#who-can-use-the-key) says. Neither token can
 change a workflow file, which takes Workflows write.
 An App token with Contents write reaches every branch and tag the rulesets

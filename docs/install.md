@@ -36,9 +36,10 @@ gate install the `fab` release that `.github/fabrial.toml` names and run
 `fab branch-pr` and `fab gate`. Branch PR open runs only once it is on
 `main`, so open the pull request that installs fabrial yourself.
 
-`--app` names the repository's GitHub App by its slug, and `--environment`
-the GitHub environment that holds its secrets, `fabrial` by default, as
-[bot-setup.md](bot-setup.md) says.
+`--app` names the repository's GitHub App by its slug. `--environment`,
+optional, names a GitHub environment that holds its secrets, as
+[bot-setup.md](bot-setup.md#keep-them-in-an-environment) says; without it
+the workflows read repository and organization secrets.
 
 A repository that uses the Developer Certificate of Origin adds
 `--signoff "Name <email>"`: every squash commit then ends with the owner's
@@ -110,7 +111,7 @@ the settings in `.github/fabrial.toml`, unless `--owner`, `--app`,
 changes one, and replaces the files with this build's. `--signoff ""`
 removes the sign-off. An install with no `app` needs `--app`. An install
 with no `secret_prefix` gets `THUNDERBOT`, the secret names 0.9.0 and
-earlier read, and one with no `environment` gets `fabrial`, as
+earlier read; one with no `environment` keeps naming none, as
 [bot-setup.md](bot-setup.md#moving-from-an-older-release) says. It refuses to install an older release over a newer one unless you
 pass `--force`.
 

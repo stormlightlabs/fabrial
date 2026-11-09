@@ -160,11 +160,14 @@ claimed branch the push that first adds work above the claim. Do not open one
 yourself. If no pull request appears, because the branch had no commits
 ahead of `main` on that push or the run failed, run
 `gh workflow run branch-pr.yml --ref <branch>`, or ask the owner to run Branch
-PR on it from the Actions tab. A branch that adds or renames
-`branch-pr-open.yml`, as a fabrial install or an update to this release does,
-gets no pull request either way: GitHub runs that workflow only from `main`.
-Ask a person other than the code owner to open it by hand from the branch;
-the code owner cannot approve a pull request they opened. It stays a draft until the
+PR on it from the Actions tab. GitHub runs `branch-pr-open.yml` only from
+`main`, so it opens nothing for the branch that adds it, as an update to this
+release does. Commit that update with `main`'s `branch-pr.yml`
+(`git checkout origin/main -- .github/workflows/branch-pr.yml`) and push, so
+`main`'s Branch PR opens the pull request, or run it with the command above.
+Once it is open, commit the new `branch-pr.yml` and push. A fresh install has
+no Branch PR on `main`: ask a person other than the code owner to open that
+pull request by hand. It stays a draft until the
 `fab-storm` skill's review finishes; GitHub requests the owner's review when it is
 marked ready. When the task is an issue, add `Closes #<n>` as the
 description's last line above the footer; GitHub reads the closing keyword

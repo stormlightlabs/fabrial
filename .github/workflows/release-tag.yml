@@ -6,8 +6,7 @@
 # GitHub release with the version's section of CHANGELOG.md. A revert or a
 # hand edit of the version tags nothing. To tag a release merge a run missed, run this
 # from the Actions tab on main with that commit; a re-run uses the workflow as
-# it was at that commit. It runs only on main, in the environment that holds
-# the App's key, as docs/bot-setup.md says.
+# it was at that commit. It runs only on main.
 name: Release tag
 
 on:
@@ -27,9 +26,6 @@ jobs:
   tag:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment:
-      name: fabrial
-      deployment: false
     steps:
       - uses: actions/create-github-app-token@v2
         id: app

@@ -8,8 +8,7 @@
 # HOMEBREW_TAP_TOKEN, so the bot must be installed on homebrew-tap with
 # Contents write. The action versions follow dist's job in release.yml.
 #
-# It runs on the release's `v*` tag, so the environment that holds the App's
-# key must allow `v*` tags as well as main, and the tag ruleset in
+# It runs on the release's `v*` tag, and the tag ruleset in
 # docs/bot-setup.md decides who can push one.
 name: Publish Homebrew formula
 
@@ -23,9 +22,6 @@ on:
 jobs:
   formula:
     runs-on: ubuntu-22.04
-    environment:
-      name: fabrial
-      deployment: false
     env:
       PLAN: ${{ inputs.plan }}
     steps:

@@ -190,13 +190,14 @@ fn update_gives_an_install_without_a_prefix_the_secrets_it_read() {
 }
 
 #[test]
-fn environment_defaults_on_init_is_set_by_its_flag_and_kept_by_update() {
+fn environment_is_set_only_by_its_flag_and_kept_by_update() {
     let line = |dir: &Path| {
         let text = fs::read_to_string(dir.join(".github/fabrial.toml")).unwrap();
         text.lines()
             .find(|l| l.starts_with("environment = "))
             .map(str::to_owned)
     };
+    let comment = |dir: &Path| fs::read_to_string(dir.join(".github/workflows/comment.yml")).unwrap();
     let init = [
         "init",
         "--owner",
@@ -208,7 +209,7 @@ fn environment_defaults_on_init_is_set_by_its_flag_and_kept_by_update() {
         "--gates",
         "true",
     ];
-    for (flag, name) in [(None, "fabrial"), (Some("bot-secrets"), "bot-secrets")] {
+    for flag in [None, Some("bot-secrets")] {
         let dir = tempfile::tempdir().unwrap();
         assert!(
             Command::new("git")
@@ -222,15 +223,20 @@ fn environment_defaults_on_init_is_set_by_its_flag_and_kept_by_update() {
         let mut args = init.to_vec();
         args.extend(flag.iter().flat_map(|f| ["--environment", *f]));
         let _ = fab(dir.path(), &args);
-        assert_eq!(line(dir.path()), Some(format!("environment = \"{name}\"")));
-        let comment = fs::read_to_string(dir.path().join(".github/workflows/comment.yml")).unwrap();
-        assert!(
-            comment.contains(&format!("    environment:\n      name: {name}\n")),
-            "{comment}"
-        );
+        let expected = flag.map(|name| format!("environment = \"{name}\""));
+        assert_eq!(line(dir.path()), expected);
+        match flag {
+            Some(name) => assert!(
+                comment(dir.path()).contains(&format!("    environment:\n      name: {name}\n")),
+                "{}",
+                comment(dir.path())
+            ),
+            None => assert!(!comment(dir.path()).contains("environment:"), "{}", comment(dir.path())),
+        }
         let _ = fab(dir.path(), &["update"]);
-        assert_eq!(line(dir.path()), Some(format!("environment = \"{name}\"")));
+        assert_eq!(line(dir.path()), expected);
         let _ = fab(dir.path(), &["update", "--environment", "other"]);
         assert_eq!(line(dir.path()), Some("environment = \"other\"".into()));
+        assert!(comment(dir.path()).contains("    environment:\n      name: other\n"));
     }
 }

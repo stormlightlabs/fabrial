@@ -174,9 +174,10 @@ drifted.
 - Never commit to `main`. Push a `claude/<topic>`, `codex/<topic>` or
   `storm/<task>` branch; Branch PR open, which runs after the push's Branch
   PR run, opens the pull request as a draft from the repository's GitHub
-  App, which `app` in `.github/fabrial.toml` names. A branch that adds
-  `branch-pr-open.yml` gets no pull request, since GitHub runs it only from
-  `main`: someone other than the code owner opens that one by hand.
+  App, which `app` in `.github/fabrial.toml` names. Branch PR open does not
+  run for the branch that adds it, since GitHub runs it only from `main`:
+  push that branch first with `main`'s `branch-pr.yml`, which opens the pull
+  request, then push the new `branch-pr.yml`.
 - Commits on those branches may carry the agent's attribution trailers. The
   squash commit replaces them with the PR title and number, such as
   `Add Pi dispatch (#21)`, the PR body above its

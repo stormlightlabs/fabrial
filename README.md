@@ -22,10 +22,10 @@ Silicon. Homebrew users can run `brew install stormlightlabs/tap/fab`.
 
 1. Create a GitHub App in your account or organization, install it on the
    repository, and add its ID and key as the secrets `FABRIAL_APP_ID` and
-   `FABRIAL_PRIVATE_KEY`, or under your own prefix with `--secret-prefix`,
-   in an environment named `fabrial` that only `main` may use.
+   `FABRIAL_PRIVATE_KEY`, or under your own prefix with `--secret-prefix`.
    [docs/bot-setup.md](docs/bot-setup.md) walks
-   through it, with the permissions and the ruleset on `main`.
+   through it, with the permissions, the ruleset on `main`, and an optional
+   environment that keeps the key from branches.
 2. At the repository's root, run:
 
    ```sh
@@ -67,7 +67,7 @@ and names who acts at each one.
 | `owner`         | The GitHub login that approves pull requests; `CODEOWNERS` names it.           |
 | `app`           | The slug of the repository's GitHub App.                                       |
 | `secret_prefix` | The prefix of the App's secrets, `<PREFIX>_APP_ID` and `<PREFIX>_PRIVATE_KEY`. |
-| `environment`   | The GitHub environment that holds the App's secrets, open only to `main`.      |
+| `environment`   | Optional: a GitHub environment, open only to `main`, that holds the secrets.   |
 | `trailer`       | The `Co-authored-by` line on every squash commit.                              |
 | `gates`         | The command agents run before pushing, when no gates file exists.              |
 | `signoff`       | A `Signed-off-by` line to end every squash commit, for the DCO.                |

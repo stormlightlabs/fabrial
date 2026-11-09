@@ -34,7 +34,9 @@ jobs:
   decide:
     # No concurrency group: a second quick push must not cancel the run that
     # opens the pull request.
+    # A dispatch can name a tag; only a branch ref opens anything.
     if: >-
+      startsWith(github.ref, 'refs/heads/') &&
       (github.event_name == 'workflow_dispatch' || github.event.created ||
        (startsWith(github.ref_name, 'storm/') && !github.event.deleted)) &&
       (startsWith(github.ref_name, 'claude/') || startsWith(github.ref_name, 'codex/') ||

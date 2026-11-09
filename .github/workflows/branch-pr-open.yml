@@ -5,9 +5,9 @@
 #
 # GitHub runs a workflow_run workflow from the default branch's copy,
 # whatever branch the run that triggered it came from, so a pushed branch
-# cannot change this file. Only this half holds the App's key, and its job
-# names the environment the key is kept in, which only main may use. The
-# triggering run is data: the branch name is checked by `fab branch-pr`
+# cannot change this file. Only this half holds the App's key; when
+# .github/fabrial.toml sets `environment`, its job names that environment,
+# which only main may use. The triggering run is data: the branch name is checked by `fab branch-pr`
 # against the agent branch prefixes, and the branch is checked out in
 # `head/` only for git to read. `fab` and the action that installs it come
 # from main: in fabrial it is built from main, and elsewhere it is the
@@ -37,21 +37,31 @@ jobs:
       (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
-    environment:
-      name: fabrial
-      deployment: false
     steps:
-      # The decide job skips Open when the push should open nothing.
+      # The decide job skips Open when the push should open nothing. The
+      # branch's tip must still be the run's commit: after a later push, that
+      # push's run opens the pull request, and a dispatch on a tag finds no
+      # branch at the tag's commit, since head_branch names the tag.
       - name: Check the run
         id: run
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           opened=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs" \
             --jq '[.jobs[] | select(.name == "decide") | .steps[] | select(.name == "Open" and .conclusion == "success")] | length')
-          if [ "$opened" -gt 0 ]; then echo "open=true"; else echo "open=false"; fi >> "$GITHUB_OUTPUT"
+          tip=$(gh api "repos/$REPO/git/matching-refs/heads/$BRANCH" \
+            --jq '.[] | select(.ref == "refs/heads/" + env.BRANCH) | .object.sha')
+          open=false
+          if [ "$opened" -gt 0 ] && [ "$tip" = "$HEAD_SHA" ]; then
+            open=true
+          elif [ "$opened" -gt 0 ]; then
+            echo "$BRANCH is at ${tip:-no commit}, not $HEAD_SHA; opening nothing."
+          fi
+          echo "open=$open" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v5
         if: steps.run.outputs.open == 'true'

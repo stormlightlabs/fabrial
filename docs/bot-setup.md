@@ -6,8 +6,7 @@ posts the bot's comments and sets the `storm/review` check. A repository
 needs four things before its first agent pull request:
 
 1. An App with the permissions below, installed on the repository.
-2. Two secrets holding the App's ID and private key, in an environment only
-   `main` may use.
+2. Two secrets holding the App's ID and private key.
 3. The App's slug as `app` in `.github/fabrial.toml`.
 4. A ruleset on `main`.
 
@@ -69,31 +68,37 @@ unless you choose another, and a file without the setting reads
 | `<PREFIX>_APP_ID`      | the App ID            | Branch PR open, Review gate, Bot comment |
 | `<PREFIX>_PRIVATE_KEY` | the whole `.pem` file | Branch PR open, Review gate, Bot comment |
 
-Keep them in a GitHub environment that only `main` may use. Each job that
-reads them names the environment `environment` in `.github/fabrial.toml`
-gives, `fabrial` unless you choose another:
+Add them as repository or organization secrets. Those reach every job on
+every ref, so anyone who can push a workflow change to a branch can read
+the App's key from that branch, as
+[Who can use the key](#who-can-use-the-key) says.
+
+### Keep them in an environment
+
+An environment open only to `main` closes that. It is opt-in:
 
 1. Under the repository's **Settings > Environments**, create an
-   environment with that name.
+   environment, such as `fabrial`.
 2. Under **Deployment branches and tags**, choose **Selected branches and
-   tags** and add the branch `main`.
+   tags**, and add the branch `main` and the tag pattern `v*`.
 3. Under **Environment secrets**, add the two secrets.
-4. Delete any repository or organization secrets of the same names, or
-   take the repository off an organization secret's list.
+4. Run `fab update --environment <name>` and merge its pull request.
+5. Only then delete the repository secrets of the same names, and take the
+   repository off the organization secrets' access list. Before the merge,
+   the workflows on `main` name no environment and need them.
 
-A job on any other ref then cannot start in the environment, so it never
-sees the secrets. Repository and organization secrets reach every job on
-every ref, whether or not it names an environment, so the rule protects
-nothing until the secrets live only in the environment. GitHub Free offers
-environment secrets and deployment rules only in public repositories; a
-private repository on Free keeps repository secrets and the exposure
-[Who can use the key](#who-can-use-the-key) describes.
+Each job that mints the App's token then names the environment, with
+`deployment: false` so a run records no deployment. GitHub documents
+environment branch rules as applying to such jobs, and a custom deployment
+protection rule as failing them. Once it merges, confirm that a dispatch
+of Bot comment on a branch cannot read the secrets. GitHub Free offers
+environment secrets and branch rules only in public repositories.
 
 To use secrets you already have, such as `MY_BOT_APP_ID` and
 `MY_BOT_PRIVATE_KEY`, pass `fab init --secret-prefix MY_BOT`, or change it
 later with `fab update --secret-prefix MY_BOT`. The prefix is uppercase
 letters, digits and underscores, and cannot start with a digit or
-`GITHUB_`. `--environment` sets the environment the same way; its name is
+`GITHUB_`. `--environment` names an environment the same way; its name is
 ASCII letters, digits, `-` and `_`. `fab init` and `fab update` write both
 into the installed workflows, so `fab check` reports a workflow that reads
 others.
@@ -130,17 +135,24 @@ fabrial 0.9.0 and earlier read `THUNDERBOT_APP_ID` and
 there is nothing to rename. An install with no `app` needs
 `fab update --app <slug>`.
 
-An install with no `environment` gets `fabrial`. GitHub creates an
-environment a job names the first time the job runs, with no rules, and the
-job still reads repository and organization secrets, so the workflows keep
-working after the update merges. Then set up the environment as
-[Add the secrets](#add-the-secrets) says, in that order: create it, restrict
-it to `main`, add the secrets to it, and only then delete the old secrets.
-Moving the secrets before the update merges stops the workflows on `main`,
-which name no environment until then. The update's own pull request does not
-open itself, since Branch PR open is not on `main` yet: open it by hand.
-The code owner cannot approve a pull request they opened, so someone else
-opens it.
+`fab update` adds no `environment`; the workflows keep reading repository
+and organization secrets.
+
+The update to this release adds `branch-pr-open.yml`, which GitHub runs only
+from `main`, so its pull request does not open itself. To have the bot open
+it:
+
+1. Commit the update with `main`'s copy of Branch PR, by running
+   `git checkout origin/main -- .github/workflows/branch-pr.yml` before the
+   commit.
+2. Push the branch. `main`'s Branch PR opens the pull request on the push
+   that creates the branch; for a branch that already exists, run
+   `gh workflow run branch-pr.yml --ref <branch>`.
+3. Once the pull request is open, run `fab update` again, commit the new
+   `branch-pr.yml`, and push.
+
+Someone other than the code owner can open it by hand instead; the code
+owner cannot approve a pull request they opened.
 
 ## Who can use the key
 
@@ -160,12 +172,13 @@ that copy controls what the job does with any secret it can read.
 - The Review gate runs on `pull_request_target` and `issue_comment`, both
   from `main`'s copy with `main` as the ref.
 - Bot comment runs on dispatch, from the copy on the ref dispatched. Its job
-  runs only on `main`, but a branch's copy can drop that check. The
-  environment is the guard: a job on that branch cannot start in it.
+  runs only on `main`, but a branch's copy can drop that check and read
+  repository and organization secrets.
 
-Each job that reads the secrets names the environment, so with the secrets
-kept there as [Add the secrets](#add-the-secrets) says, no copy of a
-workflow a branch can edit reaches the key. Pushing a workflow change still
+Without an environment, anyone who can push a workflow change to a branch
+can read the App's key. With the secrets kept in an environment as
+[Keep them in an environment](#keep-them-in-an-environment) says, no copy
+of a workflow a branch can edit reaches the key. Pushing a workflow change still
 takes the `workflow` scope on a personal token, Workflows write on an App
 token, or write access over SSH. Anyone who can push to `main`, or change
 the environment's rules, still holds the key.
@@ -184,8 +197,8 @@ The workflows assume a ruleset on `main` with these rules:
   the source of `storm/review` to your App. Any App with Checks write can
   post a check of that name, including `GITHUB_TOKEN` in a workflow on a
   branch that asks for `checks: write`. The gate ignores those runs, but the
-  ruleset counts them unless the source is set. A branch cannot post one
-  as the App while the App's secrets live in the environment, as
+  ruleset counts them unless the source is set. A branch can post one as
+  the App unless the App's secrets live in an environment, as
   [Who can use the key](#who-can-use-the-key) says.
 - Block force pushes and deletion.
 
@@ -206,14 +219,13 @@ need to reach github.com.
 
 ## fabrial's own repository
 
-fabrial's App is stormlight-thunderbot, and its secrets are
-`THUNDERBOT_APP_ID` and `THUNDERBOT_PRIVATE_KEY` in the environment
-`fabrial`. Its release workflows need more than the table above, and an
+fabrial's App is stormlight-thunderbot, and its secrets are the
+organization secrets `THUNDERBOT_APP_ID` and `THUNDERBOT_PRIVATE_KEY`, with
+no environment. Its release workflows need more than the table above, and an
 installing repository does not run them: Release PR and Release tag push a
 branch and a tag with Contents write, and the Homebrew publish job mints a
 token with Contents write on stormlightlabs/homebrew-tap. Release PR and
-Release tag run only on `main`. The Homebrew job runs on the release's tag,
-so the environment also allows the tag pattern `v*`.
+Release tag run only on `main`. The Homebrew job runs on the release's tag.
 
 fabrial's own `main` requires the `check` job, owner approval with code owner
 review, and squash merges. It does not require `storm/review`.

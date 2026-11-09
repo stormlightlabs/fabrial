@@ -83,10 +83,11 @@ enum Command {
         /// workflows read `<PREFIX>_APP_ID` and `<PREFIX>_PRIVATE_KEY`.
         #[arg(long, default_value = fab_core::settings::DEFAULT_SECRET_PREFIX)]
         secret_prefix: String,
-        /// The GitHub environment the jobs that mint the App's token name;
-        /// keep the secrets there, restricted to main.
-        #[arg(long, default_value = fab_core::settings::DEFAULT_ENVIRONMENT)]
-        environment: String,
+        /// A GitHub environment for the jobs that mint the App's token to
+        /// name; keep the secrets there, restricted to main. Without it the
+        /// jobs read repository and organization secrets.
+        #[arg(long)]
+        environment: Option<String>,
         /// The squash commit's Co-authored-by value, as "Name <email>".
         #[arg(long)]
         trailer: String,
@@ -123,7 +124,7 @@ enum Command {
         #[arg(long)]
         secret_prefix: Option<String>,
         /// A new GitHub environment for the jobs that mint the App's token.
-        /// An install without one gets fabrial.
+        /// An install without one keeps naming none.
         #[arg(long)]
         environment: Option<String>,
         /// A new Co-authored-by value for the squash commit.
@@ -202,7 +203,7 @@ fn main() -> ExitCode {
                     owner,
                     app: Some(app),
                     secret_prefix: Some(secret_prefix),
-                    environment: Some(environment),
+                    environment,
                     trailer,
                     gates,
                     signoff,
