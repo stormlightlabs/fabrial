@@ -48,7 +48,7 @@ a paid plan, so rulesets on `main` are enforced.
 - **One set of run operations, three drivers.** A core crate holds the
   operations: claim, start a step, record a result, mark ready, release.
   `fab run` drives the fixed sequence in code. An agent such as Pi drives it
-  through the CLI or `fab mcp`. A person drives it by asking the session,
+  through the CLI. A person drives it by asking the session,
   with a `/storm:ready` PR comment the gate workflow reads,
   or through whatever a host builds on the same operations.
 - **Enforcement is server-side:** rulesets, required checks and the review
@@ -94,10 +94,11 @@ a paid plan, so rulesets on `main` are enforced.
   `.claude/skills/fab-writing-docs/`.
 - **fabrial is not a harness.** It ships the repository contract, the skills,
   the workflows and the `fab` commands they run. Harnesses such as Claude
-  Code, Codex and Pi run the agents: they own worker dispatch, sandboxes,
-  multiplexers, message queues and their own setup. Worker dispatch, the
-  sandbox and the Pi package now in this repository move out, into their own
-  crate and package, and their open work moves with them.
+  Code, Codex and Pi run the agents, each its own way: they own worker
+  dispatch, sandboxes, multiplexers, message queues and their own setup.
+  Worker dispatch, the sandbox, `fab run`, run events and the Pi package in
+  this repository are the Pi harness. They stay as they are with no new
+  work, and may move to their own repository later.
 - **Cleanup is lifecycle work.** The host cleans up worker-owned resources
   when a worker exits and task-owned resources after its PR merges. Preserve
   result evidence, shared resources, and unconfirmed credential recovery state.
@@ -106,12 +107,9 @@ a paid plan, so rulesets on `main` are enforced.
   whether Claude Code, Codex and Pi read the same `SKILL.md` layout. Port
   per-host differences only where thunderstorm's `docs/internal/hosts.md` shows
   they are needed.
-- **fabrial is the engine, not the host.** It ships `fab run`, which drives
-  the implementation loop for one task. A service that picks up tasks on its
-  own belongs to the host. Hosts reach the run operations through fab-core,
-  the CLI or `fab mcp`, follow run events with `fab events`, which prints
-  them as JSON lines, and read PR status from GitHub. fabrial runs no
-  server, and assumes nothing about where these run or how they are reached.
+- **fabrial runs no server.** A service that picks up tasks on its own
+  belongs to the host, and fabrial assumes nothing about where its commands
+  run or how they are reached.
 - **Releases:** a workflow run opens a release pull request whose changelog
   section lists the squash subjects since the last tag, which the owner
   edits there; pull requests do not edit `CHANGELOG.md`. The tag lands on its
