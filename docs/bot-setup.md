@@ -139,6 +139,8 @@ it to `main`, add the secrets to it, and only then delete the old secrets.
 Moving the secrets before the update merges stops the workflows on `main`,
 which name no environment until then. The update's own pull request does not
 open itself, since Branch PR open is not on `main` yet: open it by hand.
+The code owner cannot approve a pull request they opened, so someone else
+opens it.
 
 ## Who can use the key
 

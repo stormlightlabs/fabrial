@@ -46,7 +46,7 @@ reports where the repository has drifted.
 1. You ask an agent session for a task, with `/fab-storm <task>`.
 2. The session claims the task, works it on its own branch, runs the gates
    and pushes.
-3. The Branch PR workflow opens a draft pull request as your App.
+3. Branch PR open opens a draft pull request as your App.
 4. The session runs the review stages for the change's size, revises after
    each one, and posts `Review finished at <sha>` through the Bot comment
    workflow.

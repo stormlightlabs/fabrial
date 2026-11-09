@@ -63,7 +63,7 @@ of the title joined with dashes.
 
 Write the record and stop. A record that is a file, through the **Tasks**
 section or under `docs/`, is committed only when the person asks: then on a
-new `claude/<topic>` branch, pushed so the Branch PR workflow opens the pull
+new `claude/<topic>` branch, pushed so Branch PR open opens the pull
 request, never on `main`. A spec is reviewed in that pull request before work
 is cut from it.
 
