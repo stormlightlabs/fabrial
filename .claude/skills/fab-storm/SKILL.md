@@ -22,8 +22,9 @@ Restate when the run ends before dispatching anything: the sequence has posted
 ## Posting
 
 Every comment this skill and its agents put on a pull request goes out as
-stormlight-thunderbot through the Bot comment workflow, never through the
-session's own GitHub access, which posts as a person:
+the repository's App, which `app` in `.github/fabrial.toml` names, through
+the Bot comment workflow, never through the session's own GitHub access,
+which posts as a person:
 
 ```sh
 gh workflow run comment.yml -f pr=<n> -f body="$(cat <file>)"
@@ -82,7 +83,7 @@ a bad `pr` or a missing secret goes unseen, and the newest listed run may be an
 earlier one. Confirm each post by its result: within about a minute, or for a
 section once its `comment.yml` run has finished, `gh pr view <n> --comments`,
 or `pull_request_read` method `get_comments` in a cloud session, should show a
-comment from `stormlight-thunderbot[bot]`, created after you dispatched, whose
+comment from `<app>[bot]`, created after you dispatched, whose
 first line matches yours, or for a section, the status comment holding your
 text, or for a review or answers, a review from the bot created after you
 dispatched (`gh pr view <n> --json reviews`, or method `get_reviews`). A

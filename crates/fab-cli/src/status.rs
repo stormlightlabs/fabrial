@@ -6,7 +6,8 @@
 //!
 //! The comment opens with [`MARKER`]. Each section starts with a line
 //! `<!-- fabrial:section <name> -->` and runs to the next such line. Only a
-//! comment from the bot counts, so a copy someone else posts is ignored.
+//! comment from the bot, the App `app` in main's `.github/fabrial.toml`
+//! names, counts, so a copy someone else posts is ignored.
 
 use std::path::Path;
 
@@ -17,8 +18,6 @@ use crate::run::{self, Result};
 
 /// The first line of the status comment.
 pub const MARKER: &str = "<!-- fabrial:status -->";
-/// The bot's login as the REST API gives it.
-const BOT_LOGIN: &str = "stormlight-thunderbot[bot]";
 const SECTION_OPEN: &str = "<!-- fabrial:section ";
 const SECTION_CLOSE: &str = " -->";
 /// The most characters a section keeps; a handful of sections fit in one
@@ -41,6 +40,10 @@ pub struct Options {
     /// A file holding the section's text.
     #[arg(long)]
     body_file: std::path::PathBuf,
+    /// The slug of the App whose token the workflow made, checked against
+    /// the settings' `app`.
+    #[arg(long, env = "APP_SLUG")]
+    app_slug: Option<String>,
     /// Print the write instead of sending it. `DRY_RUN=1` sets it.
     #[arg(long, env = "DRY_RUN", action = clap::ArgAction::SetTrue, value_parser = FalseyValueParser::new())]
     dry_run: bool,
@@ -50,6 +53,8 @@ pub struct Options {
 pub struct Status {
     repo: String,
     pr: String,
+    /// The bot's login as the REST API gives it, such as `my-bot[bot]`.
+    bot: String,
     /// The first status comment, which the writes edit.
     id: Option<u64>,
     /// Status comments a racing writer posted after the first.
@@ -58,21 +63,27 @@ pub struct Status {
 }
 
 impl Status {
-    /// Reads the bot's status comments on a pull request. The first is the
-    /// status comment; sections only a later one holds, which two writers
-    /// posting at once leave behind, are read as its own. A pull request
-    /// with none has no sections.
-    pub fn read(repo: &str, pr: &str) -> Result<Status> {
+    /// Reads the status comments `bot` posted on a pull request. The first
+    /// is the status comment; sections only a later one holds, which two
+    /// writers posting at once leave behind, are read as its own. A pull
+    /// request with none has no sections.
+    pub fn read(repo: &str, pr: &str, bot: &str) -> Result<Status> {
         let path = format!("repos/{repo}/issues/{pr}/comments?per_page=100");
         // One line per comment, the id then the body as a JSON string, so a
         // body's own line breaks cannot split the answer.
         let filter = format!(
-            ".[] | select(.user.login == \"{BOT_LOGIN}\" and (.body | startswith(\"{MARKER}\"))) \
+            ".[] | select(.user.login == \"{bot}\" and (.body | startswith(\"{MARKER}\"))) \
              | \"\\(.id) \\(.body | tojson)\""
         );
         let found = run::gh(&["api", "--paginate", &path, "--jq", &filter])?;
-        let mut status =
-            Status { repo: repo.into(), pr: pr.into(), id: None, extras: Vec::new(), sections: Vec::new() };
+        let mut status = Status {
+            repo: repo.into(),
+            pr: pr.into(),
+            bot: bot.into(),
+            id: None,
+            extras: Vec::new(),
+            sections: Vec::new(),
+        };
         for line in found.lines().filter(|l| !l.trim().is_empty()) {
             let bad = || format!("cannot read the status comment from `{line}`");
             let (id, body) = line.split_once(' ').ok_or_else(bad)?;
@@ -115,7 +126,7 @@ impl Status {
             if dry_run {
                 return Ok(true);
             }
-            *self = Status::read(&self.repo, &self.pr)?;
+            *self = Status::read(&self.repo, &self.pr, &self.bot)?;
         }
         Err(format!(
             "the status comment's {name} section kept changing under this write."
@@ -128,7 +139,7 @@ impl Status {
     /// while this one worked, which can take minutes, stays.
     fn write(&mut self, name: &str, text: &str, scratch: &Path, dry_run: bool) -> Result<()> {
         if !dry_run {
-            *self = Status::read(&self.repo, &self.pr)?;
+            *self = Status::read(&self.repo, &self.pr, &self.bot)?;
         }
         match self.sections.iter_mut().find(|(n, _)| n == name) {
             Some((_, old)) => *old = text.to_string(),
@@ -162,8 +173,12 @@ impl Status {
 }
 
 /// Sets one section of a pull request's status comment, for the Bot comment
-/// workflow.
+/// workflow. The bot's login comes from main's `.github/fabrial.toml`, in
+/// the working directory.
 pub fn run(options: Options) -> Result<()> {
+    let settings = run::settings()?;
+    run::app(&settings, options.app_slug.as_deref())?;
+    let bot = settings.bot().unwrap_or_default();
     let text = std::fs::read_to_string(&options.body_file)
         .map_err(|e| format!("cannot read {}: {e}", options.body_file.display()))?;
     if !is_section_name(&options.section) {
@@ -173,7 +188,7 @@ pub fn run(options: Options) -> Result<()> {
         ));
     }
     let scratch = tempfile::tempdir().map_err(|e| format!("cannot make a scratch directory: {e}"))?;
-    let mut status = Status::read(&options.repo, &options.pr)?;
+    let mut status = Status::read(&options.repo, &options.pr, &bot)?;
     if !status.set(&options.section, &text, scratch.path(), options.dry_run)? {
         println!("The {} section already says that.", options.section);
     }

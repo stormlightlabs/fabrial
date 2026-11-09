@@ -9,8 +9,11 @@
 //! review finishes; the Review gate then marks it ready and posts the squash
 //! message, and the owner merges it. Nothing here turns auto-merge on.
 //!
-//! It runs with the branch checked out in `HEAD_DIR`, `origin/main` fetched
-//! there, and talks to GitHub through `gh` with `GH_TOKEN`. With `DRY_RUN=1`,
+//! It runs from a checkout of main, whose `.github/fabrial.toml` names the
+//! App, with the branch checked out in `HEAD_DIR`, `origin/main` fetched
+//! there, and talks to GitHub through `gh` with `GH_TOKEN`. It stops before
+//! opening anything when the App whose token it holds is not the one the
+//! settings name. With `DRY_RUN=1`,
 //! the pull request is printed instead of opened.
 
 use std::path::PathBuf;
@@ -38,6 +41,10 @@ pub struct Options {
     /// A checkout of the branch, with origin/main fetched.
     #[arg(long, env = "HEAD_DIR", default_value = "head")]
     head_dir: PathBuf,
+    /// The slug of the App whose token the workflow made, checked against
+    /// the settings' `app`.
+    #[arg(long, env = "APP_SLUG")]
+    app_slug: Option<String>,
     /// Print the pull request instead of opening it. `DRY_RUN=1` sets it.
     #[arg(long, env = "DRY_RUN", action = clap::ArgAction::SetTrue, value_parser = FalseyValueParser::new())]
     dry_run: bool,
@@ -46,6 +53,7 @@ pub struct Options {
 /// Opens the branch's draft pull request, unless one is open or the branch
 /// has no commits ahead of main besides claim commits.
 pub fn run(options: Options) -> Result<()> {
+    run::app(&run::settings()?, options.app_slug.as_deref())?;
     let git = |args: &[&str]| run::git(&options.head_dir, args);
     let commits = git(&["rev-list", "--reverse", "origin/main..HEAD"])?;
     if commits.is_empty() {

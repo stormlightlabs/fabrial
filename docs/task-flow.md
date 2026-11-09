@@ -5,7 +5,8 @@ Four parties take part:
 
 - The driver is the person who asks a session for the work.
 - The agent session runs the `fab-` skills in Claude Code, Codex or Pi.
-- The bot is stormlight-thunderbot, acting through the Branch PR, Bot comment
+- The bot is the repository's GitHub App, which `app` in
+  `.github/fabrial.toml` names, acting through the Branch PR, Bot comment
   and Review gate workflows.
 - The owner is the person `owner` in `.github/fabrial.toml` names, who
   approves and merges. The driver and the owner can be the same person.

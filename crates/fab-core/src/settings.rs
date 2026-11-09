@@ -10,6 +10,11 @@ pub const SETTINGS_PATH: &str = ".github/fabrial.toml";
 /// lowercase. Every file under one is configuration, so none can hold
 /// planning records.
 pub const CONFIG_DIRS: &[&str] = &[".github", ".claude", ".agents", ".codex"];
+/// The secret prefix `fab init` writes when none is given.
+pub const DEFAULT_SECRET_PREFIX: &str = "FABRIAL";
+/// The secret prefix an install without the setting reads: the names
+/// fabrial 0.9.0 and earlier read, which `fab update` writes into it.
+pub const LEGACY_SECRET_PREFIX: &str = "THUNDERBOT";
 
 /// The values the workflows, the gate and the skills read.
 ///
@@ -21,6 +26,17 @@ pub const CONFIG_DIRS: &[&str] = &[".github", ".claude", ".agents", ".codex"];
 pub struct Settings {
     /// GitHub login of the person who approves pull requests.
     pub owner: String,
+    /// The slug of the repository's GitHub App, the one the workflows act
+    /// as: `fabrial-bot` in `github.com/apps/fabrial-bot`. Its bot login is
+    /// [`Settings::bot`]. `fab init` and `fab update` need it; the file
+    /// still parses without it so `fab update --app` can add it.
+    #[serde(default)]
+    pub app: Option<String>,
+    /// The prefix of the secrets that hold the App's ID and key: the
+    /// workflows read `<prefix>_APP_ID` and `<prefix>_PRIVATE_KEY`. `None`
+    /// reads [`LEGACY_SECRET_PREFIX`]; see [`Settings::secret_prefix`].
+    #[serde(default)]
+    pub secret_prefix: Option<String>,
     /// The `Co-authored-by` value on every squash commit.
     pub trailer: String,
     /// The command agents run before pushing. `fab gates` runs it when the
@@ -118,6 +134,23 @@ impl Settings {
     /// Checks that every value can be written in the one-line form the
     /// workflows read.
     pub fn validate(&self) -> Result<(), Error> {
+        if let Some(app) = &self.app
+            && !is_app_slug(app)
+        {
+            let hint = if app.ends_with("[bot]") { "; give the slug without `[bot]`" } else { "" };
+            return Err(Error::Settings(format!(
+                "`app` is {app:?}, not a GitHub App slug (lowercase letters, digits and hyphens, \
+                 not at either end, up to 34 characters){hint}"
+            )));
+        }
+        if let Some(prefix) = &self.secret_prefix
+            && !is_secret_prefix(prefix)
+        {
+            return Err(Error::Settings(format!(
+                "`secret_prefix` is {prefix:?}, not a secret name prefix (uppercase letters, digits and \
+                 underscores, not starting with a digit or GITHUB_)"
+            )));
+        }
         if let Some(value) = &self.assisted_by
             && value != "on"
             && value != "off"
@@ -204,6 +237,18 @@ impl Settings {
         Ok(())
     }
 
+    /// The login the App's comments and commits carry, `<app>[bot]`, or
+    /// `None` when the settings name no App.
+    pub fn bot(&self) -> Option<String> {
+        self.app.as_ref().map(|app| format!("{app}[bot]"))
+    }
+
+    /// The prefix the workflows' secret names take: the setting, or
+    /// [`LEGACY_SECRET_PREFIX`] when it is not set.
+    pub fn secret_prefix(&self) -> &str {
+        self.secret_prefix.as_deref().unwrap_or(LEGACY_SECRET_PREFIX)
+    }
+
     /// Whether the squash commit names the agent models that worked on it.
     pub fn assisted(&self) -> bool {
         self.assisted_by.as_deref() == Some("on")
@@ -217,6 +262,20 @@ impl Settings {
                 "\n# The Signed-off-by trailer that ends every squash commit; the owner\n\
                  # certifies agent work at merge.\n\
                  signoff = \"{s}\"\n"
+            )
+        });
+        let app = self.app.as_ref().map_or_else(String::new, |a| {
+            format!(
+                "\n# The slug of the GitHub App the workflows act as, from its page\n\
+                 # github.com/apps/<slug>. Its comments come from <slug>[bot].\n\
+                 app = \"{a}\"\n"
+            )
+        });
+        let prefix = self.secret_prefix.as_ref().map_or_else(String::new, |p| {
+            format!(
+                "\n# The prefix of the secrets holding the App's ID and key: the workflows\n\
+                 # read {p}_APP_ID and {p}_PRIVATE_KEY.\n\
+                 secret_prefix = \"{p}\"\n"
             )
         });
         let assisted = self.assisted_by.as_ref().map_or_else(String::new, |a| {
@@ -274,6 +333,8 @@ impl Settings {
              # GitHub login of the person who approves pull requests; `fab init` writes\n\
              # CODEOWNERS from it.\n\
              owner = \"{}\"\n\
+             {app}\
+             {prefix}\
              \n\
              # The Co-authored-by trailer on every squash commit.\n\
              trailer = \"{}\"\n\
@@ -303,6 +364,32 @@ fn is_relative(path: &str) -> bool {
         || path.contains(['"', '\\', '\n', '\r']))
 }
 
+/// Whether `app` is a GitHub App slug: lowercase ASCII letters, digits and
+/// hyphens, not starting or ending with a hyphen, up to the 34 characters an
+/// App's name may hold.
+fn is_app_slug(app: &str) -> bool {
+    !app.is_empty()
+        && app.len() <= 34
+        && app
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && !app.starts_with('-')
+        && !app.ends_with('-')
+}
+
+/// Whether `prefix` can start a secret name GitHub accepts: uppercase ASCII
+/// letters, digits and underscores, not starting with a digit or with the
+/// `GITHUB_` GitHub reserves.
+fn is_secret_prefix(prefix: &str) -> bool {
+    !prefix.is_empty()
+        && prefix
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+        && !prefix.starts_with(|c: char| c.is_ascii_digit())
+        && prefix != "GITHUB"
+        && !prefix.starts_with("GITHUB_")
+}
+
 /// Whether a skill name is a plain directory name: ASCII letters, digits,
 /// `-` and `_`, so it cannot leave `.claude/skills`.
 fn is_name(name: &str) -> bool {
@@ -330,6 +417,8 @@ mod tests {
     fn settings() -> Settings {
         Settings {
             owner: "desertthunder".into(),
+            app: Some("fabrial-bot".into()),
+            secret_prefix: Some("FABRIAL".into()),
             trailer: "Owais <desertthunder.dev@gmail.com>".into(),
             gates: "just check".into(),
             signoff: None,
@@ -517,6 +606,70 @@ mod tests {
         let mut bad = settings();
         bad.signoff = Some(String::new());
         assert!(bad.validate().is_err());
+    }
+
+    #[test]
+    fn the_app_renders_parses_back_and_names_its_bot() {
+        let text = settings().render("0.1.0");
+        assert!(text.lines().any(|l| l == r#"app = "fabrial-bot""#), "{text}");
+        let parsed = Settings::parse(&text).unwrap();
+        assert_eq!(parsed.app.as_deref(), Some("fabrial-bot"));
+        assert_eq!(parsed.bot().as_deref(), Some("fabrial-bot[bot]"));
+        let none = Settings { app: None, ..settings() };
+        assert!(!none.render("0.1.0").contains("app ="));
+        assert_eq!(Settings::parse(&none.render("0.1.0")).unwrap().bot(), None);
+    }
+
+    #[test]
+    fn the_app_must_be_a_slug() {
+        for good in ["stormlight-thunderbot", "a", "bot2", &"x".repeat(34)] {
+            let s = Settings { app: Some(good.to_string()), ..settings() };
+            assert!(s.validate().is_ok(), "{good}");
+        }
+        for bad in ["", "-a", "a-", "My-App", "a b", "a_b", "a\"b", &"x".repeat(35)] {
+            let s = Settings { app: Some(bad.to_string()), ..settings() };
+            let err = s.validate().unwrap_err().to_string();
+            assert!(err.contains("`app`"), "{bad}: {err}");
+        }
+        let s = Settings { app: Some("fabrial-bot[bot]".into()), ..settings() };
+        assert!(s.validate().unwrap_err().to_string().contains("without `[bot]`"));
+    }
+
+    #[test]
+    fn the_secret_prefix_renders_and_parses_back() {
+        let text = Settings { secret_prefix: Some("THUNDERBOT".into()), ..settings() }.render("0.1.0");
+        assert!(text.lines().any(|l| l == r#"secret_prefix = "THUNDERBOT""#), "{text}");
+        let parsed = Settings::parse(&text).unwrap();
+        assert_eq!(parsed.secret_prefix(), "THUNDERBOT");
+        let none = Settings { secret_prefix: None, ..settings() };
+        assert!(!none.render("0.1.0").contains("secret_prefix"));
+        assert_eq!(
+            Settings::parse(&none.render("0.1.0")).unwrap().secret_prefix(),
+            LEGACY_SECRET_PREFIX
+        );
+    }
+
+    #[test]
+    fn the_secret_prefix_must_start_a_secret_name() {
+        for good in ["FABRIAL", "THUNDERBOT", "A", "_X", "MY_BOT2"] {
+            let s = Settings { secret_prefix: Some(good.into()), ..settings() };
+            assert!(s.validate().is_ok(), "{good}");
+        }
+        for bad in [
+            "",
+            "fabrial",
+            "My_Bot",
+            "2BOT",
+            "GITHUB",
+            "GITHUB_BOT",
+            "A-B",
+            "A B",
+            "A\"B",
+        ] {
+            let s = Settings { secret_prefix: Some(bad.into()), ..settings() };
+            let err = s.validate().unwrap_err().to_string();
+            assert!(err.contains("`secret_prefix`"), "{bad}: {err}");
+        }
     }
 
     #[test]

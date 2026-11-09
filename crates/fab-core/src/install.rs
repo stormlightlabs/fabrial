@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use crate::Error;
 use crate::gates::{GATES_PATH, Gates};
-use crate::settings::{SETTINGS_PATH, Settings};
+use crate::settings::{LEGACY_SECRET_PREFIX, SETTINGS_PATH, Settings};
 
 /// The line that opens fabrial's section of `AGENTS.md`.
 pub const AGENTS_BEGIN: &str = "<!-- fabrial:begin -->";
@@ -26,6 +26,11 @@ const AGENTS_PATH: &str = "AGENTS.md";
 const CODEOWNERS_PATH: &str = ".github/CODEOWNERS";
 const SKILLS_TARGET: &str = "../.claude/skills";
 const AGENTS_SECTION: &str = include_str!("agents-section.md");
+/// The secret prefix fabrial's own workflows, which [`EMBEDDED`] copies,
+/// read. [`expected_files`] replaces it with the repository's.
+const SOURCE_SECRET_PREFIX: &str = "THUNDERBOT";
+/// The secrets the workflows read, without their prefix.
+const SECRET_SUFFIXES: &[&str] = &["_APP_ID", "_PRIVATE_KEY"];
 
 /// The files copied as they are, with whether each is executable.
 const EMBEDDED: &[(&str, &str, bool)] = &[
@@ -304,6 +309,9 @@ pub enum Drift {
     SkillsLink,
     /// The settings name another fabrial version, or none.
     Version { installed: Option<String>, running: String },
+    /// The settings name no `app`, which every workflow's `fab` command
+    /// needs.
+    NoApp,
     /// A file an earlier release installed and this one does not is still
     /// there. Under a skill's old name, each file when all of them are as a
     /// release wrote them, or the skill's directory when anything else is
@@ -323,6 +331,10 @@ impl std::fmt::Display for Drift {
                 None => write!(f, "version: none recorded, this build {running}"),
             },
             Drift::Retired(path) => write!(f, "retired: {}", path.display()),
+            Drift::NoApp => write!(
+                f,
+                "missing: `app` in {SETTINGS_PATH}; run fab update --app <slug> with the repository's GitHub App"
+            ),
         }
     }
 }
@@ -476,6 +488,11 @@ pub fn update(root: &Path, change: impl FnOnce(&mut Settings), downgrade: bool) 
             Some(_) => {}
         }
     }
+    // An install from before the setting reads the secrets 0.9.0 and
+    // earlier named; writing that prefix keeps them working.
+    settings
+        .secret_prefix
+        .get_or_insert_with(|| LEGACY_SECRET_PREFIX.into());
     change(&mut settings);
     let mut report = init(root, &settings, false)?;
     remove_retired(root, &mut report);
@@ -494,6 +511,12 @@ pub fn update(root: &Path, change: impl FnOnce(&mut Settings), downgrade: bool) 
 /// `force`, and is never followed or deleted.
 pub fn init(root: &Path, settings: &Settings, force: bool) -> Result<Report, Error> {
     settings.validate()?;
+    if settings.app.is_none() {
+        return Err(Error::Settings(
+            "`app` is not set; pass --app with the slug of the repository's GitHub App, as docs/bot-setup.md says"
+                .into(),
+        ));
+    }
     // Everything that can refuse is decided before the first write.
     let bad = unmanageable(root, managed_paths())?;
     if !bad.is_empty() {
@@ -582,6 +605,11 @@ pub fn check(root: &Path) -> Result<Vec<Drift>, Error> {
     // Only the release counts: a new commit with the same files is not drift.
     if settings.version.as_deref().map(crate::release) != Some(crate::release(&running)) {
         drift.push(Drift::Version { installed: settings.version.clone(), running: running.clone() });
+    }
+    // The workflows refuse to run without it, so a file that lost it is
+    // drift even though it matches the render of its own values.
+    if settings.app.is_none() {
+        drift.push(Drift::NoApp);
     }
     // The settings file is compared with the render of its own values, so a
     // line the workflows' `sed` readers cannot read shows as drift.
@@ -879,21 +907,53 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 /// Every file `init` writes, with its contents and whether it is executable.
+/// The workflows read the secrets under the repository's prefix.
 fn expected_files(settings: &Settings, version: &str) -> Vec<(PathBuf, String, bool)> {
     let mut files: Vec<(PathBuf, String, bool)> = EMBEDDED
         .iter()
-        .map(|(path, contents, executable)| ((*path).into(), (*contents).into(), *executable))
+        .map(|(path, contents, executable)| ((*path).into(), with_secrets(contents, settings), *executable))
         .collect();
     files.push((CODEOWNERS_PATH.into(), codeowners(&settings.owner), false));
     files.push((SETTINGS_PATH.into(), settings.render(version), false));
     files
 }
 
+/// `contents` with each secret fabrial's own workflows read renamed to the
+/// repository's prefix. Text without one comes back as it is.
+///
+/// Only a whole `${{ secrets.<name> }}` expression is renamed, in one scan,
+/// so a prefix that itself ends in a suffix is never renamed twice.
+fn with_secrets(contents: &str, settings: &Settings) -> String {
+    let opener = format!("${{{{ secrets.{SOURCE_SECRET_PREFIX}");
+    let mut out = String::with_capacity(contents.len());
+    let mut rest = contents;
+    while let Some(at) = rest.find(&opener) {
+        out.push_str(&rest[..at]);
+        let after = &rest[at + opener.len()..];
+        match SECRET_SUFFIXES
+            .iter()
+            .find(|suffix| after.starts_with(&format!("{suffix} }}}}")))
+        {
+            Some(suffix) => {
+                out.push_str(&format!("${{{{ secrets.{}{suffix} }}}}", settings.secret_prefix()));
+                rest = &after[suffix.len() + " }}".len()..];
+            }
+            None => {
+                out.push_str(&opener);
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 fn codeowners(owner: &str) -> String {
     format!(
         "# Every pull request requests a review from the owner. Pull requests are\n\
-         # opened by stormlight-thunderbot, so the owner is never the author and can\n\
-         # approve them. `fab init` writes this file from `.github/fabrial.toml`.\n\
+         # opened by the repository's GitHub App, so the owner is never the author\n\
+         # and can approve them. `fab init` writes this file from\n\
+         # `.github/fabrial.toml`.\n\
          * @{owner}\n"
     )
 }
@@ -1032,9 +1092,114 @@ mod tests {
         }
     }
 
+    #[test]
+    fn installed_files_name_no_app() {
+        // fabrial's own App is stormlight-thunderbot, but each repository
+        // that installs fabrial names its own in `.github/fabrial.toml`, and
+        // the default install reads its secrets under FABRIAL.
+        let files = expected_files(&settings(), crate::VERSION);
+        let section = (PathBuf::from("agents-section.md"), AGENTS_SECTION.to_owned(), false);
+        for (path, contents, _) in files.into_iter().chain([section]) {
+            if path == Path::new(SETTINGS_PATH) {
+                continue;
+            }
+            assert!(
+                !contents.to_lowercase().contains("thunderbot"),
+                "{} names an App",
+                path.display()
+            );
+        }
+    }
+
+    #[test]
+    fn the_workflows_read_the_secrets_under_the_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let own = Settings { secret_prefix: Some("OWN_BOT".into()), ..settings() };
+        install(dir.path(), &own, false).unwrap();
+        for workflow in ["branch-pr.yml", "review.yml", "comment.yml"] {
+            let text = fs::read_to_string(dir.path().join(".github/workflows").join(workflow)).unwrap();
+            assert!(text.contains("${{ secrets.OWN_BOT_APP_ID }}"), "{workflow}");
+            assert!(text.contains("${{ secrets.OWN_BOT_PRIVATE_KEY }}"), "{workflow}");
+            assert!(!text.contains(SOURCE_SECRET_PREFIX), "{workflow}");
+        }
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn a_prefix_ending_in_a_suffix_is_renamed_once() {
+        let own = Settings { secret_prefix: Some("THUNDERBOT_PRIVATE_KEY".into()), ..settings() };
+        let text = "id: ${{ secrets.THUNDERBOT_APP_ID }}\nkey: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}\nother: ${{ secrets.THUNDERBOT_OTHER }}\n";
+        assert_eq!(
+            with_secrets(text, &own),
+            "id: ${{ secrets.THUNDERBOT_PRIVATE_KEY_APP_ID }}\n\
+             key: ${{ secrets.THUNDERBOT_PRIVATE_KEY_PRIVATE_KEY }}\n\
+             other: ${{ secrets.THUNDERBOT_OTHER }}\n"
+        );
+    }
+
+    #[test]
+    fn update_keeps_the_secrets_an_install_without_a_prefix_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let path = dir.path().join(SETTINGS_PATH);
+        let old: String = fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.starts_with("secret_prefix = "))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        fs::write(&path, old).unwrap();
+        update(dir.path(), |_| {}, false).unwrap();
+        assert!(
+            fs::read_to_string(&path)
+                .unwrap()
+                .contains("secret_prefix = \"THUNDERBOT\"\n")
+        );
+        let review = fs::read_to_string(dir.path().join(".github/workflows/review.yml")).unwrap();
+        assert!(review.contains("secrets.THUNDERBOT_APP_ID") && review.contains("secrets.THUNDERBOT_PRIVATE_KEY"));
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+        // A prefix the install sets is kept.
+        update(dir.path(), |s| s.secret_prefix = Some("OWN".into()), false).unwrap();
+        update(dir.path(), |_| {}, false).unwrap();
+        assert!(fs::read_to_string(&path).unwrap().contains("secret_prefix = \"OWN\"\n"));
+    }
+
+    #[test]
+    fn init_needs_an_app() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = init(dir.path(), &Settings { app: None, ..settings() }, false).unwrap_err();
+        assert!(err.to_string().contains("--app"), "{err}");
+        assert!(!dir.path().join(SETTINGS_PATH).exists());
+    }
+
+    #[test]
+    fn update_adds_an_app_to_an_install_without_one() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let path = dir.path().join(SETTINGS_PATH);
+        let old: String = fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.starts_with("app = "))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        fs::write(&path, old).unwrap();
+        // Check catches a pull request that drops the line. The comment
+        // left above it is drift of its own.
+        assert!(check(dir.path()).unwrap().contains(&Drift::NoApp));
+        assert!(Drift::NoApp.to_string().contains("fab update --app"));
+        let err = update(dir.path(), |_| {}, false).unwrap_err();
+        assert!(err.to_string().contains("--app"), "{err}");
+        update(dir.path(), |s| s.app = Some("own-bot".into()), false).unwrap();
+        assert!(fs::read_to_string(&path).unwrap().contains("app = \"own-bot\"\n"));
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+    }
+
     fn settings() -> Settings {
         Settings {
             owner: "desertthunder".into(),
+            app: Some("fabrial-bot".into()),
+            secret_prefix: Some(crate::settings::DEFAULT_SECRET_PREFIX.into()),
             trailer: "Owais <desertthunder.dev@gmail.com>".into(),
             signoff: None,
             assisted_by: None,
