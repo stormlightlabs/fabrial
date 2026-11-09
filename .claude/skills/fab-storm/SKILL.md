@@ -198,17 +198,14 @@ is the usual answer. GitHub answers `UNKNOWN` (or `unknown`) for a while after
 a push: read it again up to five times, a few seconds apart. Never post on an
 unknown answer; if it is still unknown, stop and report that to the driver.
 
-On `behind`, merge `main` into the branch; with no conflict only the base
-moves, so the review stands. On `CONFLICTING` (or `dirty`), merge `main` with a
-merge commit, not a rebase, and resolve it. Regenerate a generated file with
-its tool rather than editing it, as `fab update` does for
-`.github/fabrial.toml`. Stop and report when both sides changed the same
-logic. Run `fab gates --full` and push. A resolved conflict changes the
-branch's own diff, so the gate takes the new head as unreviewed. Report the
-resolution and ask the driver whether to run both passes again or to have the
-owner accept the head with `/storm:ready <sha>`; do neither unasked.
-The `fab-resync` skill does not resolve conflicts; this step does, for the pull
-request this run reviews.
+On `behind` or `CONFLICTING` (or `dirty`), bring the branch up to date with
+the `fab-resync` skill, which chooses rebase or merge, resolves conflicts and
+regenerates generated files. When only the base moved, the review stands. A
+resolved conflict changes the branch's own diff, so the gate takes the new
+head as unreviewed: report the resolution and ask the driver whether to run
+the review stages again or to have the owner accept the head with
+`/storm:ready <sha>`; do neither unasked. When `fab-resync` stops on a
+conflict it cannot resolve, stop and report it.
 
 Post it through the Bot comment workflow like the rest. The Review gate
 workflow then turns `storm/review` green for that head, marks the draft ready
