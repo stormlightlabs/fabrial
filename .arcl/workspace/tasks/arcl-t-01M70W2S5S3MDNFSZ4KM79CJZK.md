@@ -15,9 +15,10 @@ have saved.
 Acceptance criteria:
 
 - [ ] The skill chooses between rebasing and merging `main` in: a merge
-      for a branch a person owns or anyone else has checked out, a rebase
-      for an agent branch where it applies cleanly, and a merge when a
-      rebase would resolve the same conflict once per commit
+      for a branch a person owns or anyone else commits to, a rebase for
+      an agent branch where it applies cleanly, and a merge when a rebase
+      would resolve the same conflict once per commit or drop a merge
+      of `main`
 - [ ] It resolves conflicts by reading both sides' intent (the PR body,
       `main`'s commits) and keeps both behaviours; it regenerates lockfiles
       and generated or managed files with the repository's tooling instead

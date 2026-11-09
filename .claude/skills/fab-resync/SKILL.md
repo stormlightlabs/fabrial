@@ -27,7 +27,7 @@ checkout.
 
 ```sh
 git fetch origin main <branch>
-git diff "$(git merge-base origin/main HEAD)" HEAD > before.diff
+git diff --binary "$(git merge-base origin/main HEAD)" HEAD > before.diff
 ```
 
 ## Choose rebase or merge
@@ -46,13 +46,19 @@ Merge `main` in (`git merge origin/main`) when any of these holds:
 
 - The branch is a person's: its name has no `claude/`, `codex/` or `storm/`
   prefix. Never rewrite it.
-- Another worktree or session has the branch checked out.
+- Someone else works on the branch: `git log --format='%an <%ae>'
+  origin/main..HEAD` names an author other than your own commits' author and
+  the App `app` in `.github/fabrial.toml` names, or the driver says so.
+- The branch already has `main` merged in: `git rev-list --merges
+  origin/main..HEAD` prints anything. A rebase drops the merge commit and
+  replays the conflict it resolved, even when `merge-tree` reports no
+  conflict.
 - More than one commit touches the conflicting files, so a rebase would stop
   on the same conflict once per commit.
 
-Otherwise rebase (`git rebase origin/main`): an agent branch that applies
-cleanly, or whose conflicts sit in one commit. A merge commit never reaches
-`main`, because agent pull requests squash-merge.
+Otherwise rebase (`git rebase origin/main`): an agent branch with no merge
+commits that applies cleanly, or whose conflicts sit in one commit. A merge
+commit never reaches `main`, because agent pull requests squash-merge.
 
 Either way the Review gate sees the same change. It hashes the diff between
 the head and its merge base with `origin/main`, leaving out `index` lines and
@@ -85,6 +91,14 @@ A task file in the repository's tracker keeps the newer status. Read the
 repository's `AGENTS.md` for its own generated files and the command that
 writes each one.
 
+Finish without an editor, which a session without a terminal cannot answer:
+
+```sh
+git add <files>
+git commit --no-edit                    # after a merge
+GIT_EDITOR=true git rebase --continue   # after a rebase, once per stop
+```
+
 Stop and ask only when both sides change the same logic and either choice
 loses one side's behaviour, or when the conflict is in code you cannot test.
 Abort first (`git merge --abort` or `git rebase --abort`), then name the
@@ -99,7 +113,7 @@ resolution; if the fix is outside it, report the failure and push nothing.
 Then compare the change before and after:
 
 ```sh
-git diff origin/main HEAD > after.diff
+git diff --binary origin/main HEAD > after.diff
 norm() { sed -E '/^(index|similarity index|dissimilarity index) /d; s/^@@ -[0-9,]+ \+[0-9,]+ @@/@@/' "$1"; }
 diff <(norm before.diff) <(norm after.diff)
 ```
