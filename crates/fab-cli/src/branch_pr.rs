@@ -27,8 +27,6 @@ use fab_core::claims::Claim;
 use crate::run::{self, Result};
 use crate::squash;
 
-/// The note below the footer line of a new pull request's body.
-const NOTE: &str = "Draft until the review finishes; the owner merges it.";
 /// The branch prefixes Branch PR opens pull requests for.
 const PREFIXES: &[&str] = &["claude/", "codex/", "storm/"];
 
@@ -152,11 +150,11 @@ fn is_agent_branch(branch: &str) -> bool {
 }
 
 /// A new pull request's body: the kept text of the first commit's body, then
-/// the footer line and the note.
+/// the footer line and the branch it came from.
 fn body(commit_body: &str, branch: &str) -> String {
     let text = squash::kept_text(commit_body);
     let footer = format!(
-        "{}: the text above becomes the squash commit body. -->\nFrom `{branch}`. {NOTE}\n",
+        "{}: the text above becomes the squash commit body. -->\nFrom `{branch}`.\n",
         squash::FOOTER
     );
     if text.is_empty() { footer } else { format!("{text}\n\n{footer}") }
@@ -172,7 +170,7 @@ mod tests {
         assert_eq!(
             body(commit, "storm/x"),
             "Why it changed.\n\n<!-- fabrial:footer: the text above becomes the squash commit body. -->\n\
-             From `storm/x`. Draft until the review finishes; the owner merges it.\n"
+             From `storm/x`.\n"
         );
     }
 
