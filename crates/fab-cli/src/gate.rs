@@ -322,9 +322,14 @@ impl Gate {
         if login == format!("{BOT_SLUG}[bot]") {
             return true;
         }
-        let login = if login.is_empty() { "none" } else { login };
+        // An unknown author has no access; every name is some account's.
+        if login.is_empty() {
+            return false;
+        }
         let path = format!("repos/{}/collaborators/{login}/permission", self.repo);
         let permission = run::gh(&["api", &path, "--jq", ".permission"]).unwrap_or_default();
+        // The legacy `permission` field reports maintain as write; the arm
+        // keeps the check right if GitHub ever reports it as is.
         matches!(permission.as_str(), "admin" | "maintain" | "write")
     }
 
@@ -454,7 +459,7 @@ pub fn run(options: Options) -> Result<()> {
         ),
         Event::Comment => gate.comment(
             &options.body.unwrap_or_default(),
-            &given(options.author).unwrap_or_else(|| "someone".into()),
+            &given(options.author).unwrap_or_default(),
         ),
     }
 }

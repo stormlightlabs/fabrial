@@ -83,8 +83,8 @@ The owner reads the pull request and approves it. To accept a head the
 review did not read, such as a release pull request or a push after
 `Review finished`, a user with write access comments `/storm:ready <sha>`
 or `/storm:done <sha>`. The gate treats it like `Review finished`, and
-ignores the comment from anyone without write access. A comment naming another SHA gets a reply
-asking for it again.
+ignores the comment from anyone without write access. A comment naming
+another SHA gets a reply asking for it again.
 
 The owner merges with the squash message from the status comment: the title
 and pull request number, the body above `<!-- fabrial:footer`,
