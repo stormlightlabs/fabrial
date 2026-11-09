@@ -3,7 +3,7 @@ id = "arcl-t-01M5VGBYHJGQMSGS12BCW0EZPQ"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Extract the Pi harness into its own package"
 status = "pending"
-priority = "low"
+priority = "high"
 position = 0
 +++
 

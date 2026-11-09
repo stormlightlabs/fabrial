@@ -2,7 +2,7 @@
 id = "arcl-t-01M5S4SCZ5W3Z8NA725CT1F56W"
 phase = "arcl-ph-01M5S4SCJ1A54Z514HCP508F9X"
 title = "Try Mire as the owner's local review surface"
-status = "pending"
+status = "cancelled"
 priority = "normal"
 position = 3
 +++

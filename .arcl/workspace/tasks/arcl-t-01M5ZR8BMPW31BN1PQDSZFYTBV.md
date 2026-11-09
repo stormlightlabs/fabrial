@@ -2,7 +2,7 @@
 id = "arcl-t-01M5ZR8BMPW31BN1PQDSZFYTBV"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Run workers through one runner interface"
-status = "pending"
+status = "cancelled"
 priority = "normal"
 position = 0
 blocked-by = ["arcl-t-01M5VGBYGVK08V4GFD22ZZD8WS"]

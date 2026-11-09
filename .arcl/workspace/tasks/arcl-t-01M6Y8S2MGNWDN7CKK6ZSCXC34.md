@@ -2,7 +2,7 @@
 id = "arcl-t-01M6Y8S2MGNWDN7CKK6ZSCXC34"
 phase = "arcl-ph-01M5S4SCHA1F25KRETYKZYRAB6"
 title = "Decide how workers stop sharing one repository's refs"
-status = "pending"
+status = "cancelled"
 priority = "high"
 position = 0
 +++
