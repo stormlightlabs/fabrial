@@ -158,7 +158,7 @@ done in part; their remaining tasks are in arcl.
   [#30](https://github.com/stormlightlabs/fabrial/pull/30).
 - v0.9.0, #68 to #102:
   - The loop scoped to one task ending at `Review finished`, off GitHub
-    events, with fabrial no harness (#80, #82, #87, #90, #93).
+    events, with fabrial no harness (#82, #87, #90, #93).
   - A task's branch as its claim, a claim that lapses where the remote
     refuses deletion, and `fab status` (#78, #83, #99).
   - `fab cleanup`, for merged branches with or without a worktree and the
@@ -173,5 +173,5 @@ done in part; their remaining tasks are in arcl.
   - In the Pi harness: `fab run`, an implementer role, host pushes of writer
     commits, run operations as a library and `fab events`, and a probe of
     what the sandbox lets a worker write in Git (#91, #92, #98, #100, #101).
-  - The session hook that installs `arcl`, bash found on `PATH` in it and
-    the test fakes, and planning records (#68, #69, #73, #76, #84).
+  - The session hook that installs `arcl`, and bash found on `PATH` in it
+    and the test fakes (#68, #76).
