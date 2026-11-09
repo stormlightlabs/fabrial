@@ -71,10 +71,12 @@ an older release over a newer one unless you pass `--force`. It deletes a
 file only older releases installed, such as `.github/storm/gate.sh`, if you
 have not edited it. The same goes for a skill under its name from before
 the `fab-` prefix, such as `.claude/skills/review/`: an unedited copy goes
-and `fab-review` replaces it. Any other skill at an old name, edited or the
-repository's own, is left alone with all its files and not reported.
-`fab check` reports each other retired file still there. `CHANGELOG.md` says what each
-release changes. A repository moving to this release from one that named
+and `fab-review` replaces it. When an unedited `SKILL.md` there sits beside
+any other file, or an edited one, the whole skill stays, and `fab update`
+and `fab check` name it. A skill whose `SKILL.md` no release wrote is the
+repository's own, and is left alone and not reported. `fab check` reports
+each other retired file still there. `CHANGELOG.md` says what each release
+changes. A repository moving to this release from one that named
 its tracker in the skills adds a **Tasks** section to its `AGENTS.md`;
 without it the skills stop and ask when given a task ID.
 
