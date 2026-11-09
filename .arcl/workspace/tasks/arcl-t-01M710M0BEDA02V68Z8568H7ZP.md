@@ -25,4 +25,4 @@ Acceptance criteria:
 - [ ] Every fact in README and `docs/` lands on one page, and `docs/`
       keeps only what maintainers need (releases, the banner)
 - [ ] README is short and points at the site; AGENTS.md's Layout matches
-- [ ] Nothing names cloud, stormcloud or inkfinite
+- [ ] Nothing names cloud or stormcloud
