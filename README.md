@@ -1,8 +1,17 @@
 ![fabrial, a software factory](docs/banner.png)
 
-A software factory that takes ready tasks through implement, review,
-adversarial review and revise until a pull request is ready to merge. See
-[PLAN.md](PLAN.md).
+fabrial takes one task through implement, review, adversarial review and
+revise to a pull request ready for a person to merge. It ships the
+repository contract in `AGENTS.md`, the `fab-` skills and agent roles, the
+GitHub workflows, and the `fab` commands they run. A harness such as Claude
+Code, Codex or Pi runs the agents its own way. The loop ends when the agent
+posts `Review finished at <sha>`. The owner merges.
+
+- [One task, from claim to merge](docs/task-flow.md) names who acts at each
+  step.
+- [Set up stormlight-thunderbot](docs/bot-setup.md) covers the App, its
+  secrets and the ruleset on `main`.
+- [PLAN.md](PLAN.md) holds the decisions.
 
 ## Install in a repository
 
@@ -21,8 +30,10 @@ A repository that uses the Developer Certificate of Origin adds
 repository, set it with `fab update --signoff`, which also installs a
 release whose gate reads it; an older release ignores the key.
 `--assisted-by on` adds an `Assisted-by: <model>` line to each squash commit
-for every agent model its pull request's commits name, so `git log --grep`
-on `main` finds agent work by model.
+for every model its pull request's commits name in a `Co-authored-by`
+trailer addressed to `noreply@anthropic.com`, so `git log --grep` on `main`
+finds agent work by model. Other trailers add no line. `off`, or
+no `assisted_by` key, adds none.
 
 The installer fetches the prebuilt `fab` for Linux x86_64 or Apple Silicon
 into `~/.cargo/bin`. With Homebrew on those two platforms,
@@ -91,30 +102,31 @@ Planning records are the Markdown and TOML files under the directories
 `planning` names in the merge base's `.github/fabrial.toml`, for example
 `planning = ["plans/"]`.
 
-`fab run` takes a task through implement and review with Pi workers;
-[docs/pi.md](docs/pi.md#run-a-task) covers it, and the `[tasks]` table it
-reads from `.github/fabrial.toml` to reach a tracker.
-
 `fab check` lists files that differ from this build's and an installed version
 that differs from it, and exits 1 when there is any drift.
 
 Before the first pull request there, install stormlight-thunderbot on the
-repository and share its `THUNDERBOT_APP_ID` and `THUNDERBOT_PRIVATE_KEY`
-secrets with it. The gate sets each reviewed PR's squash message in one bot
-status comment, and you merge it by hand or with auto-merge, if the
-repository allows it. The gate
-runs from `main`, so on the install pull request it does nothing: mark that
-draft ready yourself, and require `storm/review` on `main` only after it
-merges.
+repository, share its `THUNDERBOT_APP_ID` and `THUNDERBOT_PRIVATE_KEY`
+secrets with it, and set up the ruleset on `main`, as
+[docs/bot-setup.md](docs/bot-setup.md) says. The Review gate reads three
+comments: `Review finished at <sha>`, which the agent posts as the bot, and
+`/storm:ready <sha>` or `/storm:done <sha>`, with which the owner, a member
+or a collaborator, read-only included, accepts that head as it is. Either
+one naming the head turns `storm/review` green, marks the draft ready and
+sets the squash message in one bot status comment. You merge it by hand or with auto-merge,
+if the repository allows it. The gate runs from `main`, so on the install
+pull request it does nothing: mark that draft ready yourself, and require
+`storm/review` on `main` only after it merges.
 
-## Local Pi workers
+## The Pi harness
 
-The preview `fab dispatch` command starts fresh Pi 1.4.0 review workers in
-host tmux sessions. The whole worker runs in a pinned Nix sandbox. A trusted
-local issuer supplies repository-restricted GitHub App tokens, and the root
-Pi package exposes the same command as an `agent` tool. Follow
-[Pi host setup](docs/pi.md) before running it; a normal development shell is
-not worker isolation. This feature is under active development.
+This repository also holds an optional Pi harness, kept as it is with no new
+work: `fab dispatch` runs each role as a Pi 1.4.0 worker in a host tmux
+session inside a pinned Nix sandbox, `fab run` takes a task through the whole
+sequence with those workers, `fab events` and `fab worker` read their state,
+and the root Pi package exposes dispatch as an `agent` tool. None of the
+installed skills or workflows need it. [docs/pi.md](docs/pi.md) covers host
+setup and use; a normal development shell is not worker isolation.
 
 ## Releases
 

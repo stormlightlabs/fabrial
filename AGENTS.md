@@ -67,17 +67,18 @@ requires. Clippy warnings fail it whether or not your change caused them.
 ## Layout
 
 ```text
-crates/fab-core   install, settings, task claims and run events; later, the
-                  other run operations
+crates/fab-core   install, settings, task claims, gates and run events
 crates/fab-cli    the `fab` binary, including what workflows and skills run:
                   `fab claim`, `fab status`, `fab gate`, `fab branch-pr`,
                   `fab release`, `fab review-depth`, `fab sequence`,
-                  `fab run`, `fab gates`, `fab pr-status`, `fab pr-review`,
-                  `fab pr-answer` and `fab cleanup`
-packages/pi/      the Pi package: extensions/ holds workers, PR status and the
-                  status area, lib/ their shared code, and worker.ts the
-                  extension `fab dispatch` gives each worker
-conf/sandbox/     worker.nix, the Nix sandbox wrapper, and its Keychain patch
+                  `fab gates`, `fab pr-status`, `fab pr-review`,
+                  `fab pr-answer` and `fab cleanup`, and the Pi harness's
+                  `fab dispatch`, `fab run`, `fab worker` and `fab events`
+packages/pi/      the Pi harness's package: extensions/ holds workers, PR
+                  status and the status area, lib/ their shared code, and
+                  worker.ts the extension `fab dispatch` gives each worker
+conf/sandbox/     worker.nix, the Pi harness's Nix sandbox wrapper, and its
+                  Keychain patch
 package.json      the Pi package manifest, at the root so git installs find it
 .claude/skills/   skills; .agents/skills links here for Codex and Pi
 .claude/agents/   implementer, reviewer, adversarial-reviewer, verifier, reviser
@@ -88,6 +89,8 @@ package.json      the Pi package manifest, at the root so git installs find it
 .github/fabrial.toml  the owner, the squash trailer and the gate command
 .github/fabrial-sequence.toml  the review stages the fab-storm skill runs
 .github/fabrial-gates.toml  the checks fab gates runs for the paths a change touches
+docs/task-flow.md one task from claim to merge, and who acts at each step
+docs/bot-setup.md the bot's App, secrets and ruleset for a repository
 docs/hosts.md     what each host reads, and where they differ
 docs/pi.md        how to set up a host and run Pi workers
 docs/pi-design.md Pi design notes, kept as they were when the Pi harness froze
