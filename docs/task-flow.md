@@ -81,9 +81,9 @@ moved the base.
 
 The owner reads the pull request and approves it. To accept a head the
 review did not read, such as a release pull request or a push after
-`Review finished`, the owner, a member or a collaborator comments
-`/storm:ready <sha>` or `/storm:done <sha>`. The gate treats it like
-`Review finished`. A comment naming another SHA gets a reply
+`Review finished`, the owner, a member or a collaborator, read-only
+included, comments `/storm:ready <sha>` or `/storm:done <sha>`. The gate
+treats it like `Review finished`. A comment naming another SHA gets a reply
 asking for it again.
 
 The owner merges with the squash message from the status comment: the title

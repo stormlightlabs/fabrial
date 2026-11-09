@@ -16,8 +16,19 @@ without checking its access. Another App's comments do nothing.
 Install it on the repository. Each workflow mints a token for it with
 `actions/create-github-app-token`. A comment posted with that token, such as
 `Review finished`, starts the Review gate, which a comment posted with
-`GITHUB_TOKEN` would not. Agent sessions never hold the App's private key:
-they post through the Bot comment workflow.
+`GITHUB_TOKEN` would not. Agent sessions post through the Bot comment
+workflow, not with the key.
+
+That does not keep the key from anyone who can push a workflow change.
+Branch PR runs on push from the pushed branch's own copy of
+`branch-pr.yml`, with both secrets. A branch that edits that file can mint
+the App's token, or read the key, before any review, and post a green
+`storm/review` as the App. Pushing a workflow file takes the `workflow`
+scope on a personal token, Workflows write on an App token, or write access
+over SSH; Pi workers' tokens have none of these. Code owners on
+`.github/workflows/` do not help, since the edit runs before any pull
+request merges. Treat everyone who can push a workflow change to a branch
+as holding the App's key.
 
 ## What the App's token does
 
@@ -71,12 +82,25 @@ The workflows assume a ruleset on `main` with these rules:
   approve.
 - Allow only squash merges. The gate posts the message for that squash
   commit.
-- Require the `storm/review` check, which only the Review gate sets, and the
-  repository's own CI checks.
+- Require the `storm/review` check and the repository's own CI checks. Set
+  the source of `storm/review` to the stormlight-thunderbot App. Any App
+  with Checks write can post a check of that name, including `GITHUB_TOKEN`
+  in a workflow on a branch that asks for `checks: write`. The gate ignores
+  those runs, but the ruleset counts them unless the source is set.
+  Setting it does not stop a branch that edits Branch PR, as
+  [The App](#the-app) says.
 - Block force pushes and deletion.
 
 Leave the App off the ruleset's bypass list, so no token minted from it can
 merge past these rules.
+
+The gate checks no permission on `/storm:ready`, `/storm:done` or a
+person's `Review finished at`. It takes them from anyone GitHub marks as
+the owner, a member or a collaborator, which includes read-only
+collaborators and every organization member. Any of them can turn
+`storm/review` green on the current head, so the ruleset's owner approval
+is what stops an unreviewed merge. An edit to the title or body counts only
+from a user with write access.
 
 The gate runs from `main` through `pull_request_target`. On the pull request
 that installs fabrial it does nothing, so mark that draft ready yourself and

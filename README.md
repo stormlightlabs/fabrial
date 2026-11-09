@@ -111,9 +111,9 @@ secrets with it, and set up the ruleset on `main`, as
 [docs/bot-setup.md](docs/bot-setup.md) says. The Review gate reads three
 comments: `Review finished at <sha>`, which the agent posts as the bot, and
 `/storm:ready <sha>` or `/storm:done <sha>`, with which the owner, a member
-or a collaborator accepts that head as it is. Either one naming the head
-turns `storm/review` green, marks the draft ready and sets the squash
-message in one bot status comment. You merge it by hand or with auto-merge,
+or a collaborator, read-only included, accepts that head as it is. Either
+one naming the head turns `storm/review` green, marks the draft ready and
+sets the squash message in one bot status comment. You merge it by hand or with auto-merge,
 if the repository allows it. The gate runs from `main`, so on the install
 pull request it does nothing: mark that draft ready yourself, and require
 `storm/review` on `main` only after it merges.
