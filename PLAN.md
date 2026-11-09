@@ -31,9 +31,10 @@ a paid plan, so rulesets on `main` are enforced.
   repository, from files built into the binary. `fab check` reports drift.
   While fabrial is private, a public repository such as arclightning cannot
   call its reusable workflows.
-- **fabrial executes it.** It picks ready tasks, claims one, runs the review
-  loop on a `storm/<task>` branch in its own worktree, opens the PR, and writes
-  the handoff and evidence back to the task source.
+- **The skills execute it.** An agent session running fabrial's skills
+  claims a task, works it on a `storm/<task>` branch in its own worktree,
+  pushes so the bot opens the PR, runs the review loop, and writes the
+  handoff and evidence back to the task source.
 - **A task's branch is its claim.** A run claims a task by creating
   `storm/<task>` with a push that succeeds only when the branch does not exist
   yet, `--force-with-lease=refs/heads/storm/<task>:`. A rejected push means
@@ -47,7 +48,7 @@ a paid plan, so rulesets on `main` are enforced.
   has already expired. `fab run` claims the same way when it starts a task.
 - **One set of run operations, three drivers.** A core crate holds the
   operations: claim, start a step, record a result, mark ready, release.
-  `fab run` drives the fixed sequence in code. An agent such as Pi drives it
+  `fab run`, in the Pi harness, drives the fixed sequence in code. An agent such as Pi drives it
   through the CLI. A person drives it by asking the session,
   with a `/storm:ready` PR comment the gate workflow reads,
   or through whatever a host builds on the same operations.
@@ -137,7 +138,7 @@ When moving the arcl pin, rerun `arcl skill install` and commit the result.
 
 ### Shipped
 
-What each phase has shipped. Phases 1, 2 and 6 are done in part; their
+What each phase, then each release, has shipped. Phases 1, 2 and 6 are done in part; their
 remaining tasks are in arcl.
 
 - Phase 0: the ruleset, `CODEOWNERS`, the bot, `AGENTS.md`, the writing skill,
@@ -155,3 +156,23 @@ remaining tasks are in arcl.
 - Phase 6: Rust dispatch of four sandboxed Pi review roles, exercised on
   PR #21, and asynchronous Pi workers with worker-exit cleanup, accepted in
   [#30](https://github.com/stormlightlabs/fabrial/pull/30).
+- v0.9.0, #68 to #102:
+  - The loop scoped to one task ending at `Review finished`, off GitHub
+    events, with `fab serve` moved out and fabrial no harness (#80, #82,
+    #87, #90, #93).
+  - A task's branch as its claim, a claim that lapses where the remote
+    refuses deletion, and `fab status` (#78, #83, #99).
+  - `fab cleanup`, for merged branches with or without a worktree and the
+    caches `disposable` names (#72, #75, #88).
+  - `fab gates`, `planning` paths and root Markdown as documentation
+    (#89, #96, #97).
+  - `signoff` and `assisted_by` in the squash message (#85, #86).
+  - Tasks named in `AGENTS.md` rather than the skills, the `fab-rubber-duck`
+    and `fab-decompose` skills, the `fab-` prefix, tighter review passes,
+    retired files removed on update, and reviewing a fabrial update before
+    `main` has its files (#70, #74, #81, #94, #95, #102).
+  - In the Pi harness: `fab run`, an implementer role, host pushes of writer
+    commits, run operations as a library and `fab events`, and a probe of
+    what the sandbox lets a worker write in Git (#91, #92, #98, #100, #101).
+  - The session hook that installs `arcl`, bash found on `PATH` in it and
+    the test fakes, and planning records (#68, #69, #73, #76, #84).

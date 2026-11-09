@@ -2,7 +2,7 @@
 id = "arcl-t-01M6W9F3RGJREBA622MHCZNS8Y"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
 title = "Bring the docs up to date for v0.9.0"
-status = "pending"
+status = "in_progress"
 priority = "high"
 position = 0
 blocked-by = ["arcl-t-01M6W7PX3ZF0SQ55PT0TA0FAE2", "arcl-t-01M6W87DTBEH4VN7V9A06P6XF8", "arcl-t-01M6W9F3QXHE3KPT0E6H1WSZ07"]

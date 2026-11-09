@@ -3,10 +3,13 @@
 `fab dispatch` runs implementer, reviewer, verifier, adversarial-reviewer and
 reviser as fresh headless Pi 1.4.0 workers, each in a host tmux session with
 the whole Pi process wrapped in agent-sandbox.nix. This guide sets up the host
-and runs a worker. [Pi design](pi-design.md) holds design notes for parts
-never built; the Pi harness gets no new work ([PLAN.md](../PLAN.md)).
+and runs a worker.
 
-> **Note:** This is a preview feature under active development.
+Dispatch, the sandbox, `fab run`, run events and the Pi package make up an
+optional Pi harness. It stays as it is, with no new work: fabrial is not a
+harness ([PLAN.md](../PLAN.md#decisions)), and the installed skills and
+workflows do not need it. [Pi design](pi-design.md) holds design notes for
+parts never built, frozen with it.
 
 ## Host setup
 

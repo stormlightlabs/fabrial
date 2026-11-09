@@ -1,7 +1,8 @@
 # Hosts
 
 What Claude Code, Codex and Pi read from this repository, and where they
-differ. The Claude Code rows were checked here with Claude Code 2.1.309 on
+differ. fabrial ships the skills and agent roles; each host runs them its own
+way, and the review loop ends at `Review finished` on every host. The Claude Code rows were checked here with Claude Code 2.1.309 on
 2026-10-23. The Codex and Pi rows come from thunderstorm's
 `docs/internal/hosts.md`, checked there with `codex-cli` 0.146.0 and `pi`
 0.85.1, and have not yet been checked against this repository.
@@ -35,11 +36,12 @@ frontmatter shows what to pass. Codex invokes a skill by name; Pi names one
 | ----------- | ------------------------ | ------------------------------ |
 | Claude Code | `.claude/agents/*.md`    | Markdown with frontmatter      |
 | Codex       | `.codex/agents/*.toml`   | TOML, in a trusted project     |
-| Pi          | nothing                  | no subagents; dispatch starts a session per role ([`docs/pi.md`](pi.md)) |
+| Pi          | nothing                  | no subagents; the Pi harness starts a session per role ([`docs/pi.md`](pi.md)) |
 
 The roles live once, in `.claude/agents/`. On Codex, the orchestrator reads a
 role's Markdown and passes its body as a built-in agent's instructions. On Pi,
-`fab dispatch` reads it and starts a session with it, as `docs/pi.md` sets out.
+the optional Pi harness's `fab dispatch` reads it and starts a session with
+it, as `docs/pi.md` sets out.
 
 A Codex dispatch must set `fork_turns` to `"none"` or a number. A full-history
 fork inherits the parent's context and refuses a model override, so the
@@ -50,5 +52,5 @@ reviewer would not start fresh.
 `claude -p --agent <role> --json-schema <file>` returns the answer in
 `structured_output`, but only when the agent's `tools` frontmatter, if set,
 lists `StructuredOutput`. Without it, Claude Code 2.1.309 answers in prose and
-leaves `structured_output` null, with no error. Nothing here runs agents
-headless today; this matters again for `fab run` in phase 5.
+leaves `structured_output` null, with no error. Nothing here runs Claude
+Code headless: `fab run` dispatches Pi workers.
