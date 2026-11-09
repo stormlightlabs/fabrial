@@ -161,7 +161,9 @@ const EMBEDDED: &[(&str, &str, bool)] = &[
 /// that matches a version and keeps one edited since. The skills were renamed
 /// with a `fab-` prefix, so their old paths are here too, with the version
 /// `main` held before the rename for an install made from an unreleased
-/// build.
+/// build. An old skill path is a common name such as `review`, so a file
+/// there that matches no version is treated as the repository's own, as
+/// [`old_skill_is_foreign`] says.
 const RETIRED: &[(&str, &[&str])] = &[
     (
         // v0.2.0 to v0.4.0.
@@ -303,7 +305,7 @@ pub enum Drift {
     /// The settings name another fabrial version, or none.
     Version { installed: Option<String>, running: String },
     /// A file an earlier release installed and this one does not is still
-    /// there.
+    /// there. Under a skill's old name, only a file as a release wrote it.
     Retired(PathBuf),
 }
 
@@ -598,7 +600,13 @@ pub fn check(root: &Path) -> Result<Vec<Drift>, Error> {
         if blocked(path) || under_refused(path, &retired_bad) {
             continue;
         }
-        if retired_bad.iter().any(|b| b == path) || fs::symlink_metadata(root.join(path)).is_ok() {
+        let present = if is_old_skill(path) {
+            let hashes = retired_hashes(path);
+            written_by_release(root, path, hashes)? == Some(true) && !old_skill_is_foreign(root, path)?
+        } else {
+            retired_bad.iter().any(|b| b == path) || fs::symlink_metadata(root.join(path)).is_ok()
+        };
+        if present {
             drift.push(Drift::Retired(path.into()));
         }
     }
@@ -668,12 +676,19 @@ fn under_refused(path: &Path, refused: &[PathBuf]) -> bool {
 /// records the rest in `report.kept`. A symlink or another kind of entry at
 /// a retired path is kept, and nothing is followed through one. A file that
 /// cannot be read or deleted is kept with the error, so the files `init`
-/// already wrote stay in the report.
+/// already wrote stay in the report. Under a skill's old name, anything that
+/// is not as a release wrote it is left alone and not recorded, as
+/// [`old_skill_is_foreign`] says.
 fn remove_retired(root: &Path, report: &mut Report) {
     for (path, hashes) in RETIRED {
         let rel = Path::new(path);
         let full = root.join(rel);
-        let reason = match retire(root, rel, &full, hashes, &mut report.removed) {
+        let result = if is_old_skill(rel) {
+            retire_old_skill(root, rel, &full, hashes, &mut report.removed)
+        } else {
+            retire(root, rel, &full, hashes, &mut report.removed)
+        };
+        let reason = match result {
             Ok(None) => continue,
             Ok(Some(reason)) => reason,
             Err(e) => KeptReason::Failed(e.to_string()),
@@ -706,10 +721,68 @@ fn retire(
     if !hashes.contains(&sha256_hex(&bytes).as_str()) {
         return Ok(Some(KeptReason::Edited));
     }
+    delete_retired(root, rel, full, removed)
+}
+
+/// Deletes the file at `rel`, under a skill's old name, when it is as a
+/// release wrote it and its skill is not the repository's own. Returns
+/// `None` whether it was deleted or left alone.
+fn retire_old_skill(
+    root: &Path, rel: &Path, full: &Path, hashes: &[&str], removed: &mut Vec<PathBuf>,
+) -> Result<Option<KeptReason>, Error> {
+    if written_by_release(root, rel, hashes)? != Some(true) || old_skill_is_foreign(root, rel)? {
+        return Ok(None);
+    }
+    delete_retired(root, rel, full, removed)
+}
+
+/// Deletes the retired file at `rel`, records it in `removed`, and removes
+/// the directories its removal leaves empty.
+fn delete_retired(
+    root: &Path, rel: &Path, full: &Path, removed: &mut Vec<PathBuf>,
+) -> Result<Option<KeptReason>, Error> {
     fs::remove_file(full).map_err(|source| Error::Io { path: full.into(), source })?;
     removed.push(rel.into());
     remove_empty_parents(root, rel);
     Ok(None)
+}
+
+/// Whether the retired path `rel` is under a skill's old name.
+fn is_old_skill(rel: &Path) -> bool {
+    rel.starts_with(".claude/skills")
+}
+
+/// The hashes [`RETIRED`] lists for `rel`, or none.
+fn retired_hashes(rel: &Path) -> &'static [&'static str] {
+    RETIRED
+        .iter()
+        .find(|(p, _)| Path::new(p) == rel)
+        .map_or(&[], |(_, hashes)| *hashes)
+}
+
+/// Whether the entry at `rel` is a regular file that matches one of
+/// `hashes`: `None` when nothing is there, and `Some(false)` for a symlink,
+/// another kind of entry, or anything under a symlinked directory, none of
+/// which a release wrote.
+fn written_by_release(root: &Path, rel: &Path, hashes: &[&str]) -> Result<Option<bool>, Error> {
+    let bad = unmanageable(root, [(rel.to_path_buf(), Kind::File)])?;
+    if !bad.is_empty() {
+        return Ok(Some(false));
+    }
+    Ok(read_bytes(&root.join(rel))?.map(|bytes| hashes.contains(&sha256_hex(&bytes).as_str())))
+}
+
+/// Whether the skill holding `rel`, a path under a skill's old name, is the
+/// repository's own: its `SKILL.md` is there and is not as a release wrote
+/// it. That rule also covers a fabrial copy someone edited, which looks the
+/// same, so `fab check` never flags a repository's own skill and `fab
+/// update` never deletes one, at the cost of leaving an edited copy
+/// unreported. Every file of such a skill is left alone, so a kept
+/// `SKILL.md` keeps its references.
+fn old_skill_is_foreign(root: &Path, rel: &Path) -> Result<bool, Error> {
+    let skill: PathBuf = rel.components().take(3).collect();
+    let skill_md = skill.join("SKILL.md");
+    Ok(written_by_release(root, &skill_md, retired_hashes(&skill_md))? == Some(false))
 }
 
 /// Removes each directory above `rel` that is left empty, from the deepest
@@ -1311,8 +1384,10 @@ mod tests {
         assert_eq!(check(dir.path()).unwrap(), vec![]);
     }
 
+    /// An edited copy under an old name keeps every file of its skill, the
+    /// unedited reference included, and none is reported.
     #[test]
-    fn update_keeps_and_check_reports_an_edited_skill_under_its_old_name() {
+    fn update_keeps_an_edited_skill_under_its_old_name_whole() {
         let dir = tempfile::tempdir().unwrap();
         install(dir.path(), &settings(), false).unwrap();
         let (path, contents) = old_skills()
@@ -1324,19 +1399,59 @@ mod tests {
         let full = dir.path().join(path);
         fs::create_dir_all(dir.path().join(reference).parent().unwrap()).unwrap();
         fs::write(&full, &edited).unwrap();
-        fs::write(
-            dir.path().join(reference),
-            embedded(".claude/skills/fab-review/references/reading-the-diff.md").unwrap(),
-        )
-        .unwrap();
+        let reference_text = embedded(".claude/skills/fab-review/references/reading-the-diff.md").unwrap();
+        fs::write(dir.path().join(reference), reference_text).unwrap();
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
         let report = update(dir.path(), |_| {}, false).unwrap();
-        assert_eq!(report.removed, vec![PathBuf::from(reference)]);
-        assert_eq!(
-            report.kept,
-            vec![Kept { path: path.into(), reason: KeptReason::Edited }]
-        );
+        assert!(report.removed.is_empty(), "{:?}", report.removed);
+        assert!(report.kept.is_empty(), "{:?}", report.kept);
         assert_eq!(fs::read_to_string(&full).unwrap(), edited);
-        assert_eq!(check(dir.path()).unwrap(), vec![Drift::Retired(path.into())]);
+        assert_eq!(fs::read_to_string(dir.path().join(reference)).unwrap(), reference_text);
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+    }
+
+    /// A repository's own skill at an old name is neither reported nor
+    /// touched.
+    #[test]
+    fn update_and_check_leave_a_repositorys_own_skill_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let own = "---\nname: review\ndescription: Our review.\n---\n\nReview it our way.\n";
+        let notes = "Our notes.\n";
+        let skill = dir.path().join(".claude/skills/review");
+        fs::create_dir_all(skill.join("references")).unwrap();
+        fs::write(skill.join("SKILL.md"), own).unwrap();
+        fs::write(skill.join("references/reading-the-diff.md"), notes).unwrap();
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+        let report = update(dir.path(), |_| {}, false).unwrap();
+        assert!(report.removed.is_empty() && report.kept.is_empty(), "{report:?}");
+        assert_eq!(fs::read_to_string(skill.join("SKILL.md")).unwrap(), own);
+        assert_eq!(
+            fs::read_to_string(skill.join("references/reading-the-diff.md")).unwrap(),
+            notes
+        );
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+    }
+
+    /// A symlink at an old skill path is not a file a release wrote, so it
+    /// is left alone and not reported.
+    #[cfg(unix)]
+    #[test]
+    fn update_and_check_leave_a_symlinked_old_skill_alone() {
+        let outside = tempfile::tempdir().unwrap();
+        let (_, contents) = old_skills()
+            .into_iter()
+            .find(|(p, _)| *p == ".claude/skills/review/SKILL.md")
+            .unwrap();
+        fs::write(outside.path().join("SKILL.md"), contents).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let link = dir.path().join(".claude/skills/review");
+        std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+        let report = update(dir.path(), |_| {}, false).unwrap();
+        assert!(report.removed.is_empty() && report.kept.is_empty(), "{report:?}");
+        assert!(outside.path().join("SKILL.md").is_file());
     }
 
     #[test]

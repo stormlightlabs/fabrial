@@ -16,6 +16,7 @@ repository's own.
 Acceptance criteria:
 
 - [ ] Installed skills carry the `fab-` prefix, such as `fab-review`
-- [ ] `fab update` moves an installed copy to its new name, and `fab check`
-      reports one left under the old name
+- [ ] `fab update` moves an unedited copy to its new name, and `fab check`
+      reports one left under the old name; a skill at an old name that no
+      release wrote, edited or the repository's own, is left alone
 - [ ] Skills, agents and docs that name a skill use the new names

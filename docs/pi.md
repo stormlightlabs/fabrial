@@ -3,8 +3,8 @@
 `fab dispatch` runs implementer, reviewer, verifier, adversarial-reviewer and
 reviser as fresh headless Pi 1.4.0 workers, each in a host tmux session with
 the whole Pi process wrapped in agent-sandbox.nix. This guide sets up the host
-and runs a worker. [Pi design](pi-design.md) covers what is still planned; arcl's
-roadmap phases 6 to 8 track delivery ([PLAN.md](../PLAN.md#work)).
+and runs a worker. [Pi design](pi-design.md) holds design notes for parts
+never built; the Pi harness gets no new work ([PLAN.md](../PLAN.md)).
 
 > **Note:** This is a preview feature under active development.
 
