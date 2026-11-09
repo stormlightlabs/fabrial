@@ -2,7 +2,7 @@
 id = "arcl-t-01M5YZ6NMH7JKQ527FMH6F6WBR"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
 title = "Prefix installed skills with fab-"
-status = "pending"
+status = "in_progress"
 priority = "normal"
 position = 3
 +++

@@ -86,7 +86,7 @@ package.json      the Pi package manifest, at the root so git installs find it
 .github/actions/fab/  the action that puts `fab` on the PATH for workflows
 .github/storm/    shot.sh, which captures a terminal UI as a PNG, and sgr.pl, its color filter
 .github/fabrial.toml  the owner, the squash trailer and the gate command
-.github/fabrial-sequence.toml  the review stages the storm skill runs
+.github/fabrial-sequence.toml  the review stages the fab-storm skill runs
 .github/fabrial-gates.toml  the checks fab gates runs for the paths a change touches
 docs/hosts.md     what each host reads, and where they differ
 docs/pi.md        how to set up a host and run Pi workers
@@ -127,7 +127,7 @@ included, needs `arcl init` before its first `arcl` command.
 | Record an idea    | `arcl capture create "<title>" --body-file <file>`            |
 | Record a spec     | `arcl spec create "<title>" --body-file <file>`               |
 
-`decompose` writes these primitives:
+`fab-decompose` writes these primitives:
 
 | Primitive  | In arcl                    | Write it with                                                        |
 | ---------- | -------------------------- | -------------------------------------------------------------------- |
@@ -195,11 +195,12 @@ drifted.
 - Agents post PR comments as stormlight-thunderbot through the Bot comment
   workflow (`.github/workflows/comment.yml`), never with their own GitHub
   access.
-- The agent that opens a PR reviews it with the `storm` skill and ends with a
-  `Review finished at <sha>` comment. That turns `storm/review` green for that
-  head, marks the draft ready and sets the squash message in the bot's status
-  comment, which it edits rather than posting anew. The owner merges, by hand
-  or with auto-merge they turn on; agents and the gate never turn it on.
+- The agent that opens a PR reviews it with the `fab-storm` skill and ends
+  with a `Review finished at <sha>` comment. That turns `storm/review` green
+  for that head, marks the draft ready and sets the squash message in the
+  bot's status comment, which it edits rather than posting anew. The owner
+  merges, by hand or with auto-merge they turn on; agents and the gate never
+  turn it on.
   `/storm:ready <sha>` or `/storm:done <sha>` from the owner, a member or a
   collaborator accepts that head as it is.
 
@@ -215,7 +216,7 @@ bodies, comments, and replies. Keep it short and plain:
 - Stay inside the length targets: a PR body around 150 words, a review comment
   200, any other comment 100.
 
-`.claude/skills/writing-docs/` holds the full standard, and its
+`.claude/skills/fab-writing-docs/` holds the full standard, and its
 `references/tells.md` lists the patterns that make text read as generated.
 Check a draft against both before committing or posting.
 <!-- fabrial:end -->

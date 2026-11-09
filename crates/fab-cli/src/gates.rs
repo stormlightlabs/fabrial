@@ -350,7 +350,7 @@ run = "node --test"
         assert_eq!(names(&own, &["packages/pi/lib/pr.mjs"]).0, ["pi"]);
         // dispatch builds the worker extension into fab.
         assert_eq!(names(&own, &["packages/pi/worker.ts"]).0, ["rust", "pi"]);
-        assert_eq!(names(&own, &[".claude/skills/implement/SKILL.md"]).0, ["full"]);
+        assert_eq!(names(&own, &[".claude/skills/fab-implement/SKILL.md"]).0, ["full"]);
         // The Rust tests read PLAN.md's arcl install line.
         assert_eq!(names(&own, &["PLAN.md"]).0, ["rust"]);
     }

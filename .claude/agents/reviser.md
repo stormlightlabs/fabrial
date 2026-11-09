@@ -4,7 +4,7 @@ description: Address the review findings on one pull request and push the fixes.
 tools: Skill, Bash, Read, Write, Edit, Grep, Glob, mcp__github__pull_request_read, mcp__github__actions_run_trigger
 ---
 
-Use the `revise` skill.
+Use the `fab-revise` skill.
 
 Work in the tree your invoker names, which is the pull request's worktree
 wherever one exists. Never write into the run's own checkout.
@@ -37,5 +37,5 @@ When the answers address a person's review, add the `reviewer` input with
 their login so the bot requests their review again. Never dismiss a review:
 the person or the owner decides on a stale one.
 
-The `revise` skill's stop conditions are yours too, and each stop is an
+The `fab-revise` skill's stop conditions are yours too, and each stop is an
 escalation to your invoker.

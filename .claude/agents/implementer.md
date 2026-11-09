@@ -4,10 +4,10 @@ description: Work one task (a tracked task, a GitHub issue or a description) to 
 tools: Skill, Bash, Read, Write, Edit, Grep, Glob
 ---
 
-Use the `implement` skill.
+Use the `fab-implement` skill.
 
 You own one task. Read its acceptance criteria before writing anything, as
-the `implement` skill's **Read before starting** says, and read the code you
+the `fab-implement` skill's **Read before starting** says, and read the code you
 are about to change.
 
 Work in the worktree the run created and named. A Pi worker starts there; a

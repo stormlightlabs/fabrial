@@ -95,70 +95,73 @@ const EMBEDDED: &[(&str, &str, bool)] = &[
         false,
     ),
     (
-        ".claude/skills/adv-rev/SKILL.md",
-        include_str!("../../../.claude/skills/adv-rev/SKILL.md"),
+        ".claude/skills/fab-adv-rev/SKILL.md",
+        include_str!("../../../.claude/skills/fab-adv-rev/SKILL.md"),
         false,
     ),
     (
-        ".claude/skills/decompose/SKILL.md",
-        include_str!("../../../.claude/skills/decompose/SKILL.md"),
+        ".claude/skills/fab-decompose/SKILL.md",
+        include_str!("../../../.claude/skills/fab-decompose/SKILL.md"),
         false,
     ),
     (
-        ".claude/skills/handoff/SKILL.md",
-        include_str!("../../../.claude/skills/handoff/SKILL.md"),
+        ".claude/skills/fab-handoff/SKILL.md",
+        include_str!("../../../.claude/skills/fab-handoff/SKILL.md"),
         false,
     ),
     (
-        ".claude/skills/implement/SKILL.md",
-        include_str!("../../../.claude/skills/implement/SKILL.md"),
+        ".claude/skills/fab-implement/SKILL.md",
+        include_str!("../../../.claude/skills/fab-implement/SKILL.md"),
         false,
     ),
     (
-        ".claude/skills/resync/SKILL.md",
-        include_str!("../../../.claude/skills/resync/SKILL.md"),
+        ".claude/skills/fab-resync/SKILL.md",
+        include_str!("../../../.claude/skills/fab-resync/SKILL.md"),
         false,
     ),
     (
-        ".claude/skills/review/SKILL.md",
-        include_str!("../../../.claude/skills/review/SKILL.md"),
+        ".claude/skills/fab-review/SKILL.md",
+        include_str!("../../../.claude/skills/fab-review/SKILL.md"),
         false,
     ),
     (
-        ".claude/skills/review/references/reading-the-diff.md",
-        include_str!("../../../.claude/skills/review/references/reading-the-diff.md"),
+        ".claude/skills/fab-review/references/reading-the-diff.md",
+        include_str!("../../../.claude/skills/fab-review/references/reading-the-diff.md"),
         false,
     ),
     (
-        ".claude/skills/revise/SKILL.md",
-        include_str!("../../../.claude/skills/revise/SKILL.md"),
+        ".claude/skills/fab-revise/SKILL.md",
+        include_str!("../../../.claude/skills/fab-revise/SKILL.md"),
         false,
     ),
     (
-        ".claude/skills/rubber-duck/SKILL.md",
-        include_str!("../../../.claude/skills/rubber-duck/SKILL.md"),
+        ".claude/skills/fab-rubber-duck/SKILL.md",
+        include_str!("../../../.claude/skills/fab-rubber-duck/SKILL.md"),
         false,
     ),
     (
-        ".claude/skills/storm/SKILL.md",
-        include_str!("../../../.claude/skills/storm/SKILL.md"),
+        ".claude/skills/fab-storm/SKILL.md",
+        include_str!("../../../.claude/skills/fab-storm/SKILL.md"),
         false,
     ),
     (
-        ".claude/skills/writing-docs/SKILL.md",
-        include_str!("../../../.claude/skills/writing-docs/SKILL.md"),
+        ".claude/skills/fab-writing-docs/SKILL.md",
+        include_str!("../../../.claude/skills/fab-writing-docs/SKILL.md"),
         false,
     ),
     (
-        ".claude/skills/writing-docs/references/tells.md",
-        include_str!("../../../.claude/skills/writing-docs/references/tells.md"),
+        ".claude/skills/fab-writing-docs/references/tells.md",
+        include_str!("../../../.claude/skills/fab-writing-docs/references/tells.md"),
         false,
     ),
 ];
 
 /// Files an earlier release installed and this one does not, each with the
 /// SHA-256 of every version a release wrote there. [`update`] deletes one
-/// that matches a version and keeps one edited since.
+/// that matches a version and keeps one edited since. The skills were renamed
+/// with a `fab-` prefix, so their old paths are here too, with the version
+/// `main` held before the rename for an install made from an unreleased
+/// build.
 const RETIRED: &[(&str, &[&str])] = &[
     (
         // v0.2.0 to v0.4.0.
@@ -177,6 +180,111 @@ const RETIRED: &[(&str, &[&str])] = &[
             "ee2768dd437672877b423386500b4f099ff56cad73305e89c7ec1031a0946a91",
             "dd4e5f5185cae70d21e15ef3a5b45a86da1350e7f2bab3059112a3b18b687a31",
         ],
+    ),
+    (
+        // Renamed to fab-adv-rev.
+        ".claude/skills/adv-rev/SKILL.md",
+        &[
+            "4264de2770c44c5a66dc8ec985381a996921fc782a5256179b1d75b19671bc20",
+            "fdd398ea1e0cd1268a66b0706ebf9873dcd88c7d36b02cbf94114bb4b84ba21c",
+        ],
+    ),
+    (
+        // Renamed to fab-decompose.
+        ".claude/skills/decompose/SKILL.md",
+        &["5a48bd8ea0592de5fe70dc90f6646cbd9e796fc5db33ccada2324c26a0491d89"],
+    ),
+    (
+        // Renamed to fab-handoff.
+        ".claude/skills/handoff/SKILL.md",
+        &[
+            "26cd756586075384d83d0b96c2a7716ee90333d2bc6f77603b8d44fe74143acd",
+            "22be7c6d2a89d388439d31e0008c4c8a1b3123850ac2c9d64dda32fe4c943e91",
+            "e889e54ebf65ae090316eafe1169d9d5da15b7edf2f1b90d4da47ec0edcc8d52",
+            "3ff6dfe6fddac338e76446b7ee32746c33113a3a4076ef4fcee7b1dccf624947",
+        ],
+    ),
+    (
+        // Renamed to fab-implement.
+        ".claude/skills/implement/SKILL.md",
+        &[
+            "872df25dc29240bd00ca948118c22d4837e9cbf62b23ede3f4f109429b0ebe5c",
+            "a49c0d325dc8539f071d6ce0e64969903c6005491ea6672cdcce96d0f26ce899",
+            "86ac5c758f318985792fab6c4b5e2b36d5dcc8611527d5612ae78e0df6487d6a",
+            "1ff274dab6c68d46cfe56cfe072edde80121f538de77e3d44ab49f9d0caaf1f1",
+            "f4f65b06b68830ea90c91f19800cba58c75c871a5eddf8fcb98adc057e4617d0",
+            "9570437444c0f1666954c8b2c84ea2a77bf5037fd3fb3adfb2fa50a86d072500",
+        ],
+    ),
+    (
+        // Renamed to fab-resync.
+        ".claude/skills/resync/SKILL.md",
+        &[
+            "854e775b86c50fc01534faebb7c7200d209c0ee6cc6517a2373f452c5ef305cb",
+            "a93c346cf32d965a691a1fdc20bc504a8a9db9cd9feada710b5fd9153ea20737",
+            "f3e0d499755591ed6ff9f3fcb4d0f7467072f38800291ea94f4d8cbff9df84eb",
+        ],
+    ),
+    (
+        // Renamed to fab-review.
+        ".claude/skills/review/SKILL.md",
+        &[
+            "5b44fac25f3a4b9e473683adb099f0324ac3952b20ba60b81705d79a7d5bbf92",
+            "c98aa3572bbd95965f834a07bd6164ab8dea697f27283f63eda23b54b932b5fd",
+            "bfbd50e47b2959d3f42ca27acd244f57f4be1a8e4dc4698168c8f7b58a408f89",
+            "79a42fd006a87fc0fb7b699e68fc6f87e562d6369b69e9d2af253c571660ab5e",
+            "9b2cf4f45d2afa7aafa44e23010f284e8b3aea4e53908a0f410459f204014758",
+            "4d989432157cf691535bc774100d4f2219dc4a750677973775150e91a3099aa4",
+            "20a7cb18da86a33ec62ad8e9958d7283040a7a7c667a9c167b0c796c09da63f7",
+        ],
+    ),
+    (
+        // Renamed to fab-review.
+        ".claude/skills/review/references/reading-the-diff.md",
+        &["249930a2b0bd6ec5eaa3f78e3942cd010cda6b9eb53d4a1576f1cdde2801fb77"],
+    ),
+    (
+        // Renamed to fab-revise.
+        ".claude/skills/revise/SKILL.md",
+        &[
+            "afc4178bd6b7756e4a6ca9ded09e89835300979cb62fab84a54d1b0974f8cda6",
+            "45e95d438b6a90c0ba4dc69765b52932932bacb16fa02a05fc15c23e8a5bbca6",
+            "6693cd983a9f119d1042d793111c309c8333b480158252ef1ac900bd7dea8d4f",
+            "35700736df7eda4b535a52a2aefaa94e85dd24d87531414b47b657ad672a40bd",
+            "6932a2c48c98074979136de8635c8befb0a149a0b7c0e1a1e2eeee6784514f92",
+        ],
+    ),
+    (
+        // Renamed to fab-rubber-duck.
+        ".claude/skills/rubber-duck/SKILL.md",
+        &["8cc692eee9a552addcab0cb46c7f62973e6c853a805f9da199143784ccfd6867"],
+    ),
+    (
+        // Renamed to fab-storm.
+        ".claude/skills/storm/SKILL.md",
+        &[
+            "2d1bb2c4caacc1486166489b02adc172624f6bdd316e081553c6f0898ad23d3d",
+            "b0ca94b4e2e4852238ec745a0e75108e8feaa558c8d46dc25fe2d05bf943c6d6",
+            "ae495aea01bdbf7de7b7cebeae9a938b5b0c31d24de2acca40264d679a1244d7",
+            "a20cf52b2ea6945bf35a7de38b6fd96be9ec27ebffe0f4695b2a4e70d07aa54d",
+            "cee4b46f72699fc25c78117e3d92cf32667ed209b2fd555e70d4fab9773fdeb8",
+            "e2dad404dba4fee485bf19667e180e8df540917d4d86dd733b733cf247f0ca45",
+            "d57be777ee6d45781f73018a5c682a1574d26aa038b1835c580c6481e815ebdc",
+            "05a61b0c68098315cb15baa5af8fa1ae573c5e1341817fd0036719f62436e294",
+        ],
+    ),
+    (
+        // Renamed to fab-writing-docs.
+        ".claude/skills/writing-docs/SKILL.md",
+        &[
+            "ea5ac12dbc6d2f0a639c0cf9b7c237a3e87fc9655a261441edaa6b2ef3af1c9d",
+            "92bfbf6703a7070dcb6282c1cf2b670fc26f759ec3ea1203f0d1ecb7a9aca206",
+        ],
+    ),
+    (
+        // Renamed to fab-writing-docs.
+        ".claude/skills/writing-docs/references/tells.md",
+        &["13f4cc2f21eebcbcdd1a593e3b1214d3a00e6f617213ae18d22f6671c082368b"],
     ),
 ];
 
@@ -600,7 +708,19 @@ fn retire(
     }
     fs::remove_file(full).map_err(|source| Error::Io { path: full.into(), source })?;
     removed.push(rel.into());
+    remove_empty_parents(root, rel);
     Ok(None)
+}
+
+/// Removes each directory above `rel` that is left empty, from the deepest
+/// up, and stops at the first that is not, such as a renamed skill's old
+/// directory once its files are gone.
+fn remove_empty_parents(root: &Path, rel: &Path) {
+    for dir in rel.ancestors().skip(1) {
+        if dir.as_os_str().is_empty() || fs::remove_dir(root.join(dir)).is_err() {
+            break;
+        }
+    }
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -781,7 +901,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let report = init(dir.path(), &settings(), false).unwrap();
         assert!(report.written.iter().any(|p| p == Path::new(".github/storm/shot.sh")));
-        for skill in ["rubber-duck", "decompose"] {
+        for skill in ["fab-rubber-duck", "fab-decompose"] {
             let path = PathBuf::from(format!(".claude/skills/{skill}/SKILL.md"));
             assert!(report.written.contains(&path), "{skill} is not installed");
         }
@@ -794,7 +914,8 @@ mod tests {
 
     /// Every version of each [`RETIRED`] file a release wrote, from
     /// `git show <tag>:<path>` at the first release that wrote it, with its
-    /// file name under `src/testdata/retired`.
+    /// file name under `src/testdata/retired`. A skill version no release
+    /// wrote is `main`'s at 69d748d, the commit before the `fab-` rename.
     const RETIRED_VERSIONS: &[(&str, &str, &str)] = &[
         (
             ".github/storm/gate.sh",
@@ -825,6 +946,211 @@ mod tests {
             ".github/storm/squash-body.sh",
             "squash-body-0.3.2.sh",
             include_str!("testdata/retired/squash-body-0.3.2.sh"),
+        ),
+        (
+            ".claude/skills/adv-rev/SKILL.md",
+            "skill-adv-rev-0.2.0.md",
+            include_str!("testdata/retired/skill-adv-rev-0.2.0.md"),
+        ),
+        (
+            ".claude/skills/adv-rev/SKILL.md",
+            "skill-adv-rev-0.3.0.md",
+            include_str!("testdata/retired/skill-adv-rev-0.3.0.md"),
+        ),
+        (
+            ".claude/skills/decompose/SKILL.md",
+            "skill-decompose-69d748d.md",
+            include_str!("testdata/retired/skill-decompose-69d748d.md"),
+        ),
+        (
+            ".claude/skills/handoff/SKILL.md",
+            "skill-handoff-0.2.0.md",
+            include_str!("testdata/retired/skill-handoff-0.2.0.md"),
+        ),
+        (
+            ".claude/skills/handoff/SKILL.md",
+            "skill-handoff-0.3.0.md",
+            include_str!("testdata/retired/skill-handoff-0.3.0.md"),
+        ),
+        (
+            ".claude/skills/handoff/SKILL.md",
+            "skill-handoff-0.4.0.md",
+            include_str!("testdata/retired/skill-handoff-0.4.0.md"),
+        ),
+        (
+            ".claude/skills/handoff/SKILL.md",
+            "skill-handoff-69d748d.md",
+            include_str!("testdata/retired/skill-handoff-69d748d.md"),
+        ),
+        (
+            ".claude/skills/implement/SKILL.md",
+            "skill-implement-0.2.0.md",
+            include_str!("testdata/retired/skill-implement-0.2.0.md"),
+        ),
+        (
+            ".claude/skills/implement/SKILL.md",
+            "skill-implement-0.3.0.md",
+            include_str!("testdata/retired/skill-implement-0.3.0.md"),
+        ),
+        (
+            ".claude/skills/implement/SKILL.md",
+            "skill-implement-0.3.1.md",
+            include_str!("testdata/retired/skill-implement-0.3.1.md"),
+        ),
+        (
+            ".claude/skills/implement/SKILL.md",
+            "skill-implement-0.3.3.md",
+            include_str!("testdata/retired/skill-implement-0.3.3.md"),
+        ),
+        (
+            ".claude/skills/implement/SKILL.md",
+            "skill-implement-0.4.0.md",
+            include_str!("testdata/retired/skill-implement-0.4.0.md"),
+        ),
+        (
+            ".claude/skills/implement/SKILL.md",
+            "skill-implement-69d748d.md",
+            include_str!("testdata/retired/skill-implement-69d748d.md"),
+        ),
+        (
+            ".claude/skills/resync/SKILL.md",
+            "skill-resync-0.2.0.md",
+            include_str!("testdata/retired/skill-resync-0.2.0.md"),
+        ),
+        (
+            ".claude/skills/resync/SKILL.md",
+            "skill-resync-0.3.0.md",
+            include_str!("testdata/retired/skill-resync-0.3.0.md"),
+        ),
+        (
+            ".claude/skills/resync/SKILL.md",
+            "skill-resync-69d748d.md",
+            include_str!("testdata/retired/skill-resync-69d748d.md"),
+        ),
+        (
+            ".claude/skills/review/SKILL.md",
+            "skill-review-0.2.0.md",
+            include_str!("testdata/retired/skill-review-0.2.0.md"),
+        ),
+        (
+            ".claude/skills/review/SKILL.md",
+            "skill-review-0.3.0.md",
+            include_str!("testdata/retired/skill-review-0.3.0.md"),
+        ),
+        (
+            ".claude/skills/review/SKILL.md",
+            "skill-review-0.4.0.md",
+            include_str!("testdata/retired/skill-review-0.4.0.md"),
+        ),
+        (
+            ".claude/skills/review/SKILL.md",
+            "skill-review-0.6.0.md",
+            include_str!("testdata/retired/skill-review-0.6.0.md"),
+        ),
+        (
+            ".claude/skills/review/SKILL.md",
+            "skill-review-0.7.0.md",
+            include_str!("testdata/retired/skill-review-0.7.0.md"),
+        ),
+        (
+            ".claude/skills/review/SKILL.md",
+            "skill-review-0.8.0.md",
+            include_str!("testdata/retired/skill-review-0.8.0.md"),
+        ),
+        (
+            ".claude/skills/review/SKILL.md",
+            "skill-review-69d748d.md",
+            include_str!("testdata/retired/skill-review-69d748d.md"),
+        ),
+        (
+            ".claude/skills/review/references/reading-the-diff.md",
+            "skill-review-reading-the-diff-0.2.0.md",
+            include_str!("testdata/retired/skill-review-reading-the-diff-0.2.0.md"),
+        ),
+        (
+            ".claude/skills/revise/SKILL.md",
+            "skill-revise-0.2.0.md",
+            include_str!("testdata/retired/skill-revise-0.2.0.md"),
+        ),
+        (
+            ".claude/skills/revise/SKILL.md",
+            "skill-revise-0.3.3.md",
+            include_str!("testdata/retired/skill-revise-0.3.3.md"),
+        ),
+        (
+            ".claude/skills/revise/SKILL.md",
+            "skill-revise-0.7.0.md",
+            include_str!("testdata/retired/skill-revise-0.7.0.md"),
+        ),
+        (
+            ".claude/skills/revise/SKILL.md",
+            "skill-revise-0.8.0.md",
+            include_str!("testdata/retired/skill-revise-0.8.0.md"),
+        ),
+        (
+            ".claude/skills/revise/SKILL.md",
+            "skill-revise-69d748d.md",
+            include_str!("testdata/retired/skill-revise-69d748d.md"),
+        ),
+        (
+            ".claude/skills/rubber-duck/SKILL.md",
+            "skill-rubber-duck-69d748d.md",
+            include_str!("testdata/retired/skill-rubber-duck-69d748d.md"),
+        ),
+        (
+            ".claude/skills/storm/SKILL.md",
+            "skill-storm-0.2.0.md",
+            include_str!("testdata/retired/skill-storm-0.2.0.md"),
+        ),
+        (
+            ".claude/skills/storm/SKILL.md",
+            "skill-storm-0.3.0.md",
+            include_str!("testdata/retired/skill-storm-0.3.0.md"),
+        ),
+        (
+            ".claude/skills/storm/SKILL.md",
+            "skill-storm-0.3.3.md",
+            include_str!("testdata/retired/skill-storm-0.3.3.md"),
+        ),
+        (
+            ".claude/skills/storm/SKILL.md",
+            "skill-storm-0.4.0.md",
+            include_str!("testdata/retired/skill-storm-0.4.0.md"),
+        ),
+        (
+            ".claude/skills/storm/SKILL.md",
+            "skill-storm-0.6.0.md",
+            include_str!("testdata/retired/skill-storm-0.6.0.md"),
+        ),
+        (
+            ".claude/skills/storm/SKILL.md",
+            "skill-storm-0.7.0.md",
+            include_str!("testdata/retired/skill-storm-0.7.0.md"),
+        ),
+        (
+            ".claude/skills/storm/SKILL.md",
+            "skill-storm-0.8.0.md",
+            include_str!("testdata/retired/skill-storm-0.8.0.md"),
+        ),
+        (
+            ".claude/skills/storm/SKILL.md",
+            "skill-storm-69d748d.md",
+            include_str!("testdata/retired/skill-storm-69d748d.md"),
+        ),
+        (
+            ".claude/skills/writing-docs/SKILL.md",
+            "skill-writing-docs-0.2.0.md",
+            include_str!("testdata/retired/skill-writing-docs-0.2.0.md"),
+        ),
+        (
+            ".claude/skills/writing-docs/SKILL.md",
+            "skill-writing-docs-0.3.1.md",
+            include_str!("testdata/retired/skill-writing-docs-0.3.1.md"),
+        ),
+        (
+            ".claude/skills/writing-docs/references/tells.md",
+            "skill-writing-docs-tells-0.2.0.md",
+            include_str!("testdata/retired/skill-writing-docs-tells-0.2.0.md"),
         ),
     ];
 
@@ -861,6 +1187,7 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             install(dir.path(), &settings(), false).unwrap();
             let target = dir.path().join(path);
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
             fs::write(&target, contents).unwrap();
             let report = update(dir.path(), |_| {}, false).unwrap();
             assert_eq!(report.removed, vec![PathBuf::from(path)], "{name}");
@@ -924,6 +1251,92 @@ mod tests {
                 Drift::Retired(".github/storm/squash-body.sh".into()),
             ]
         );
+    }
+
+    #[test]
+    fn installed_skills_carry_the_fab_prefix() {
+        let skills: BTreeSet<&str> = EMBEDDED
+            .iter()
+            .filter_map(|(path, _, _)| path.strip_prefix(".claude/skills/"))
+            .map(|rest| rest.split('/').next().unwrap())
+            .collect();
+        assert!(skills.contains("fab-review"), "{skills:?}");
+        for skill in skills {
+            assert!(skill.starts_with("fab-"), "{skill}");
+            let text = embedded(&format!(".claude/skills/{skill}/SKILL.md")).unwrap();
+            assert!(text.lines().any(|l| l == format!("name: {skill}")), "{skill}");
+        }
+    }
+
+    /// Each old skill path with the version `main` held before the rename,
+    /// the last one listed for it.
+    fn old_skills() -> Vec<(&'static str, &'static str)> {
+        let mut last = std::collections::BTreeMap::new();
+        for (path, _, contents) in RETIRED_VERSIONS {
+            if path.starts_with(".claude/skills/") {
+                last.insert(*path, *contents);
+            }
+        }
+        last.into_iter().collect()
+    }
+
+    #[test]
+    fn update_moves_skills_from_their_old_names() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let old = old_skills();
+        assert_eq!(old.len(), 12);
+        for (path, contents) in &old {
+            let full = dir.path().join(path);
+            fs::create_dir_all(full.parent().unwrap()).unwrap();
+            fs::write(full, contents).unwrap();
+        }
+        let drift = check(dir.path()).unwrap();
+        assert_eq!(drift.len(), old.len(), "{drift:?}");
+        let report = update(dir.path(), |_| {}, false).unwrap();
+        let removed: Vec<&str> = report.removed.iter().map(|p| p.to_str().unwrap()).collect();
+        assert_eq!(removed, old.iter().map(|(p, _)| *p).collect::<Vec<_>>());
+        assert!(report.kept.is_empty(), "{:?}", report.kept);
+        let left: Vec<String> = fs::read_dir(dir.path().join(".claude/skills"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|name| !name.starts_with("fab-"))
+            .collect();
+        assert_eq!(left, Vec::<String>::new());
+        assert!(
+            dir.path()
+                .join(".claude/skills/fab-review/references/reading-the-diff.md")
+                .is_file()
+        );
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn update_keeps_and_check_reports_an_edited_skill_under_its_old_name() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let (path, contents) = old_skills()
+            .into_iter()
+            .find(|(p, _)| *p == ".claude/skills/review/SKILL.md")
+            .unwrap();
+        let reference = ".claude/skills/review/references/reading-the-diff.md";
+        let edited = format!("{contents}\nOur own rule.\n");
+        let full = dir.path().join(path);
+        fs::create_dir_all(dir.path().join(reference).parent().unwrap()).unwrap();
+        fs::write(&full, &edited).unwrap();
+        fs::write(
+            dir.path().join(reference),
+            embedded(".claude/skills/fab-review/references/reading-the-diff.md").unwrap(),
+        )
+        .unwrap();
+        let report = update(dir.path(), |_| {}, false).unwrap();
+        assert_eq!(report.removed, vec![PathBuf::from(reference)]);
+        assert_eq!(
+            report.kept,
+            vec![Kept { path: path.into(), reason: KeptReason::Edited }]
+        );
+        assert_eq!(fs::read_to_string(&full).unwrap(), edited);
+        assert_eq!(check(dir.path()).unwrap(), vec![Drift::Retired(path.into())]);
     }
 
     #[test]

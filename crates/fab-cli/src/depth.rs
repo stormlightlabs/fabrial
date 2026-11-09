@@ -1,5 +1,5 @@
 //! Review depth: how many review passes a pull request takes, from the files
-//! its diff touches. The `storm` skill runs `fab review-depth` before the
+//! its diff touches. The `fab-storm` skill runs `fab review-depth` before the
 //! review and skips the passes the depth leaves out.
 //!
 //! - `none`: a version bump, which changes only `version` lines in
@@ -301,7 +301,7 @@ mod tests {
             "crates/fab-cli/src/gate.rs",
             ".github/workflows/review.yml",
             ".github/actions/fab/action.yml",
-            ".claude/skills/storm/SKILL.md",
+            ".claude/skills/fab-storm/SKILL.md",
             ".claude/agents/reviewer.md",
             "AGENTS.md",
             "CLAUDE.md",

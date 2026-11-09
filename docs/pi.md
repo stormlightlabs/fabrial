@@ -142,11 +142,11 @@ noted in the prompt. Reviewers keep Bash, so their worktree is not read-only.
 
 Each role gets these skills:
 
-| Role                                     | Skills                                                         |
-| ---------------------------------------- | -------------------------------------------------------------- |
-| implementer                              | `implement`, `storm`, `writing-docs`, the `tasks.skill` skill  |
-| reviewer, verifier, adversarial-reviewer | `review`, `storm`, `writing-docs`                              |
-| reviser                                  | `review`, `storm`, `writing-docs`, `revise`, `resync`          |
+| Role                                     | Skills                                                                    |
+| ---------------------------------------- | ------------------------------------------------------------------------- |
+| implementer                              | `fab-implement`, `fab-storm`, `fab-writing-docs`, the `tasks.skill` skill |
+| reviewer, verifier, adversarial-reviewer | `fab-review`, `fab-storm`, `fab-writing-docs`                             |
+| reviser                                  | `fab-review`, `fab-storm`, `fab-writing-docs`, `fab-revise`, `fab-resync` |
 
 An implementer also gets the skill `skill` names in the `[tasks]` table of
 the trusted checkout's `.github/fabrial.toml`, such as `arclightning` here.
@@ -191,7 +191,7 @@ progress. A worker succeeds only when Pi stops normally with a nonempty final
 answer. Nothing retries outside the sandbox.
 
 Dispatch never posts comments or marks a review finished. A worker that posts
-uses the Bot comment workflow and checks the comment landed, as the `storm`
+uses the Bot comment workflow and checks the comment landed, as the `fab-storm`
 skill describes.
 
 Each worker's record is `state_dir/records/<worker-id>/worker.json`, with the
@@ -458,7 +458,7 @@ the PR's verification comment. To run the asynchronous path end to end with
 real subscription calls and tokens, set the three variables above and run
 `node scripts/async-acceptance.mjs --worktree <linked-worktree>`.
 
-Use the `handoff` skill for unfinished work across sessions; a Pi resume is
+Use the `fab-handoff` skill for unfinished work across sessions; a Pi resume is
 not a task record. Follow the
 [lifecycle cleanup rules](../AGENTS.md#lifecycle-cleanup) when a worker
 finishes or its PR merges.

@@ -91,7 +91,7 @@ a paid plan, so rulesets on `main` are enforced.
   since removed, was the first lesson there.
 - **Prose follows guidelines, not a CI check:** the writing standard and the
   tells catalogue from thunderstorm's `writing-docs`, in
-  `.claude/skills/writing-docs/`.
+  `.claude/skills/fab-writing-docs/`.
 - **fabrial is not a harness.** It ships the repository contract, the skills,
   the workflows and the `fab` commands they run. Harnesses such as Claude
   Code, Codex and Pi run the agents: they own worker dispatch, sandboxes,

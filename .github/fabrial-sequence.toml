@@ -1,4 +1,4 @@
-# The review sequence the `storm` skill runs on a pull request, read by
+# The review sequence the `fab-storm` skill runs on a pull request, read by
 # `fab sequence`. Each stage runs once, in this order, in a fresh agent whose
 # role is in .claude/agents/. `depth` is the lowest review depth that runs the
 # stage: `fab review-depth` gives none, standard or full. `when` is the
