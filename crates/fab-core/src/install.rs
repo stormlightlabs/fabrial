@@ -309,6 +309,9 @@ pub enum Drift {
     SkillsLink,
     /// The settings name another fabrial version, or none.
     Version { installed: Option<String>, running: String },
+    /// The settings name no `app`, which every workflow's `fab` command
+    /// needs.
+    NoApp,
     /// A file an earlier release installed and this one does not is still
     /// there. Under a skill's old name, each file when all of them are as a
     /// release wrote them, or the skill's directory when anything else is
@@ -328,6 +331,10 @@ impl std::fmt::Display for Drift {
                 None => write!(f, "version: none recorded, this build {running}"),
             },
             Drift::Retired(path) => write!(f, "retired: {}", path.display()),
+            Drift::NoApp => write!(
+                f,
+                "missing: `app` in {SETTINGS_PATH}; run fab update --app <slug> with the repository's GitHub App"
+            ),
         }
     }
 }
@@ -598,6 +605,11 @@ pub fn check(root: &Path) -> Result<Vec<Drift>, Error> {
     // Only the release counts: a new commit with the same files is not drift.
     if settings.version.as_deref().map(crate::release) != Some(crate::release(&running)) {
         drift.push(Drift::Version { installed: settings.version.clone(), running: running.clone() });
+    }
+    // The workflows refuse to run without it, so a file that lost it is
+    // drift even though it matches the render of its own values.
+    if settings.app.is_none() {
+        drift.push(Drift::NoApp);
     }
     // The settings file is compared with the render of its own values, so a
     // line the workflows' `sed` readers cannot read shows as drift.
@@ -908,13 +920,32 @@ fn expected_files(settings: &Settings, version: &str) -> Vec<(PathBuf, String, b
 
 /// `contents` with each secret fabrial's own workflows read renamed to the
 /// repository's prefix. Text without one comes back as it is.
+///
+/// Only a whole `${{ secrets.<name> }}` expression is renamed, in one scan,
+/// so a prefix that itself ends in a suffix is never renamed twice.
 fn with_secrets(contents: &str, settings: &Settings) -> String {
-    SECRET_SUFFIXES.iter().fold(contents.to_owned(), |text, suffix| {
-        text.replace(
-            &format!("secrets.{SOURCE_SECRET_PREFIX}{suffix}"),
-            &format!("secrets.{}{suffix}", settings.secret_prefix()),
-        )
-    })
+    let opener = format!("${{{{ secrets.{SOURCE_SECRET_PREFIX}");
+    let mut out = String::with_capacity(contents.len());
+    let mut rest = contents;
+    while let Some(at) = rest.find(&opener) {
+        out.push_str(&rest[..at]);
+        let after = &rest[at + opener.len()..];
+        match SECRET_SUFFIXES
+            .iter()
+            .find(|suffix| after.starts_with(&format!("{suffix} }}}}")))
+        {
+            Some(suffix) => {
+                out.push_str(&format!("${{{{ secrets.{}{suffix} }}}}", settings.secret_prefix()));
+                rest = &after[suffix.len() + " }}".len()..];
+            }
+            None => {
+                out.push_str(&opener);
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 fn codeowners(owner: &str) -> String {
@@ -1095,6 +1126,18 @@ mod tests {
     }
 
     #[test]
+    fn a_prefix_ending_in_a_suffix_is_renamed_once() {
+        let own = Settings { secret_prefix: Some("THUNDERBOT_PRIVATE_KEY".into()), ..settings() };
+        let text = "id: ${{ secrets.THUNDERBOT_APP_ID }}\nkey: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}\nother: ${{ secrets.THUNDERBOT_OTHER }}\n";
+        assert_eq!(
+            with_secrets(text, &own),
+            "id: ${{ secrets.THUNDERBOT_PRIVATE_KEY_APP_ID }}\n\
+             key: ${{ secrets.THUNDERBOT_PRIVATE_KEY_PRIVATE_KEY }}\n\
+             other: ${{ secrets.THUNDERBOT_OTHER }}\n"
+        );
+    }
+
+    #[test]
     fn update_keeps_the_secrets_an_install_without_a_prefix_reads() {
         let dir = tempfile::tempdir().unwrap();
         install(dir.path(), &settings(), false).unwrap();
@@ -1141,6 +1184,10 @@ mod tests {
             .map(|l| format!("{l}\n"))
             .collect();
         fs::write(&path, old).unwrap();
+        // Check catches a pull request that drops the line. The comment
+        // left above it is drift of its own.
+        assert!(check(dir.path()).unwrap().contains(&Drift::NoApp));
+        assert!(Drift::NoApp.to_string().contains("fab update --app"));
         let err = update(dir.path(), |_| {}, false).unwrap_err();
         assert!(err.to_string().contains("--app"), "{err}");
         update(dir.path(), |s| s.app = Some("own-bot".into()), false).unwrap();

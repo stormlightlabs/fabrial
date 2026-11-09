@@ -59,8 +59,9 @@ repositories that use fabrial. Each workflow mints a token for the App with
 ## Add the secrets
 
 The workflows read two secrets and no variables. Their names start with
-`secret_prefix` from `.github/fabrial.toml`, `FABRIAL` unless you choose
-another:
+`secret_prefix` from `.github/fabrial.toml`. `fab init` writes `FABRIAL`
+unless you choose another, and a file without the setting reads
+`THUNDERBOT`:
 
 | Secret                 | Holds                 | Read by                             |
 | ---------------------- | --------------------- | ----------------------------------- |
