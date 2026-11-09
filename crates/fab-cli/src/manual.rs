@@ -72,8 +72,9 @@ const FILE_PAGES_ORDER: usize = COMMAND_PAGES.len() + 1;
 #[derive(Args)]
 pub struct Options {
     /// The directory to write the pages into, such as
-    /// packages/website/src/content/docs/reference. Files it does not
-    /// write are left alone.
+    /// packages/website/src/content/docs/reference. It holds only generated
+    /// pages: fab manual leaves other files alone, and the reference test
+    /// fails on any other `.md` file in it.
     #[arg(long)]
     out: PathBuf,
 }
@@ -369,8 +370,8 @@ fn option(arg: &Arg) -> String {
     if arg.get_action().takes_values() { format!("`{flags} {values}`") } else { format!("`{flags}`") }
 }
 
-/// The default column: the default value, `required`, `off` for a flag, or
-/// `unset`.
+/// The default column: the default value, `required` or `required unless`
+/// its variable is set, `off` for a flag, or `unset`.
 fn default(arg: &Arg) -> String {
     let defaults: Vec<String> = arg
         .get_default_values()
@@ -384,7 +385,10 @@ fn default(arg: &Arg) -> String {
     } else if !defaults.is_empty() {
         "empty".into()
     } else if arg.is_required_set() {
-        "required".into()
+        match arg.get_env() {
+            Some(env) => format!("required unless `{}` is set", env.to_string_lossy()),
+            None => "required".into(),
+        }
     } else {
         "unset".into()
     }
@@ -659,8 +663,10 @@ mod tests {
             .required(true)
             .env("REPO")
             .value_parser(["a", "b"]);
-        assert_eq!(default(&arg), "required");
+        assert_eq!(default(&arg), "required unless `REPO` is set");
         assert_eq!(describe(&arg), "Takes `a` or `b`. Read from `REPO` when not given.");
+        let arg = Arg::new("body").long("body").required(true);
+        assert_eq!(default(&arg), "required");
         let flag = Arg::new("force").long("force").action(clap::ArgAction::SetTrue);
         assert_eq!((option(&flag), default(&flag)), ("`--force`".into(), "off".into()));
     }

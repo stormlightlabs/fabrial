@@ -1,6 +1,7 @@
-//! Runs `fab manual` into a scratch directory and compares each page with
-//! the committed reference pages of the docs site.
+//! Runs `fab manual` into a scratch directory and compares its pages with
+//! the committed reference pages of the docs site, which hold nothing else.
 #![cfg(unix)]
+use std::ffi::OsString;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -37,6 +38,33 @@ fn the_committed_reference_pages_match_fab_manual() {
         "these reference pages differ from what fab manual writes: {}; run fab manual --out {REFERENCE}",
         stale.join(", ")
     );
+    let extra = extra_pages(&committed, &written);
+    assert!(
+        extra.is_empty(),
+        "fab manual writes no page named {}; delete it or rename it, then run fab manual --out {REFERENCE}",
+        extra.join(", ")
+    );
+}
+
+/// The `.md` files in `dir` that are not among the `written` pages, sorted.
+fn extra_pages(dir: &Path, written: &[OsString]) -> Vec<String> {
+    let mut extra: Vec<String> = fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .filter(|name| Path::new(name).extension().is_some_and(|e| e == "md") && !written.contains(name))
+        .map(|name| name.to_string_lossy().into_owned())
+        .collect();
+    extra.sort();
+    extra
+}
+
+#[test]
+fn a_committed_page_fab_manual_does_not_write_is_named() {
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["settings.md", "old-name.md", "notes.txt"] {
+        fs::write(dir.path().join(name), "").unwrap();
+    }
+    assert_eq!(extra_pages(dir.path(), &["settings.md".into()]), ["old-name.md"]);
 }
 
 #[test]

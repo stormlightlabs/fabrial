@@ -10,8 +10,8 @@ position = 0
 Reference pages drift unless the code writes them. A hidden `fab manual
 --out <dir>` walks the clap command tree and writes Markdown pages with
 fanar frontmatter: one per command group, plus the `.github/fabrial.toml`
-settings, the gates and sequence files, and one page per installed skill
-from its `SKILL.md` frontmatter.
+settings, the gates and sequence files, and one skills page with a
+section per installed skill from its `SKILL.md` frontmatter.
 
 Acceptance criteria:
 

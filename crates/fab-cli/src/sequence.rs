@@ -243,7 +243,7 @@ fn render(sequence: &Sequence, depth: Depth, reason: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use fab_core::keys::{fields, names};
+    use fab_core::keys::assert_keys_match;
 
     use super::*;
 
@@ -258,9 +258,15 @@ mod tests {
 
     #[test]
     fn the_key_tables_match_the_sequence_structs() {
-        assert_eq!(names(KEYS), fields::<Sequence>());
-        assert_eq!(names(STAGE_KEYS), fields::<Stage>());
-        assert_eq!(names(FINISH_KEYS), fields::<Finish>());
+        assert_keys_match::<Sequence>(KEYS, |k| match k {
+            "stage" => "[[stage]]\nname = \"a\"\nrole = \"r\"\ndepth = \"standard\"\nposts = \"p\"\n".into(),
+            _ => format!("[{k}]\nposts = \"p\"\n"),
+        });
+        assert_keys_match::<Stage>(STAGE_KEYS, |k| match k {
+            "depth" => "depth = \"full\"\n".into(),
+            _ => format!("{k} = \"x\"\n"),
+        });
+        assert_keys_match::<Finish>(FINISH_KEYS, |k| format!("{k} = \"x\"\n"));
         assert_eq!(installed().unwrap().stage.len(), 4);
     }
 

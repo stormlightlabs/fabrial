@@ -1,9 +1,11 @@
 //! What each key of fabrial's TOML files holds, written for the reference
 //! pages `fab manual` generates. Each file's parser keeps its table of
-//! [`Key`]s beside its struct, and a test ties the table to the struct's
-//! fields with [`fields`], so a key cannot be added without its entry.
+//! [`Key`]s beside its struct, and a test ties the table to the struct with
+//! [`assert_keys_match`], so a key cannot be added without its entry or
+//! change from required to optional without the table saying so.
 
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use serde::de::{self, Deserializer, Visitor};
 
 /// One key of a TOML file, as its reference page describes it.
@@ -57,6 +59,32 @@ pub fn names(keys: &[Key]) -> Vec<&'static str> {
     keys.iter().map(|k| k.name).collect()
 }
 
+/// Panics when `keys` names other fields than `T`, in another order, or
+/// marks a key `required` that `T` does not require, or the reverse. For
+/// tests. `entry` gives the TOML for one key with a valid value, such as
+/// `name = "x"` or a `[[stage]]` table; the required keys' entries are
+/// joined in table order, so a table entry goes after the plain keys.
+pub fn assert_keys_match<T: DeserializeOwned>(keys: &[Key], entry: impl Fn(&str) -> String) {
+    assert_eq!(
+        names(keys),
+        fields::<T>(),
+        "the table of keys and the struct's fields differ"
+    );
+    let required: Vec<&Key> = keys.iter().filter(|k| k.default == "required").collect();
+    let all: String = required.iter().map(|k| entry(k.name)).collect();
+    if let Err(e) = toml::from_str::<T>(&all) {
+        panic!("the required keys alone do not parse, so a key the table calls optional is required: {e}");
+    }
+    for key in &required {
+        let without: String = required
+            .iter()
+            .filter(|k| k.name != key.name)
+            .map(|k| entry(k.name))
+            .collect();
+        assert!(toml::from_str::<T>(&without).is_err(), "`{}` is not required", key.name);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -69,9 +97,38 @@ mod tests {
         second: Option<u8>,
     }
 
+    const SAMPLE_KEYS: &[Key] = &[
+        Key { name: "first", kind: "string", default: "required", about: "" },
+        Key { name: "second", kind: "integer", default: "unset", about: "" },
+    ];
+
+    fn entry(key: &str) -> String {
+        match key {
+            "second" => "second = 1\n".into(),
+            _ => format!("{key} = \"x\"\n"),
+        }
+    }
+
     #[test]
     fn fields_reads_a_structs_keys_in_order() {
         assert_eq!(fields::<Sample>(), ["first", "second"]);
         assert!(fields::<String>().is_empty());
+    }
+
+    #[test]
+    fn a_matching_table_passes() {
+        assert_keys_match::<Sample>(SAMPLE_KEYS, entry);
+    }
+
+    #[test]
+    #[should_panic(expected = "a key the table calls optional is required")]
+    fn a_required_key_the_table_calls_optional_fails() {
+        assert_keys_match::<Sample>(&[Key { default: "unset", ..SAMPLE_KEYS[0] }, SAMPLE_KEYS[1]], entry);
+    }
+
+    #[test]
+    #[should_panic(expected = "`second` is not required")]
+    fn an_optional_key_the_table_calls_required_fails() {
+        assert_keys_match::<Sample>(&[SAMPLE_KEYS[0], Key { default: "required", ..SAMPLE_KEYS[1] }], entry);
     }
 }

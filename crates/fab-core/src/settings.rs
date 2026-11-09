@@ -560,31 +560,7 @@ fn is_login(owner: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::keys::{fields, names};
-
-    /// Fails when a table of keys names other fields than its struct, or
-    /// marks a key required that the struct does not require.
-    fn assert_keys_match<T: for<'de> Deserialize<'de>>(keys: &[Key], line: impl Fn(&str) -> String) {
-        assert_eq!(
-            names(keys),
-            fields::<T>(),
-            "the table of keys and the struct's fields differ"
-        );
-        let required: Vec<&Key> = keys.iter().filter(|k| k.default == "required").collect();
-        let all: String = required.iter().map(|k| line(k.name)).collect();
-        assert!(
-            toml::from_str::<T>(&all).is_ok(),
-            "the required keys alone do not parse"
-        );
-        for key in &required {
-            let without: String = required
-                .iter()
-                .filter(|k| k.name != key.name)
-                .map(|k| line(k.name))
-                .collect();
-            assert!(toml::from_str::<T>(&without).is_err(), "`{}` is not required", key.name);
-        }
-    }
+    use crate::keys::assert_keys_match;
 
     #[test]
     fn the_key_tables_match_the_settings_structs() {

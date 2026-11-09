@@ -182,12 +182,19 @@ fn segment_match(glob: &[u8], text: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::keys::{fields, names};
+    use crate::keys::assert_keys_match;
 
     #[test]
     fn the_key_tables_match_the_gates_structs() {
-        assert_eq!(names(KEYS), fields::<Gates>());
-        assert_eq!(names(SCOPE_KEYS), fields::<Scope>());
+        assert_keys_match::<Gates>(KEYS, |k| match k {
+            "unmatched" => "unmatched = \"skip\"\n".into(),
+            "scoped" => "[[scoped]]\nname = \"a\"\npaths = [\"x\"]\nrun = \"t\"\n".into(),
+            _ => format!("{k} = \"x\"\n"),
+        });
+        assert_keys_match::<Scope>(SCOPE_KEYS, |k| match k {
+            "paths" => "paths = [\"x\"]\n".into(),
+            _ => format!("{k} = \"x\"\n"),
+        });
     }
 
     #[test]
