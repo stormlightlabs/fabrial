@@ -86,8 +86,8 @@ jobs:
         if: steps.decide.outputs.open == 'true'
         id: app
         with:
-          app-id: ${{ secrets.FABRIAL_APP_ID }}
-          private-key: ${{ secrets.FABRIAL_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.THUNDERBOT_APP_ID }}
+          private-key: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}
 
       - uses: ./.github/actions/fab
         if: steps.decide.outputs.open == 'true'

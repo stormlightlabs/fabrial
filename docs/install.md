@@ -104,14 +104,13 @@ and require `storm/review` on `main` only after it merges.
 
 To take a newer release, install that `fab` and run `fab update`. It keeps
 the settings in `.github/fabrial.toml`, unless `--owner`, `--app`,
-`--trailer`, `--gates`, `--signoff` or `--assisted-by` changes one, and
-replaces the files with this build's. `--signoff ""` removes the sign-off.
-An install with no `app` needs `--app`. It refuses to install an older
-release over a newer one unless you pass `--force`.
-
-When the workflows it replaces read secrets under an old name, it names the
-new ones to add. [bot-setup.md](bot-setup.md#moving-from-the-old-secret-names)
-says how to move them.
+`--secret-prefix`, `--trailer`, `--gates`, `--signoff` or `--assisted-by`
+changes one, and replaces the files with this build's. `--signoff ""`
+removes the sign-off. An install with no `app` needs `--app`. An install
+with no `secret_prefix` gets `THUNDERBOT`, the secret names 0.9.0 and
+earlier read, as [bot-setup.md](bot-setup.md#moving-from-an-older-release)
+says. It refuses to install an older release over a newer one unless you
+pass `--force`.
 
 It deletes a file only older releases installed, such as
 `.github/storm/gate.sh`, if you have not edited it. The same goes for a

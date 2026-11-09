@@ -100,7 +100,53 @@ fn assisted_by_is_set_by_init_and_changed_by_update() {
 }
 
 #[test]
-fn update_says_which_secrets_to_add_when_the_workflows_rename_them() {
+fn secret_prefix_defaults_on_init_is_set_by_its_flag_and_kept_by_update() {
+    let line = |dir: &Path| {
+        let text = fs::read_to_string(dir.join(".github/fabrial.toml")).unwrap();
+        text.lines()
+            .find(|l| l.starts_with("secret_prefix = "))
+            .map(str::to_owned)
+    };
+    let review = |dir: &Path| fs::read_to_string(dir.join(".github/workflows/review.yml")).unwrap();
+    let init = [
+        "init",
+        "--owner",
+        "o",
+        "--app",
+        "own-bot",
+        "--trailer",
+        "A <a@b>",
+        "--gates",
+        "true",
+    ];
+    for (flag, prefix) in [(None, "FABRIAL"), (Some("OWN_BOT"), "OWN_BOT")] {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(
+            Command::new("git")
+                .arg("init")
+                .arg("-q")
+                .arg(dir.path())
+                .status()
+                .unwrap()
+                .success()
+        );
+        let mut args = init.to_vec();
+        args.extend(flag.iter().flat_map(|f| ["--secret-prefix", *f]));
+        let _ = fab(dir.path(), &args);
+        assert_eq!(line(dir.path()), Some(format!("secret_prefix = \"{prefix}\"")));
+        let text = review(dir.path());
+        assert!(text.contains(&format!("${{{{ secrets.{prefix}_APP_ID }}}}")), "{text}");
+        assert!(
+            text.contains(&format!("${{{{ secrets.{prefix}_PRIVATE_KEY }}}}")),
+            "{text}"
+        );
+        let _ = fab(dir.path(), &["update"]);
+        assert_eq!(line(dir.path()), Some(format!("secret_prefix = \"{prefix}\"")));
+    }
+}
+
+#[test]
+fn update_gives_an_install_without_a_prefix_the_secrets_it_read() {
     let dir = tempfile::tempdir().unwrap();
     assert!(
         Command::new("git")
@@ -123,19 +169,22 @@ fn update_says_which_secrets_to_add_when_the_workflows_rename_them() {
         "true",
     ];
     let _ = fab(dir.path(), &args);
-    let review = dir.path().join(".github/workflows/review.yml");
-    let text = fs::read_to_string(&review).unwrap();
-    let old = text
-        .replace("secrets.FABRIAL_APP_ID", "secrets.THUNDERBOT_APP_ID")
-        .replace("secrets.FABRIAL_APP_PRIVATE_KEY", "secrets.THUNDERBOT_PRIVATE_KEY");
-    fs::write(&review, old).unwrap();
-    let out = fab(dir.path(), &["update"]);
+    let path = dir.path().join(".github/fabrial.toml");
+    let old: String = fs::read_to_string(&path)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.starts_with("secret_prefix = "))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    fs::write(&path, old).unwrap();
+    let _ = fab(dir.path(), &["update"]);
     assert!(
-        out.contains(
-            "The workflows now read the secrets FABRIAL_APP_ID and FABRIAL_APP_PRIVATE_KEY \
-             instead of THUNDERBOT_APP_ID and THUNDERBOT_PRIVATE_KEY."
-        ),
-        "{out}"
+        fs::read_to_string(&path)
+            .unwrap()
+            .contains("secret_prefix = \"THUNDERBOT\"\n")
     );
-    assert!(!fab(dir.path(), &["update"]).contains("secrets"));
+    let review = fs::read_to_string(dir.path().join(".github/workflows/review.yml")).unwrap();
+    assert!(review.contains("${{ secrets.THUNDERBOT_APP_ID }}"), "{review}");
+    assert!(review.contains("${{ secrets.THUNDERBOT_PRIVATE_KEY }}"), "{review}");
+    let _ = fab(dir.path(), &["check"]);
 }

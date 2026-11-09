@@ -58,17 +58,23 @@ repositories that use fabrial. Each workflow mints a token for the App with
 
 ## Add the secrets
 
-The workflows read two secrets and no variables:
+The workflows read two secrets and no variables. Their names start with
+`secret_prefix` from `.github/fabrial.toml`, `FABRIAL` unless you choose
+another:
 
-| Secret                    | Holds                       | Read by                             |
-| ------------------------- | --------------------------- | ----------------------------------- |
-| `FABRIAL_APP_ID`          | the App ID                  | Branch PR, Review gate, Bot comment |
-| `FABRIAL_APP_PRIVATE_KEY` | the whole `.pem` file       | Branch PR, Review gate, Bot comment |
+| Secret                 | Holds                 | Read by                             |
+| ---------------------- | --------------------- | ----------------------------------- |
+| `<PREFIX>_APP_ID`      | the App ID            | Branch PR, Review gate, Bot comment |
+| `<PREFIX>_PRIVATE_KEY` | the whole `.pem` file | Branch PR, Review gate, Bot comment |
 
 Add them under the repository's **Settings > Secrets and variables >
 Actions**, or once as organization secrets shared with each repository that
-uses fabrial. The names say what the secret is for, not whose App it is, so
-each repository keeps its own App under the same names.
+uses fabrial. To use secrets you already have, such as `MY_BOT_APP_ID` and
+`MY_BOT_PRIVATE_KEY`, pass `fab init --secret-prefix MY_BOT`, or change it
+later with `fab update --secret-prefix MY_BOT`. The prefix is uppercase
+letters, digits and underscores, and cannot start with a digit or
+`GITHUB_`. `fab init` and `fab update` write the names into the installed
+workflows, so `fab check` reports a workflow that reads others.
 
 Agent sessions never hold the key. They post through the Bot comment
 workflow.
@@ -94,13 +100,12 @@ request's head:
   section stop with an error when the secrets belong to an App other than
   the one `app` names.
 
-## Moving from the old secret names
+## Moving from an older release
 
 fabrial 0.9.0 and earlier read `THUNDERBOT_APP_ID` and
-`THUNDERBOT_PRIVATE_KEY`. When `fab update` replaces workflows that read
-those, it says so. Add `FABRIAL_APP_ID` and `FABRIAL_APP_PRIVATE_KEY` with
-the same values before the updated workflows run, and delete the old ones
-once no repository's workflows read them. An install with no `app` needs
+`THUNDERBOT_PRIVATE_KEY`. `fab update` on an install with no
+`secret_prefix` writes `THUNDERBOT`, so the workflows keep reading those and
+there is nothing to rename. An install with no `app` needs
 `fab update --app <slug>`.
 
 ## Who can use the key

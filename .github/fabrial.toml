@@ -9,6 +9,10 @@ owner = "desertthunder"
 # github.com/apps/<slug>. Its comments come from <slug>[bot].
 app = "stormlight-thunderbot"
 
+# The prefix of the secrets holding the App's ID and key: the workflows
+# read THUNDERBOT_APP_ID and THUNDERBOT_PRIVATE_KEY.
+secret_prefix = "THUNDERBOT"
+
 # The Co-authored-by trailer on every squash commit.
 trailer = "Owais <desertthunder.dev@gmail.com>"
 

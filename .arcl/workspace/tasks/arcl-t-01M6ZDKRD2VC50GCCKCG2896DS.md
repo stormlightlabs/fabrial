@@ -15,8 +15,10 @@ Acceptance criteria:
 
 - [ ] `.github/fabrial.toml` names the repository's App, and the gate, PR
       status, Branch PR and Bot comment read it instead of a fixed login
-- [ ] The installed workflows read secret names that do not name a
-      particular App, and `fab update` says how to move the old ones
+- [ ] The installed workflows read `<PREFIX>_APP_ID` and
+      `<PREFIX>_PRIVATE_KEY`, with the prefix from `secret_prefix`
+      (`FABRIAL` by default), and `fab update` gives an older install
+      `THUNDERBOT` so its secrets keep working
 - [ ] docs/bot-setup.md explains creating your own App; nothing installed
       into another repository names stormlight-thunderbot
 - [ ] The README reads plainly for a newcomer: what fabrial is, how to

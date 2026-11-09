@@ -22,7 +22,8 @@ Silicon. Homebrew users can run `brew install stormlightlabs/tap/fab`.
 
 1. Create a GitHub App in your account or organization, install it on the
    repository, and add its ID and key as the secrets `FABRIAL_APP_ID` and
-   `FABRIAL_APP_PRIVATE_KEY`. [docs/bot-setup.md](docs/bot-setup.md) walks
+   `FABRIAL_PRIVATE_KEY`, or under your own prefix with `--secret-prefix`.
+   [docs/bot-setup.md](docs/bot-setup.md) walks
    through it, with the permissions and the ruleset on `main`.
 2. At the repository's root, run:
 
@@ -59,18 +60,19 @@ and names who acts at each one.
 `.github/fabrial.toml` holds one value per line. `fab init` writes it, and
 `fab update` keeps it.
 
-| Key           | What it sets                                                         |
-| ------------- | -------------------------------------------------------------------- |
-| `owner`       | The GitHub login that approves pull requests; `CODEOWNERS` names it. |
-| `app`         | The slug of the repository's GitHub App.                             |
-| `trailer`     | The `Co-authored-by` line on every squash commit.                    |
-| `gates`       | The command agents run before pushing, when no gates file exists.    |
-| `signoff`     | A `Signed-off-by` line to end every squash commit, for the DCO.      |
-| `assisted_by` | `on` adds an `Assisted-by` line for each agent model.                |
-| `disposable`  | Ignored paths `fab cleanup` may delete with a merged worktree.       |
-| `planning`    | Directories of planning records, reviewed like documentation.        |
-| `version`     | The fabrial release that wrote the installed files.                  |
-| `[tasks]`     | The commands `fab run` uses to read, start and complete a task.      |
+| Key             | What it sets                                                                   |
+| --------------- | ------------------------------------------------------------------------------ |
+| `owner`         | The GitHub login that approves pull requests; `CODEOWNERS` names it.           |
+| `app`           | The slug of the repository's GitHub App.                                       |
+| `secret_prefix` | The prefix of the App's secrets, `<PREFIX>_APP_ID` and `<PREFIX>_PRIVATE_KEY`. |
+| `trailer`       | The `Co-authored-by` line on every squash commit.                              |
+| `gates`         | The command agents run before pushing, when no gates file exists.              |
+| `signoff`       | A `Signed-off-by` line to end every squash commit, for the DCO.                |
+| `assisted_by`   | `on` adds an `Assisted-by` line for each agent model.                          |
+| `disposable`    | Ignored paths `fab cleanup` may delete with a merged worktree.                 |
+| `planning`      | Directories of planning records, reviewed like documentation.                  |
+| `version`       | The fabrial release that wrote the installed files.                            |
+| `[tasks]`       | The commands `fab run` uses to read, start and complete a task.                |
 
 ## The Pi harness
 

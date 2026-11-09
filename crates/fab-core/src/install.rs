@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 use crate::Error;
 use crate::gates::{GATES_PATH, Gates};
-use crate::settings::{SETTINGS_PATH, Settings};
+use crate::settings::{LEGACY_SECRET_PREFIX, SETTINGS_PATH, Settings};
 
 /// The line that opens fabrial's section of `AGENTS.md`.
 pub const AGENTS_BEGIN: &str = "<!-- fabrial:begin -->";
@@ -26,13 +26,11 @@ const AGENTS_PATH: &str = "AGENTS.md";
 const CODEOWNERS_PATH: &str = ".github/CODEOWNERS";
 const SKILLS_TARGET: &str = "../.claude/skills";
 const AGENTS_SECTION: &str = include_str!("agents-section.md");
-/// Secrets the installed workflows read under a new name, as `(old, new)`.
-/// The old names named one App; the new ones name the role, so each
-/// repository can keep its own App's ID and key under them.
-const RENAMED_SECRETS: &[(&str, &str)] = &[
-    ("THUNDERBOT_APP_ID", "FABRIAL_APP_ID"),
-    ("THUNDERBOT_PRIVATE_KEY", "FABRIAL_APP_PRIVATE_KEY"),
-];
+/// The secret prefix fabrial's own workflows, which [`EMBEDDED`] copies,
+/// read. [`expected_files`] replaces it with the repository's.
+const SOURCE_SECRET_PREFIX: &str = "THUNDERBOT";
+/// The secrets the workflows read, without their prefix.
+const SECRET_SUFFIXES: &[&str] = &["_APP_ID", "_PRIVATE_KEY"];
 
 /// The files copied as they are, with whether each is executable.
 const EMBEDDED: &[(&str, &str, bool)] = &[
@@ -396,10 +394,6 @@ pub struct Report {
     pub removed: Vec<PathBuf>,
     /// Retired files [`update`] kept, each with the reason.
     pub kept: Vec<Kept>,
-    /// Secrets the workflows this run replaced read under a new name, as
-    /// `(old, new)`: the repository needs the new ones before the workflows
-    /// run, and can delete the old ones once no workflow reads them.
-    pub renamed_secrets: Vec<(&'static str, &'static str)>,
 }
 
 /// A retired file [`update`] kept.
@@ -487,6 +481,11 @@ pub fn update(root: &Path, change: impl FnOnce(&mut Settings), downgrade: bool) 
             Some(_) => {}
         }
     }
+    // An install from before the setting reads the secrets 0.9.0 and
+    // earlier named; writing that prefix keeps them working.
+    settings
+        .secret_prefix
+        .get_or_insert_with(|| LEGACY_SECRET_PREFIX.into());
     change(&mut settings);
     let mut report = init(root, &settings, false)?;
     remove_retired(root, &mut report);
@@ -548,19 +547,9 @@ pub fn init(root: &Path, settings: &Settings, force: bool) -> Result<Report, Err
     let mut report = Report::default();
     for (path, contents, executable) in &files {
         let full = root.join(path);
-        let existing = fs::read(&full).ok();
-        if existing.as_deref() == Some(contents.as_bytes()) {
+        if fs::read(&full).is_ok_and(|existing| existing == contents.as_bytes()) {
             report.unchanged.push(path.clone());
             continue;
-        }
-        if let Some(existing) = &existing {
-            let old = String::from_utf8_lossy(existing);
-            for &(from, to) in RENAMED_SECRETS {
-                let reads = |text: &str| text.contains(&format!("secrets.{from}"));
-                if reads(&old) && !reads(contents) && !report.renamed_secrets.contains(&(from, to)) {
-                    report.renamed_secrets.push((from, to));
-                }
-            }
         }
         if let Some(parent) = full.parent() {
             fs::create_dir_all(parent).map_err(|source| Error::Io { path: parent.into(), source })?;
@@ -906,14 +895,26 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 /// Every file `init` writes, with its contents and whether it is executable.
+/// The workflows read the secrets under the repository's prefix.
 fn expected_files(settings: &Settings, version: &str) -> Vec<(PathBuf, String, bool)> {
     let mut files: Vec<(PathBuf, String, bool)> = EMBEDDED
         .iter()
-        .map(|(path, contents, executable)| ((*path).into(), (*contents).into(), *executable))
+        .map(|(path, contents, executable)| ((*path).into(), with_secrets(contents, settings), *executable))
         .collect();
     files.push((CODEOWNERS_PATH.into(), codeowners(&settings.owner), false));
     files.push((SETTINGS_PATH.into(), settings.render(version), false));
     files
+}
+
+/// `contents` with each secret fabrial's own workflows read renamed to the
+/// repository's prefix. Text without one comes back as it is.
+fn with_secrets(contents: &str, settings: &Settings) -> String {
+    SECRET_SUFFIXES.iter().fold(contents.to_owned(), |text, suffix| {
+        text.replace(
+            &format!("secrets.{SOURCE_SECRET_PREFIX}{suffix}"),
+            &format!("secrets.{}{suffix}", settings.secret_prefix()),
+        )
+    })
 }
 
 fn codeowners(owner: &str) -> String {
@@ -1063,13 +1064,61 @@ mod tests {
     #[test]
     fn installed_files_name_no_app() {
         // fabrial's own App is stormlight-thunderbot, but each repository
-        // that installs fabrial names its own in `.github/fabrial.toml`.
-        let files = EMBEDDED.iter().map(|(p, c, _)| (*p, *c));
-        let owners = codeowners("someone");
-        let fixed = [("agents-section.md", AGENTS_SECTION), ("CODEOWNERS", owners.as_str())];
-        for (path, contents) in files.chain(fixed) {
-            assert!(!contents.to_lowercase().contains("thunderbot"), "{path} names an App");
+        // that installs fabrial names its own in `.github/fabrial.toml`, and
+        // the default install reads its secrets under FABRIAL.
+        let files = expected_files(&settings(), crate::VERSION);
+        let section = (PathBuf::from("agents-section.md"), AGENTS_SECTION.to_owned(), false);
+        for (path, contents, _) in files.into_iter().chain([section]) {
+            if path == Path::new(SETTINGS_PATH) {
+                continue;
+            }
+            assert!(
+                !contents.to_lowercase().contains("thunderbot"),
+                "{} names an App",
+                path.display()
+            );
         }
+    }
+
+    #[test]
+    fn the_workflows_read_the_secrets_under_the_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let own = Settings { secret_prefix: Some("OWN_BOT".into()), ..settings() };
+        install(dir.path(), &own, false).unwrap();
+        for workflow in ["branch-pr.yml", "review.yml", "comment.yml"] {
+            let text = fs::read_to_string(dir.path().join(".github/workflows").join(workflow)).unwrap();
+            assert!(text.contains("${{ secrets.OWN_BOT_APP_ID }}"), "{workflow}");
+            assert!(text.contains("${{ secrets.OWN_BOT_PRIVATE_KEY }}"), "{workflow}");
+            assert!(!text.contains(SOURCE_SECRET_PREFIX), "{workflow}");
+        }
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+    }
+
+    #[test]
+    fn update_keeps_the_secrets_an_install_without_a_prefix_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), &settings(), false).unwrap();
+        let path = dir.path().join(SETTINGS_PATH);
+        let old: String = fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.starts_with("secret_prefix = "))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        fs::write(&path, old).unwrap();
+        update(dir.path(), |_| {}, false).unwrap();
+        assert!(
+            fs::read_to_string(&path)
+                .unwrap()
+                .contains("secret_prefix = \"THUNDERBOT\"\n")
+        );
+        let review = fs::read_to_string(dir.path().join(".github/workflows/review.yml")).unwrap();
+        assert!(review.contains("secrets.THUNDERBOT_APP_ID") && review.contains("secrets.THUNDERBOT_PRIVATE_KEY"));
+        assert_eq!(check(dir.path()).unwrap(), vec![]);
+        // A prefix the install sets is kept.
+        update(dir.path(), |s| s.secret_prefix = Some("OWN".into()), false).unwrap();
+        update(dir.path(), |_| {}, false).unwrap();
+        assert!(fs::read_to_string(&path).unwrap().contains("secret_prefix = \"OWN\"\n"));
     }
 
     #[test]
@@ -1099,29 +1148,11 @@ mod tests {
         assert_eq!(check(dir.path()).unwrap(), vec![]);
     }
 
-    #[test]
-    fn update_names_the_secrets_the_workflows_now_read() {
-        let dir = tempfile::tempdir().unwrap();
-        install(dir.path(), &settings(), false).unwrap();
-        for workflow in ["branch-pr.yml", "review.yml", "comment.yml"] {
-            let path = dir.path().join(".github/workflows").join(workflow);
-            let text = fs::read_to_string(&path).unwrap();
-            assert!(text.contains("secrets.FABRIAL_APP_ID") && text.contains("secrets.FABRIAL_APP_PRIVATE_KEY"));
-            let old = text
-                .replace("secrets.FABRIAL_APP_ID", "secrets.THUNDERBOT_APP_ID")
-                .replace("secrets.FABRIAL_APP_PRIVATE_KEY", "secrets.THUNDERBOT_PRIVATE_KEY");
-            fs::write(&path, old).unwrap();
-        }
-        let report = update(dir.path(), |_| {}, false).unwrap();
-        assert_eq!(report.renamed_secrets, RENAMED_SECRETS);
-        let again = update(dir.path(), |_| {}, false).unwrap();
-        assert_eq!(again.renamed_secrets, vec![]);
-    }
-
     fn settings() -> Settings {
         Settings {
             owner: "desertthunder".into(),
             app: Some("fabrial-bot".into()),
+            secret_prefix: Some(crate::settings::DEFAULT_SECRET_PREFIX.into()),
             trailer: "Owais <desertthunder.dev@gmail.com>".into(),
             signoff: None,
             assisted_by: None,

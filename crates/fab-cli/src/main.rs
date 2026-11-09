@@ -79,6 +79,10 @@ enum Command {
         /// as: `my-bot` for github.com/apps/my-bot.
         #[arg(long)]
         app: String,
+        /// The prefix of the secrets holding the App's ID and key: the
+        /// workflows read `<PREFIX>_APP_ID` and `<PREFIX>_PRIVATE_KEY`.
+        #[arg(long, default_value = fab_core::settings::DEFAULT_SECRET_PREFIX)]
+        secret_prefix: String,
         /// The squash commit's Co-authored-by value, as "Name <email>".
         #[arg(long)]
         trailer: String,
@@ -110,6 +114,10 @@ enum Command {
         /// needs it.
         #[arg(long)]
         app: Option<String>,
+        /// A new prefix for the secrets holding the App's ID and key. An
+        /// install without one keeps THUNDERBOT, the names 0.9.0 read.
+        #[arg(long)]
+        secret_prefix: Option<String>,
         /// A new Co-authored-by value for the squash commit.
         #[arg(long)]
         trailer: Option<String>,
@@ -180,44 +188,52 @@ struct Repo {
 
 fn main() -> ExitCode {
     let result = match Cli::parse().command {
-        Command::Init { repo, owner, app, trailer, gates, signoff, assisted_by, force } => in_repo(&repo, |dir| {
-            let settings = Settings {
-                owner,
-                app: Some(app),
-                trailer,
-                gates,
-                signoff,
-                assisted_by,
-                disposable: None,
-                planning: None,
-                version: None,
-                tasks: None,
-            };
-            install::install(dir, &settings, force).map(|r| written(&r, "installed"))
-        }),
-        Command::Update { repo, owner, app, trailer, gates, signoff, assisted_by, force } => in_repo(&repo, |dir| {
-            let change = |s: &mut Settings| {
-                if let Some(owner) = owner {
-                    s.owner = owner;
-                }
-                if let Some(app) = app {
-                    s.app = Some(app);
-                }
-                if let Some(trailer) = trailer {
-                    s.trailer = trailer;
-                }
-                if let Some(gates) = gates {
-                    s.gates = gates;
-                }
-                if let Some(signoff) = signoff {
-                    s.signoff = Some(signoff).filter(|v| !v.is_empty());
-                }
-                if let Some(assisted_by) = assisted_by {
-                    s.assisted_by = Some(assisted_by);
-                }
-            };
-            install::update(dir, change, force).map(|r| written(&r, "updated"))
-        }),
+        Command::Init { repo, owner, app, secret_prefix, trailer, gates, signoff, assisted_by, force } => {
+            in_repo(&repo, |dir| {
+                let settings = Settings {
+                    owner,
+                    app: Some(app),
+                    secret_prefix: Some(secret_prefix),
+                    trailer,
+                    gates,
+                    signoff,
+                    assisted_by,
+                    disposable: None,
+                    planning: None,
+                    version: None,
+                    tasks: None,
+                };
+                install::install(dir, &settings, force).map(|r| written(&r, "installed"))
+            })
+        }
+        Command::Update { repo, owner, app, secret_prefix, trailer, gates, signoff, assisted_by, force } => {
+            in_repo(&repo, |dir| {
+                let change = |s: &mut Settings| {
+                    if let Some(owner) = owner {
+                        s.owner = owner;
+                    }
+                    if let Some(app) = app {
+                        s.app = Some(app);
+                    }
+                    if let Some(prefix) = secret_prefix {
+                        s.secret_prefix = Some(prefix);
+                    }
+                    if let Some(trailer) = trailer {
+                        s.trailer = trailer;
+                    }
+                    if let Some(gates) = gates {
+                        s.gates = gates;
+                    }
+                    if let Some(signoff) = signoff {
+                        s.signoff = Some(signoff).filter(|v| !v.is_empty());
+                    }
+                    if let Some(assisted_by) = assisted_by {
+                        s.assisted_by = Some(assisted_by);
+                    }
+                };
+                install::update(dir, change, force).map(|r| written(&r, "updated"))
+            })
+        }
         Command::Check { repo } => in_repo(&repo, check),
         Command::Claim { operation } => return operation.run(),
         Command::Status(options) => return task_status::run(options),
@@ -314,24 +330,6 @@ fn written(report: &Report, done: &str) -> ExitCode {
                 eprintln!("fab: could not remove {path}, which this release no longer installs: {error}");
             }
         }
-    }
-    if !report.renamed_secrets.is_empty() {
-        let names = |new: bool| {
-            let pick = |&(old, renamed): &(&'static str, &'static str)| if new { renamed } else { old };
-            report
-                .renamed_secrets
-                .iter()
-                .map(pick)
-                .collect::<Vec<_>>()
-                .join(" and ")
-        };
-        println!(
-            "The workflows now read the secrets {} instead of {}. Add the new ones with the same values \
-             before the workflows next run, as docs/bot-setup.md says, then delete the old ones once no \
-             workflow reads them.",
-            names(true),
-            names(false)
-        );
     }
     println!(
         "fabrial {} {done}: {} written, {} unchanged.",

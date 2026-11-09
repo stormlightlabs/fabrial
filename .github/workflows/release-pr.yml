@@ -24,8 +24,8 @@ jobs:
       - uses: actions/create-github-app-token@v2
         id: app
         with:
-          app-id: ${{ secrets.FABRIAL_APP_ID }}
-          private-key: ${{ secrets.FABRIAL_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.THUNDERBOT_APP_ID }}
+          private-key: ${{ secrets.THUNDERBOT_PRIVATE_KEY }}
 
       # The App token pushes the branch, so Branch PR runs on it; a push made
       # with GITHUB_TOKEN starts no workflows.
