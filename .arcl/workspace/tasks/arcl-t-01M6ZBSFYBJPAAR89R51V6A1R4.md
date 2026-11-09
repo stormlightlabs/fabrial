@@ -2,9 +2,10 @@
 id = "arcl-t-01M6ZBSFYBJPAAR89R51V6A1R4"
 phase = "arcl-ph-01M5S4SCFT693V6SCF93BDMEH7"
 title = "Let each repository use its own GitHub App"
-status = "pending"
+status = "completed"
 priority = "high"
 position = 0
+evidence = "Done in #106 at a74cac1 and #108 at 29f2fa4: each repository names its own App, and the App key runs only from main"
 +++
 
 The first task after v0.9.0. The GitHub App that opens pull requests, posts
@@ -18,11 +19,11 @@ look for the `stormlight-thunderbot[bot]` login, and the docs and the section
 
 Acceptance criteria:
 
-- [ ] `.github/fabrial.toml` names the repository's App, and the gate, PR
+- [x] `.github/fabrial.toml` names the repository's App, and the gate, PR
       status, Branch PR and Bot comment read it instead of a fixed login
-- [ ] The installed workflows read secret names that do not name a
+- [x] The installed workflows read secret names that do not name a
       particular App, and `fab update` says how to move the old ones
-- [ ] Workflows that hold the App key run only from `main`, which the child
+- [x] Workflows that hold the App key run only from `main`, which the child
       task covers
-- [ ] docs/bot-setup.md explains creating your own App; nothing installed
+- [x] docs/bot-setup.md explains creating your own App; nothing installed
       into another repository names stormlight-thunderbot
