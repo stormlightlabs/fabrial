@@ -28,8 +28,9 @@ the session works on a `claude/<topic>` or `codex/<topic>` branch.
 ## 2. Implement and push
 
 The session, following `fab-implement`, makes the change and its test in the
-task's worktree, runs `fab gates`, commits and pushes. The first commit's
-subject becomes the pull request title.
+task's worktree, runs `fab gates`, commits and pushes. The subject of the
+first commit that is not a claim commit becomes the pull request title, and
+its body the pull request body.
 
 ## 3. The bot opens a draft
 

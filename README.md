@@ -30,8 +30,9 @@ A repository that uses the Developer Certificate of Origin adds
 repository, set it with `fab update --signoff`, which also installs a
 release whose gate reads it; an older release ignores the key.
 `--assisted-by on` adds an `Assisted-by: <model>` line to each squash commit
-for every agent model its pull request's commits name in `Co-authored-by`
-trailers, so `git log --grep` on `main` finds agent work by model. `off`, or
+for every model its pull request's commits name in a `Co-authored-by`
+trailer addressed to `noreply@anthropic.com`, so `git log --grep` on `main`
+finds agent work by model. Other trailers add no line. `off`, or
 no `assisted_by` key, adds none.
 
 The installer fetches the prebuilt `fab` for Linux x86_64 or Apple Silicon

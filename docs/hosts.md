@@ -2,10 +2,11 @@
 
 What Claude Code, Codex and Pi read from this repository, and where they
 differ. fabrial ships the skills and agent roles; each host runs them its own
-way, and the review loop ends at `Review finished` on every host. The Claude Code rows were checked here with Claude Code 2.1.309 on
-2026-10-23. The Codex and Pi rows come from thunderstorm's
-`docs/internal/hosts.md`, checked there with `codex-cli` 0.146.0 and `pi`
-0.85.1, and have not yet been checked against this repository.
+way, and the review loop ends at `Review finished` on every host. The Claude
+Code rows were checked here with Claude Code 2.1.309 on 2026-10-23. The
+Codex and Pi rows come from thunderstorm's `docs/internal/hosts.md`, checked
+there with `codex-cli` 0.146.0 and `pi` 0.85.1, and have not yet been checked
+against this repository.
 
 ## Skills
 

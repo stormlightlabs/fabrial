@@ -48,8 +48,8 @@ a paid plan, so rulesets on `main` are enforced.
   has already expired. `fab run` claims the same way when it starts a task.
 - **One set of run operations, three drivers.** A core crate holds the
   operations: claim, start a step, record a result, mark ready, release.
-  `fab run`, in the Pi harness, drives the fixed sequence in code. An agent such as Pi drives it
-  through the CLI. A person drives it by asking the session,
+  `fab run`, in the Pi harness, drives the fixed sequence in code. An agent
+  such as Pi drives it through the CLI. A person drives it by asking the session,
   with a `/storm:ready` PR comment the gate workflow reads,
   or through whatever a host builds on the same operations.
 - **Enforcement is server-side:** rulesets, required checks and the review
@@ -138,8 +138,8 @@ When moving the arcl pin, rerun `arcl skill install` and commit the result.
 
 ### Shipped
 
-What each phase, then each release, has shipped. Phases 1, 2 and 6 are done in part; their
-remaining tasks are in arcl.
+What each phase, then each release, has shipped. Phases 1, 2 and 6 are
+done in part; their remaining tasks are in arcl.
 
 - Phase 0: the ruleset, `CODEOWNERS`, the bot, `AGENTS.md`, the writing skill,
   the Cargo workspace with `just check`, and the Branch PR workflow.
@@ -158,8 +158,7 @@ remaining tasks are in arcl.
   [#30](https://github.com/stormlightlabs/fabrial/pull/30).
 - v0.9.0, #68 to #102:
   - The loop scoped to one task ending at `Review finished`, off GitHub
-    events, with `fab serve` moved out and fabrial no harness (#80, #82,
-    #87, #90, #93).
+    events, with fabrial no harness (#80, #82, #87, #90, #93).
   - A task's branch as its claim, a claim that lapses where the remote
     refuses deletion, and `fab status` (#78, #83, #99).
   - `fab cleanup`, for merged branches with or without a worktree and the

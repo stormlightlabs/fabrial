@@ -27,21 +27,17 @@ does with the token; grant the permissions those calls need.
 | Workflow    | Calls                                                              | Permission it needs       |
 | ----------- | ------------------------------------------------------------------ | ------------------------- |
 | Branch PR   | `gh pr list`, `gh pr create --draft`                               | Pull requests write       |
-| Review gate | creates `storm/review` check runs                                  | Checks write              |
+| Review gate | reads and creates `storm/review` check runs                        | Checks write              |
 | Review gate | `gh pr ready`, `gh pr comment`, edits the status comment           | Pull requests write       |
-| Review gate | reads the pull request's commits and compares it with `main`       | Contents read             |
-| Review gate | reads an editor's permission through `collaborators/<user>/permission` | not determined        |
+| Review gate | reads the pull request's commits through `pulls/<n>/commits`       | Pull requests read        |
+| Review gate | reads an editor's permission through `collaborators/<user>/permission` | Metadata read         |
 | Bot comment | posts comments, edits the status comment, posts reviews, requests a reviewer, resolves review threads | Pull requests write |
 
-Gaps:
-
-- Comments on a pull request go through the issues API
-  (`issues/<n>/comments`). Whether Pull requests write covers them or the App
-  also needs Issues write is not recorded here.
-- The permission that lets an App read `collaborators/<user>/permission` is
-  not recorded here. Without it, `fab gate` treats every editor but the bot
-  as lacking write access, and an owner's edit to a reviewed pull request
-  does not post a new squash message.
+Comments on a pull request go through the issues API
+(`issues/<n>/comments`), which takes Issues write or Pull requests write.
+Every App has Metadata read. The gate compares the head with `main` using
+git, in a checkout made with `GITHUB_TOKEN`, so the App token needs no
+Contents permission.
 
 fabrial's own release workflows need more, and an installing repository does
 not run them: Release PR and Release tag push a branch and a tag with
