@@ -27,26 +27,25 @@ const COMMAND_PAGES: &[CommandPage] = &[
         file: "setup-commands.md",
         title: "Setup commands",
         label: "Setup",
-        description: "Install fabrial into a repository, refresh it, and report where it has drifted.",
-        intro: "These commands install fabrial into a repository and keep it current. Run them at the \
-                repository root, or name the root with `--dir`.",
+        description: "Install fabrial into a repository or manage your installation.",
+        intro: "Run them at the repository root or a specific directory with `--dir`.",
         commands: &["init", "update", "check"],
     },
     CommandPage {
         file: "agent-commands.md",
         title: "Agent commands",
         label: "Agents",
-        description: "The commands agents and skills run on a task: claims, gates, review depth, the review \
-                      sequence and cleanup.",
-        intro: "Agents, and the skills they follow, run these from a task's worktree or the primary \
-                checkout. People run them too, most often `fab status` and `fab cleanup`.",
+        description: "Commands agents run on a task: claims, gates, review depth, the review sequence and \
+                      cleanup.",
+        intro: "Agents run these on a task, from its worktree or the primary checkout. People run \
+                them too, most often `fab status` and `fab cleanup`.",
         commands: &["claim", "status", "gates", "review-depth", "sequence", "cleanup"],
     },
     CommandPage {
         file: "workflow-commands.md",
         title: "Workflow commands",
         label: "Workflows",
-        description: "The commands fabrial's GitHub workflows run: the review gate, Branch PR, the bot's \
+        description: "Fabrial's workflow commands: the review gate, Branch PR, the bot's \
                       comments and reviews, and fabrial's release steps.",
         intro: "fabrial's GitHub workflows run these. When one fails in GitHub Actions it prints the error \
                 as an annotation. Most read their input from variables the workflow sets, so run them by \

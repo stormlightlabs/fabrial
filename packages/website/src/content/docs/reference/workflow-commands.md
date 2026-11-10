@@ -1,7 +1,7 @@
 ---
 title: Workflow commands
 label: Workflows
-description: "The commands fabrial's GitHub workflows run: the review gate, Branch PR, the bot's comments and reviews, and fabrial's release steps."
+description: "Fabrial's workflow commands: the review gate, Branch PR, the bot's comments and reviews, and fabrial's release steps."
 section: Reference
 group: Commands
 order: 3

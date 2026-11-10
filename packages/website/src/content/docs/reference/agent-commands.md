@@ -1,15 +1,14 @@
 ---
 title: Agent commands
 label: Agents
-description: "The commands agents and skills run on a task: claims, gates, review depth, the review sequence and cleanup."
+description: "Commands agents run on a task: claims, gates, review depth, the review sequence and cleanup."
 section: Reference
 group: Commands
 order: 2
 ---
 
-Agents, and the skills they follow, run these from a task's worktree or the
-primary checkout. People run them too, most often `fab status` and
-`fab cleanup`.
+Agents run these on a task, from its worktree or the primary checkout. People
+run them too, most often `fab status` and `fab cleanup`.
 
 ## fab claim
 

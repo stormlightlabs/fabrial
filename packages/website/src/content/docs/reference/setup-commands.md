@@ -1,14 +1,13 @@
 ---
 title: Setup commands
 label: Setup
-description: Install fabrial into a repository, refresh it, and report where it has drifted.
+description: Install fabrial into a repository or manage your installation.
 section: Reference
 group: Commands
 order: 1
 ---
 
-These commands install fabrial into a repository and keep it current. Run them
-at the repository root, or name the root with `--dir`.
+Run them at the repository root or a specific directory with `--dir`.
 
 ## fab init
 
