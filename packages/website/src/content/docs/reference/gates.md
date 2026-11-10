@@ -20,7 +20,7 @@ is none, and `fab update` and `fab check` leave it alone. Without the file,
 | ----------- | ---------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `full`      | string           | required | Command that runs every check. `fab gates --full` runs it, and so does a changed file no scope names when `unmatched` is `full`. |
 | `unmatched` | `full` or `skip` | `full`   | What a changed file that no scope names runs: the `full` command, or nothing.                                                    |
-| `scoped`    | array of tables  | none     | Checks for parts of the repository, as `[[scoped]]` tables, in the order they run.                                               |
+| `scoped`    | array of tables  | unset    | Checks for parts of the repository, as `[[scoped]]` tables, in the order they run.                                               |
 
 ## Scopes
 
@@ -29,7 +29,7 @@ checks it.
 
 | Key     | Type            | Default  | Description                                                                                                                              |
 | ------- | --------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`  | string          | required | Scope's name, as `fab gates` prints it. No two scopes share one.                                                                         |
+| `name`  | string          | required | Scope's name, as `fab gates` prints it. Unique in the file.                                                                              |
 | `paths` | list of strings | required | Globs over paths from the repository root. `*` and `?` match within one path segment, and a `**` segment matches any number of segments. |
 | `run`   | string          | required | Command, run with `sh -c` at the repository root.                                                                                        |
 

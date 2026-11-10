@@ -8,8 +8,8 @@ order: 3
 ---
 
 fabrial's GitHub workflows run these. When one fails in GitHub Actions it prints
-the error as an annotation. Most read their input from the environment a
-workflow sets, so running them by hand is for testing a workflow.
+the error as an annotation. Most read their input from variables the workflow
+sets, so run them by hand only to test a workflow.
 
 ## fab gate
 

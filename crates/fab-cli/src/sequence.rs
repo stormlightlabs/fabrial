@@ -22,9 +22,9 @@ pub const KEYS: &[Key] = &[
         name: "stage",
         kind: "array of tables",
         default: "required",
-        about: "The stages, as `[[stage]]` tables, in the order they run. At least one.",
+        about: "Stages, as `[[stage]]` tables, in the order they run. At least one.",
     },
-    Key { name: "finish", kind: "table", default: "required", about: "The last step, after every stage." },
+    Key { name: "finish", kind: "table", default: "required", about: "Last step, after every stage." },
 ];
 /// The keys of each `[[stage]]` table, [`Stage`], as the reference pages
 /// describe them.
@@ -33,7 +33,7 @@ pub const STAGE_KEYS: &[Key] = &[
         name: "name",
         kind: "string",
         default: "required",
-        about: "Stage's name, such as `standard review`. No two stages share one: `fab run` tells them \
+        about: "Stage's name, such as `standard review`. Unique in the file, since `fab run` tells stages \
                 apart by name.",
     },
     Key {

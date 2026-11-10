@@ -8,7 +8,7 @@ order: 4
 ---
 
 These drive the Pi harness, which runs each step of a task in a fresh, sandboxed
-Pi worker in a tmux session on the host. They exist on Unix only.
+Pi worker in a tmux session on the host. They are built on Unix only.
 
 ## fab run
 

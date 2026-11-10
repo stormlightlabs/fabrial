@@ -6,10 +6,10 @@ group: Skills
 order: 8
 ---
 
-`fab init` installs these skills into `.claude/skills/`, and links
-`.agents/skills` there for Codex and Pi. Claude Code offers each as a slash
-command of the same name, such as `/fab-implement`. A skill that takes arguments
-names them after its description.
+`fab init` installs these skills into `.claude/skills/` and links
+`.agents/skills` for Codex and Pi. Claude Code offers each as a slash command of
+the same name, such as `/fab-implement`. A skill that takes arguments names them
+after its description.
 
 ## fab-adv-rev
 

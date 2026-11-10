@@ -8,8 +8,8 @@ order: 2
 ---
 
 Agents, and the skills they follow, run these from a task's worktree or the
-primary checkout. A person can run them too: `fab status` and `fab cleanup` are
-the ones you are most likely to want by hand.
+primary checkout. People run them too, most often `fab status` and
+`fab cleanup`.
 
 ## fab claim
 
@@ -88,7 +88,7 @@ fab status [OPTIONS]
 
 ## fab gates
 
-Run the checks the change touches, from `.github/fabrial-gates.toml`, and exit
+Run checks relevant to the change, from `.github/fabrial-gates.toml`, and exit
 with the first failure's code.
 
 ```text

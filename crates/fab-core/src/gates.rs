@@ -28,7 +28,7 @@ pub const KEYS: &[Key] = &[
     Key {
         name: "scoped",
         kind: "array of tables",
-        default: "none",
+        default: "unset",
         about: "Checks for parts of the repository, as `[[scoped]]` tables, in the order they run.",
     },
 ];
@@ -39,7 +39,7 @@ pub const SCOPE_KEYS: &[Key] = &[
         name: "name",
         kind: "string",
         default: "required",
-        about: "Scope's name, as `fab gates` prints it. No two scopes share one.",
+        about: "Scope's name, as `fab gates` prints it. Unique in the file.",
     },
     Key {
         name: "paths",

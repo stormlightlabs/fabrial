@@ -7,10 +7,8 @@ group: Commands
 order: 1
 ---
 
-These commands install fabrial's workflows, gate, skills and agents into a
-repository, refresh them from a newer build, and report where an installed copy
-differs from this build. Run them at the repository root, or name it with
-`--dir`.
+These commands install fabrial into a repository and keep it current. Run them
+at the repository root, or name the root with `--dir`.
 
 ## fab init
 
@@ -21,18 +19,18 @@ not have them yet.
 fab init [OPTIONS] --owner <OWNER> --app <APP> --trailer <TRAILER> --gates <GATES>
 ```
 
-| Option                            | Default   | Description                                                                                                                                                                    |
-| --------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--dir <DIR>`                     | `.`       | The repository root.                                                                                                                                                           |
-| `--owner <OWNER>`                 | required  | GitHub login of the person who approves pull requests.                                                                                                                         |
-| `--app <APP>`                     | required  | The slug of the repository's GitHub App, which the workflows act as: `my-bot` for `github.com/apps/my-bot`.                                                                    |
-| `--secret-prefix <SECRET_PREFIX>` | `FABRIAL` | The prefix of the secrets holding the App's ID and key: the workflows read `<PREFIX>_APP_ID` and `<PREFIX>_PRIVATE_KEY`.                                                       |
-| `--environment <ENVIRONMENT>`     | unset     | A GitHub environment for the jobs that mint the App's token to name; keep the secrets there, restricted to main. Without it the jobs read repository and organization secrets. |
-| `--trailer <TRAILER>`             | required  | The squash commit's `Co-authored-by` value, as `Name <email>`.                                                                                                                 |
-| `--gates <GATES>`                 | required  | The command agents run before pushing.                                                                                                                                         |
-| `--signoff <SIGNOFF>`             | unset     | The owner's `Signed-off-by` value, as `Name <email>`, to end every squash commit with; for repositories that use the DCO.                                                      |
-| `--assisted-by <ASSISTED_BY>`     | unset     | `on` adds an `Assisted-by` line naming each agent model to every squash commit. Takes `on` or `off`.                                                                           |
-| `--force`                         | off       | Replace files fabrial did not write.                                                                                                                                           |
+| Option                            | Default   | Description                                                                                                                                                                      |
+| --------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--dir <DIR>`                     | `.`       | The repository root.                                                                                                                                                             |
+| `--owner <OWNER>`                 | required  | GitHub login of the person who approves pull requests.                                                                                                                           |
+| `--app <APP>`                     | required  | The slug of the repository's GitHub App, which the workflows act as: `my-bot` for `github.com/apps/my-bot`.                                                                      |
+| `--secret-prefix <SECRET_PREFIX>` | `FABRIAL` | The prefix of the secrets holding the App's ID and key: the workflows read `<PREFIX>_APP_ID` and `<PREFIX>_PRIVATE_KEY`.                                                         |
+| `--environment <ENVIRONMENT>`     | unset     | A GitHub environment for the jobs that mint the App's token to name; keep the secrets there, restricted to `main`. Without it the jobs read repository and organization secrets. |
+| `--trailer <TRAILER>`             | required  | The squash commit's `Co-authored-by` value, as `Name <email>`.                                                                                                                   |
+| `--gates <GATES>`                 | required  | The command agents run before pushing.                                                                                                                                           |
+| `--signoff <SIGNOFF>`             | unset     | The owner's `Signed-off-by` value, as `Name <email>`, to end every squash commit with; for repositories that use the DCO.                                                        |
+| `--assisted-by <ASSISTED_BY>`     | unset     | `on` adds an `Assisted-by` line naming each agent model to every squash commit. Takes `on` or `off`.                                                                             |
+| `--force`                         | off       | Replace files fabrial did not write.                                                                                                                                             |
 
 ## fab update
 

@@ -89,8 +89,7 @@ pub fn assert_keys_match<T: DeserializeOwned>(keys: &[Key], entry: impl Fn(&str)
 mod tests {
     use super::*;
 
-    #[derive(Deserialize)]
-    #[allow(dead_code)]
+    #[derive(Debug, Deserialize, PartialEq)]
     struct Sample {
         first: String,
         #[serde(default)]
@@ -113,6 +112,8 @@ mod tests {
     fn fields_reads_a_structs_keys_in_order() {
         assert_eq!(fields::<Sample>(), ["first", "second"]);
         assert!(fields::<String>().is_empty());
+        let sample: Sample = toml::from_str("first = \"a\"\nsecond = 2\n").unwrap();
+        assert_eq!(sample, Sample { first: "a".into(), second: Some(2) });
     }
 
     #[test]

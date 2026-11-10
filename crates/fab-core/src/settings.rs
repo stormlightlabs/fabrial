@@ -22,7 +22,7 @@ pub const KEYS: &[Key] = &[
         name: "owner",
         kind: "string",
         default: "required",
-        about: "GitHub login of the person who approves pull requests. `fab init` writes `CODEOWNERS` from it.",
+        about: "GitHub login of code reviewer/owner. `fab init` writes `CODEOWNERS` from it.",
     },
     Key {
         name: "app",
@@ -36,7 +36,8 @@ pub const KEYS: &[Key] = &[
         name: "secret_prefix",
         kind: "string",
         default: "`THUNDERBOT`",
-        about: "Prefix of the secrets that hold the App's ID and key: the workflows read `<prefix>_APP_ID` and \
+        about: "Prefix of the secrets that hold the App's credentials (ID & private key): the workflows read \
+                `<prefix>_APP_ID` and \
                 `<prefix>_PRIVATE_KEY`. `fab init` writes `FABRIAL`. Unset, the workflows read the \
                 `THUNDERBOT_` names fabrial 0.9.0 and earlier used.",
     },
@@ -44,9 +45,9 @@ pub const KEYS: &[Key] = &[
         name: "environment",
         kind: "string",
         default: "unset",
-        about: "GitHub environment that every job minting the App's token names. Keep the App's secrets there \
-                with a deployment rule of `main`, so no job on another ref reads them. Unset, the jobs read \
-                repository and organization secrets.",
+        about: "GitHub environment named by every job that mints the App's token. Keep the App's secrets \
+                there, with a deployment rule for `main`, so no job on another ref reads them. Unset, the jobs \
+                read repository and organization secrets.",
     },
     Key {
         name: "trailer",
@@ -79,17 +80,17 @@ pub const KEYS: &[Key] = &[
         name: "disposable",
         kind: "list of strings",
         default: "unset",
-        about: "Ignored paths, relative to a worktree's root, that `fab cleanup` may delete with a merged \
-                worktree beside Cargo's `target/`: caches a tool rebuilds, such as a tracker's local database. \
-                A path ending in `/` names a directory.",
+        about: "Ignored paths, relative to a worktree's root, that `fab cleanup` deletes with a merged \
+                worktree, as it does Cargo's `target/`. Any other ignored file keeps the worktree. List caches \
+                a tool rebuilds, such as a tracker's local database. A path ending in `/` names a directory.",
     },
     Key {
         name: "planning",
         kind: "list of strings",
         default: "unset",
         about: "Directories, relative to the repository root and each ending in `/`, whose Markdown and TOML \
-                files are planning records, such as a tracker's task files. `fab review-depth` gives a pull \
-                request that changes only those, documentation and tests the standard pass. None may sit \
+                files are planning records, such as a tracker's task files. `fab review-depth` gives the \
+                standard pass to a pull request that changes only these files, documentation and tests. None may sit \
                 under `.github`, `.claude`, `.agents` or `.codex`.",
     },
     Key {
@@ -103,8 +104,8 @@ pub const KEYS: &[Key] = &[
         name: "tasks",
         kind: "table",
         default: "unset",
-        about: "Commands `fab run` uses to reach the repository's task source. Unset leaves a run to GitHub \
-                issues and description files.",
+        about: "Commands `fab run` uses to reach the repository's task source. Unset, `fab run` takes only \
+                GitHub issues and description files.",
     },
 ];
 /// The keys of the `[tasks]` table, [`Tasks`], as the reference pages
@@ -114,15 +115,15 @@ pub const TASK_KEYS: &[Key] = &[
         name: "init",
         kind: "string",
         default: "unset",
-        about: "Prepares a new worktree for the other commands, run once before `start`, such as a tracker \
-                that keeps a local cache per checkout. Takes no placeholders.",
+        about: "Prepares a new worktree for the other commands, such as building a tracker's local cache. \
+                Runs once, before `start`, and takes no placeholders.",
     },
     Key {
         name: "skill",
         kind: "string",
         default: "unset",
-        about: "Skill under `.claude/skills` that `fab dispatch` gives an implementer for working the \
-                tracker, such as `arclightning`. A plain directory name.",
+        about: "Skill that `fab dispatch` gives an implementer for working the tracker, such as \
+                `arclightning`: the name of a directory in `.claude/skills`, not a path.",
     },
     Key { name: "show", kind: "string", default: "required", about: "Prints the task, given `{id}`." },
     Key { name: "start", kind: "string", default: "required", about: "Starts the task, given `{id}`." },

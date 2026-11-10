@@ -85,7 +85,7 @@ enum Command {
         #[arg(long, default_value = fab_core::settings::DEFAULT_SECRET_PREFIX)]
         secret_prefix: String,
         /// A GitHub environment for the jobs that mint the App's token to
-        /// name; keep the secrets there, restricted to main. Without it the
+        /// name; keep the secrets there, restricted to `main`. Without it the
         /// jobs read repository and organization secrets.
         #[arg(long)]
         environment: Option<String>,
@@ -157,7 +157,7 @@ enum Command {
     /// Open a draft pull request for an agent's work branch; the Branch PR
     /// workflow runs it.
     BranchPr(branch_pr::Options),
-    /// Run the checks the change touches, from `.github/fabrial-gates.toml`,
+    /// Run checks relevant to the change, from `.github/fabrial-gates.toml`,
     /// and exit with the first failure's code.
     Gates(gates::Options),
     /// Print how many review passes the diff takes: none, standard or full.

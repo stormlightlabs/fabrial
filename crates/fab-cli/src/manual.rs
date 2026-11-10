@@ -28,9 +28,8 @@ const COMMAND_PAGES: &[CommandPage] = &[
         title: "Setup commands",
         label: "Setup",
         description: "Install fabrial into a repository, refresh it, and report where it has drifted.",
-        intro: "These commands install fabrial's workflows, gate, skills and agents into a repository, \
-                refresh them from a newer build, and report where an installed copy differs from this \
-                build. Run them at the repository root, or name it with `--dir`.",
+        intro: "These commands install fabrial into a repository and keep it current. Run them at the \
+                repository root, or name the root with `--dir`.",
         commands: &["init", "update", "check"],
     },
     CommandPage {
@@ -40,8 +39,7 @@ const COMMAND_PAGES: &[CommandPage] = &[
         description: "The commands agents and skills run on a task: claims, gates, review depth, the review \
                       sequence and cleanup.",
         intro: "Agents, and the skills they follow, run these from a task's worktree or the primary \
-                checkout. A person can run them too: `fab status` and `fab cleanup` are the ones you are \
-                most likely to want by hand.",
+                checkout. People run them too, most often `fab status` and `fab cleanup`.",
         commands: &["claim", "status", "gates", "review-depth", "sequence", "cleanup"],
     },
     CommandPage {
@@ -51,8 +49,8 @@ const COMMAND_PAGES: &[CommandPage] = &[
         description: "The commands fabrial's GitHub workflows run: the review gate, Branch PR, the bot's \
                       comments and reviews, and fabrial's release steps.",
         intro: "fabrial's GitHub workflows run these. When one fails in GitHub Actions it prints the error \
-                as an annotation. Most read their input from the environment a workflow sets, so running \
-                them by hand is for testing a workflow.",
+                as an annotation. Most read their input from variables the workflow sets, so run them by \
+                hand only to test a workflow.",
         commands: &["gate", "branch-pr", "pr-status", "pr-review", "pr-answer", "release"],
     },
     CommandPage {
@@ -61,14 +59,13 @@ const COMMAND_PAGES: &[CommandPage] = &[
         label: "Pi harness",
         description: "The commands that run Pi workers: fab run, fab dispatch, fab worker and fab events.",
         intro: "These drive the Pi harness, which runs each step of a task in a fresh, sandboxed Pi worker \
-                in a tmux session on the host. They exist on Unix only.",
+                in a tmux session on the host. They are built on Unix only.",
         commands: &["run", "dispatch", "worker", "events"],
     },
 ];
 /// The order of the first page after the command pages.
 const FILE_PAGES_ORDER: usize = COMMAND_PAGES.len() + 1;
 
-/// What `fab manual` writes.
 /// A piece of a line of Markdown, split at its code spans.
 #[derive(Debug, PartialEq)]
 enum Part<'a> {
@@ -81,6 +78,7 @@ enum Part<'a> {
     Unclosed(&'a str),
 }
 
+/// What `fab manual` writes.
 #[derive(Args)]
 pub struct Options {
     /// The directory to write the pages into, such as
@@ -169,19 +167,20 @@ pub fn pages(mut cli: Command) -> Result<Vec<Page>> {
 /// The page for `.github/fabrial.toml`.
 fn settings_page() -> Page {
     let mut body = wrap(
-        "`.github/fabrial.toml` holds a repository's fabrial settings. The workflows, the review gate and \
-         the skills read it. `fab init` writes it, and `fab update` changes a value its flags name. The \
-         workflows read each value with `sed`, so a value is one line, `key = \"value\"`, with no quote, \
-         backslash or line break. A list is one line too: `key = [\"a\", \"b\"]`.",
+        "`.github/fabrial.toml` holds a repository's fabrial settings, which the workflows, the review \
+         gate and the skills read. It is written by `fab init` and values are changed via `fab update`, \
+         which keeps any value its flags do not name. The workflows read each value with `sed`, so a \
+         value is one line, `key = \"value\"`, with no quote, backslash or line break. A list is one line \
+         too: `key = [\"a\", \"b\"]`.",
     );
     body.push_str("\n## Keys\n\n");
     body.push_str(&key_table(settings::KEYS));
     body.push_str("\n## The tasks table\n\n");
     body.push_str(&wrap(
-        "The `[tasks]` table names the commands `fab run` uses for each step of a tracked task. Each is \
-         split on whitespace and run without a shell in the task's worktree, after `{id}`, `{evidence}` \
-         and `{file}` in a word are replaced. A replacement stays one argument, whatever it holds. Each \
-         command must use the placeholders its row names.",
+        "The `[tasks]` table names the commands `fab run` uses for each step of a tracked task. It splits \
+         each command on whitespace, replaces `{id}`, `{evidence}` and `{file}`, and runs it in the task's \
+         worktree without a shell. A replaced value stays one argument, whatever it holds. Each command \
+         must use the placeholders its row names.",
     ));
     body.push('\n');
     body.push_str(&key_table(settings::TASK_KEYS));
@@ -239,7 +238,7 @@ fn gates_page() -> Page {
 fn sequence_page() -> Result<Page> {
     let mut body = wrap(
         "`.github/fabrial-sequence.toml` lists the review stages the `fab-storm` skill runs on a pull \
-         request, and `fab sequence` prints the ones the pull request's review depth gives. Each stage \
+         request. `fab sequence` lists stages required by a pull request's review depth. Each stage \
          runs once, in order, in a fresh agent. `fab sequence` reads the file from the merge base with \
          `main`, so a change to it applies to the pull requests after the one that makes it. `fab init` \
          installs the file and `fab update` refreshes it.",
@@ -247,9 +246,7 @@ fn sequence_page() -> Result<Page> {
     body.push_str("\n## Keys\n\n");
     body.push_str(&key_table(sequence::KEYS));
     body.push_str("\n## Stages\n\n");
-    body.push_str(&wrap(
-        "Each `[[stage]]` table is one stage: a fresh agent in a role, run once.",
-    ));
+    body.push_str(&wrap("Each `[[stage]]` table is one stage."));
     body.push('\n');
     body.push_str(&key_table(sequence::STAGE_KEYS));
     body.push_str("\n## Finish\n\n");
@@ -260,8 +257,8 @@ fn sequence_page() -> Result<Page> {
     body.push_str(&key_table(sequence::FINISH_KEYS));
     body.push_str("\n## Installed stages\n\n");
     body.push_str(&wrap(
-        "The file fabrial installs runs these stages. A pull request of standard depth runs the first two, \
-         and one of full depth runs all four.",
+        "The installed file holds these stages. A pull request of standard depth runs the first two, and \
+         one of full depth runs all four.",
     ));
     body.push('\n');
     let installed = sequence::installed()?;
@@ -297,8 +294,8 @@ fn sequence_page() -> Result<Page> {
 /// The page listing each skill `fab init` installs.
 fn skills_page() -> Result<Page> {
     let mut body = wrap(
-        "`fab init` installs these skills into `.claude/skills/`, and links `.agents/skills` there for \
-         Codex and Pi. Claude Code offers each as a slash command of the same name, such as \
+        "`fab init` installs these skills into `.claude/skills/` and links `.agents/skills` for Codex and \
+         Pi. Claude Code offers each as a slash command of the same name, such as \
          `/fab-implement`. A skill that takes arguments names them after its description.",
     );
     for text in install::skills() {
