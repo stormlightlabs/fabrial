@@ -26,7 +26,7 @@ use crate::run::{self, Result};
 /// The release step to run.
 #[derive(Subcommand)]
 pub enum Command {
-    /// Write the release's section of CHANGELOG.md from the commit subjects
+    /// Write the release's section of `CHANGELOG.md` from the commit subjects
     /// since the last release tag.
     Changelog {
         /// The release, such as 0.2.0.
@@ -34,7 +34,7 @@ pub enum Command {
         /// The release date, such as 2026-10-26.
         date: String,
     },
-    /// Print the version to tag on a commit on main, or nothing when the
+    /// Print the version to tag on a commit on `main`, or nothing when the
     /// commit is not a release merge.
     CheckTag {
         /// The repository, as owner/name.

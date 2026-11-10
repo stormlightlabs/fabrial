@@ -19,6 +19,7 @@ use super::{Result, emit, read, signals};
 pub enum Operation {
     /// List durable worker metadata, without result bodies or credentials.
     List {
+        /// The host's dispatch configuration.
         #[arg(long)]
         config: PathBuf,
     },
@@ -52,7 +53,9 @@ impl Operation {
 /// Worker identity and operator-selected configuration.
 #[derive(Args)]
 pub struct Reference {
+    /// The worker's ID, as `fab dispatch` or `fab worker list` prints it.
     worker_id: String,
+    /// The host's dispatch configuration.
     #[arg(long)]
     config: PathBuf,
 }
@@ -62,6 +65,7 @@ pub struct Reference {
 pub struct Events {
     #[command(flatten)]
     reference: Reference,
+    /// Print events after this byte cursor, the `cursor` of the last batch.
     #[arg(long, default_value_t = 0)]
     after: u64,
 }
@@ -71,8 +75,11 @@ pub struct Events {
 pub struct Steer {
     #[command(flatten)]
     reference: Reference,
+    /// The head the worker started from; a worker at another head is
+    /// refused.
     #[arg(long)]
     head: String,
+    /// The steering message, 1 to 16384 bytes.
     #[arg(long)]
     message: String,
 }
@@ -82,6 +89,7 @@ pub struct Steer {
 pub struct Wait {
     #[command(flatten)]
     reference: Reference,
+    /// Seconds to wait, from 1 to 3600.
     #[arg(long, default_value_t = 3000, value_parser = clap::value_parser!(u64).range(1..=3600))]
     timeout: u64,
 }

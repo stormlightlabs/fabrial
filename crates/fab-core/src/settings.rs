@@ -3,6 +3,7 @@
 use serde::Deserialize;
 
 use crate::Error;
+use crate::keys::Key;
 
 /// Where the settings live, relative to the repository root.
 pub const SETTINGS_PATH: &str = ".github/fabrial.toml";
@@ -15,6 +16,130 @@ pub const DEFAULT_SECRET_PREFIX: &str = "FABRIAL";
 /// The secret prefix an install without the setting reads: the names
 /// fabrial 0.9.0 and earlier read, which `fab update` writes into it.
 pub const LEGACY_SECRET_PREFIX: &str = "THUNDERBOT";
+/// The top-level keys of [`Settings`], as the reference pages describe them.
+pub const KEYS: &[Key] = &[
+    Key {
+        name: "owner",
+        kind: "string",
+        default: "required",
+        about: "GitHub login of code reviewer/owner. `fab init` writes `CODEOWNERS` from it.",
+    },
+    Key {
+        name: "app",
+        kind: "string",
+        default: "unset",
+        about: "Slug of the repository's GitHub App, which the workflows act as: `fabrial-bot` for \
+                `github.com/apps/fabrial-bot`, whose comments come from `fabrial-bot[bot]`. `fab init` and \
+                `fab update` need it.",
+    },
+    Key {
+        name: "secret_prefix",
+        kind: "string",
+        default: "`THUNDERBOT`",
+        about: "Prefix of the secrets that hold the App's credentials (ID & private key): the workflows read \
+                `<prefix>_APP_ID` and \
+                `<prefix>_PRIVATE_KEY`. `fab init` writes `FABRIAL`. Unset, the workflows read the \
+                `THUNDERBOT_` names fabrial 0.9.0 and earlier used.",
+    },
+    Key {
+        name: "environment",
+        kind: "string",
+        default: "unset",
+        about: "GitHub environment named by every job that mints the App's token. Keep the App's secrets \
+                there, with a deployment rule for `main`, so no job on another ref reads them. Unset, the jobs \
+                read repository and organization secrets.",
+    },
+    Key {
+        name: "trailer",
+        kind: "string",
+        default: "required",
+        about: "`Co-authored-by` value on every squash commit, as `Name <email>`.",
+    },
+    Key {
+        name: "gates",
+        kind: "string",
+        default: "required",
+        about: "Command agents run before pushing. `fab gates` runs it when the repository has no \
+                `.github/fabrial-gates.toml`, and `fab init` writes it into that file's starter as `full`.",
+    },
+    Key {
+        name: "signoff",
+        kind: "string",
+        default: "unset",
+        about: "`Signed-off-by` value that ends every squash commit, for repositories that use the Developer \
+                Certificate of Origin. Unset leaves the line out.",
+    },
+    Key {
+        name: "assisted_by",
+        kind: "`on` or `off`",
+        default: "`off`",
+        about: "`on` adds an `Assisted-by: <model>` line to the squash commit for each agent model the pull \
+                request's commits name. `off` keeps model names off `main`.",
+    },
+    Key {
+        name: "disposable",
+        kind: "list of strings",
+        default: "unset",
+        about: "Ignored paths, relative to a worktree's root, that `fab cleanup` deletes with a merged \
+                worktree, as it does Cargo's `target/`. Any other ignored file keeps the worktree. List caches \
+                a tool rebuilds, such as a tracker's local database. A path ending in `/` names a directory.",
+    },
+    Key {
+        name: "planning",
+        kind: "list of strings",
+        default: "unset",
+        about: "Directories, relative to the repository root and each ending in `/`, whose Markdown and TOML \
+                files are planning records, such as a tracker's task files. `fab review-depth` gives the \
+                standard pass to a pull request that changes only these files, documentation and tests. None may sit \
+                under `.github`, `.claude`, `.agents` or `.codex`.",
+    },
+    Key {
+        name: "version",
+        kind: "string",
+        default: "unset",
+        about: "fabrial version that last wrote the installed files. `fab init` and `fab update` write it, and \
+                `fab check` compares it with its own.",
+    },
+    Key {
+        name: "tasks",
+        kind: "table",
+        default: "unset",
+        about: "Commands `fab run` uses to reach the repository's task source. Unset, `fab run` takes only \
+                GitHub issues and description files.",
+    },
+];
+/// The keys of the `[tasks]` table, [`Tasks`], as the reference pages
+/// describe them.
+pub const TASK_KEYS: &[Key] = &[
+    Key {
+        name: "init",
+        kind: "string",
+        default: "unset",
+        about: "Prepares a new worktree for the other commands, such as building a tracker's local cache. \
+                Runs once, before `start`, and takes no placeholders.",
+    },
+    Key {
+        name: "skill",
+        kind: "string",
+        default: "unset",
+        about: "Skill that `fab dispatch` gives an implementer for working the tracker, such as \
+                `arclightning`: the name of a directory in `.claude/skills`, not a path.",
+    },
+    Key { name: "show", kind: "string", default: "required", about: "Prints the task, given `{id}`." },
+    Key { name: "start", kind: "string", default: "required", about: "Starts the task, given `{id}`." },
+    Key {
+        name: "complete",
+        kind: "string",
+        default: "required",
+        about: "Completes the task, given `{id}` and `{evidence}`.",
+    },
+    Key {
+        name: "handoff",
+        kind: "string",
+        default: "required",
+        about: "Records a handoff note, given `{id}` and the note's `{file}`.",
+    },
+];
 
 /// The values the workflows, the gate and the skills read.
 ///
@@ -436,6 +561,13 @@ fn is_login(owner: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::keys::assert_keys_match;
+
+    #[test]
+    fn the_key_tables_match_the_settings_structs() {
+        assert_keys_match::<Settings>(KEYS, |k| format!("{k} = \"x\"\n"));
+        assert_keys_match::<Tasks>(TASK_KEYS, |k| format!("{k} = \"x\"\n"));
+    }
 
     fn settings() -> Settings {
         Settings {

@@ -14,6 +14,7 @@ mod drive;
 mod events;
 mod gate;
 mod gates;
+mod manual;
 mod release;
 mod review;
 mod run;
@@ -22,7 +23,7 @@ mod squash;
 mod status;
 mod task_status;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use fab_core::install::{self, KeptReason, Report};
 use fab_core::settings::Settings;
 
@@ -58,13 +59,13 @@ enum Command {
     #[cfg(unix)]
     #[command(hide = true)]
     DispatchPush(dispatch::PushOptions),
-    /// Take, renew or release a task's claim, its storm/<task> branch.
+    /// Take, renew or release a task's claim, its `storm/<task>` branch.
     Claim {
         #[command(subcommand)]
         operation: claim::Operation,
     },
-    /// List the claimed tasks on the remote's storm/ branches: each claim's
-    /// holder, run and expiry, its open pull request, and with --config the
+    /// List the claimed tasks on the remote's `storm/` branches: each claim's
+    /// holder, run and expiry, its open pull request, and with `--config` the
     /// step its latest worker is at.
     Status(task_status::Options),
     /// Install fabrial's workflows, gate, skills and agents into a repository
@@ -76,7 +77,7 @@ enum Command {
         #[arg(long)]
         owner: String,
         /// The slug of the repository's GitHub App, which the workflows act
-        /// as: `my-bot` for github.com/apps/my-bot.
+        /// as: `my-bot` for `github.com/apps/my-bot`.
         #[arg(long)]
         app: String,
         /// The prefix of the secrets holding the App's ID and key: the
@@ -84,21 +85,21 @@ enum Command {
         #[arg(long, default_value = fab_core::settings::DEFAULT_SECRET_PREFIX)]
         secret_prefix: String,
         /// A GitHub environment for the jobs that mint the App's token to
-        /// name; keep the secrets there, restricted to main. Without it the
+        /// name; keep the secrets there, restricted to `main`. Without it the
         /// jobs read repository and organization secrets.
         #[arg(long)]
         environment: Option<String>,
-        /// The squash commit's Co-authored-by value, as "Name <email>".
+        /// The squash commit's `Co-authored-by` value, as `Name <email>`.
         #[arg(long)]
         trailer: String,
         /// The command agents run before pushing.
         #[arg(long)]
         gates: String,
-        /// The owner's Signed-off-by value, as "Name <email>", to end every
+        /// The owner's `Signed-off-by` value, as `Name <email>`, to end every
         /// squash commit with; for repositories that use the DCO.
         #[arg(long)]
         signoff: Option<String>,
-        /// "on" to add an Assisted-by line naming each agent model to every
+        /// `on` adds an `Assisted-by` line naming each agent model to every
         /// squash commit.
         #[arg(long, value_parser = ["on", "off"])]
         assisted_by: Option<String>,
@@ -120,24 +121,24 @@ enum Command {
         #[arg(long)]
         app: Option<String>,
         /// A new prefix for the secrets holding the App's ID and key. An
-        /// install without one keeps THUNDERBOT, the names 0.9.0 read.
+        /// install without one keeps `THUNDERBOT`, the names 0.9.0 read.
         #[arg(long)]
         secret_prefix: Option<String>,
         /// A new GitHub environment for the jobs that mint the App's token.
         /// An install without one keeps naming none.
         #[arg(long)]
         environment: Option<String>,
-        /// A new Co-authored-by value for the squash commit.
+        /// A new `Co-authored-by` value for the squash commit.
         #[arg(long)]
         trailer: Option<String>,
         /// A new command for agents to run before pushing.
         #[arg(long)]
         gates: Option<String>,
-        /// A new Signed-off-by value for the squash commit; an empty value
+        /// A new `Signed-off-by` value for the squash commit; an empty value
         /// removes it.
         #[arg(long)]
         signoff: Option<String>,
-        /// "on" or "off": whether the squash commit names agent models.
+        /// Whether the squash commit names agent models.
         #[arg(long, value_parser = ["on", "off"])]
         assisted_by: Option<String>,
         /// Install this build's files over a newer release's.
@@ -150,22 +151,22 @@ enum Command {
         #[command(flatten)]
         repo: Repo,
     },
-    /// Set the storm/review check for a pull request event; the Review gate
-    /// workflow runs it from a checkout of main.
+    /// Set the `storm/review` check for a pull request event; the Review gate
+    /// workflow runs it from a checkout of `main`.
     Gate(gate::Options),
     /// Open a draft pull request for an agent's work branch; the Branch PR
     /// workflow runs it.
     BranchPr(branch_pr::Options),
-    /// Run the checks the change touches, from .github/fabrial-gates.toml,
+    /// Run checks relevant to the change, from `.github/fabrial-gates.toml`,
     /// and exit with the first failure's code.
     Gates(gates::Options),
     /// Print how many review passes the diff takes: none, standard or full.
     ReviewDepth(depth::Options),
     /// Print the review stages the diff's depth gives, from
-    /// .github/fabrial-sequence.toml.
+    /// `.github/fabrial-sequence.toml`.
     Sequence(sequence::Options),
     /// Take one task through the fixed sequence: claim it, give it a
-    /// worktree and run one Pi worker per step, ending with Review finished.
+    /// worktree and run one Pi worker per step, ending with `Review finished`.
     Run(drive::Options),
     /// Set a section of the pull request's status comment; the Bot comment
     /// workflow runs it.
@@ -186,6 +187,9 @@ enum Command {
         #[command(subcommand)]
         step: release::Command,
     },
+    /// Write the reference pages of fabrial's docs site from this build.
+    #[command(hide = true)]
+    Manual(manual::Options),
 }
 
 #[derive(Args)]
@@ -264,6 +268,7 @@ fn main() -> ExitCode {
         Command::Cleanup(options) => return cleanup::run(options),
         Command::Gates(options) => return gates::run(options),
         Command::Release { step } => return in_workflow(step.run()),
+        Command::Manual(options) => return in_workflow(manual::run(options, Cli::command())),
         Command::ReviewDepth(options) => return in_workflow(depth::run(options)),
         Command::Sequence(options) => return in_workflow(sequence::run(options)),
         Command::Run(options) => return in_workflow(drive::run(options)),

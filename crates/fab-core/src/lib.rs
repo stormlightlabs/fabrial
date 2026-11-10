@@ -9,6 +9,7 @@
 pub mod claims;
 pub mod gates;
 pub mod install;
+pub mod keys;
 #[cfg(unix)]
 pub mod runs;
 pub mod settings;
