@@ -2,9 +2,10 @@
 id = "arcl-t-01M7C0PDV3BX3KA074HVVWQPXY"
 phase = "arcl-ph-01M5S4SCFE01K31R17FQ29AHJ8"
 title = "Implement a task with all its subtasks in one pull request"
-status = "in_progress"
+status = "completed"
 priority = "high"
 position = 0
+evidence = "Done in #113: implement works a task with all its subtasks in one pull request"
 +++
 
 `fab-implement` stops on a task with open subtasks and says to work each one

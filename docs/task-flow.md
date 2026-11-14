@@ -28,11 +28,13 @@ the session works on a `claude/<topic>` or `codex/<topic>` branch.
 
 A task with open subtasks, or an issue with open sub-issues, is taken whole.
 The parent gets the claim, the branch and the pull request, and the session
-works its open children on that branch in dependency order. It skips
-children already done, and stops before any work when a child waits on work
-outside the parent, is in progress elsewhere or has a pull request of its
-own. For an issue, the pull request body carries a `Closes #<n>` line for
-each sub-issue and one for the parent.
+works its open children on that branch in dependency order. It skips children
+already done, and stops before any work when a child waits on work outside
+the parent, is in progress elsewhere, has a live claim or work on its own
+`storm/<child-id>` branch, or has a pull request of its own. A lapsed claim
+on a branch with no work holds nothing. `fab run` takes only a task with no
+children. For an issue, the pull request body carries a `Closes #<n>` line
+for each sub-issue and one for the parent.
 
 ## 2. Implement and push
 
@@ -111,7 +113,8 @@ current head.
 
 After the driver reports the merge, the session completes a task whose
 tracker lives outside the repository, and its children, then runs
-`fab cleanup`. It removes the worktree and local branch of each merged agent
-pull request whose worktree is clean and whose tip matches the merged head,
-fast-forwards a clean primary `main`, and lists open agent pull requests that
-need a resync.
+`fab cleanup`. GitHub does not close an issue that open issues still block,
+so the session closes any sub-issue the merge left open. `fab cleanup`
+removes the worktree and local branch of each merged agent pull request whose
+worktree is clean and whose tip matches the merged head, fast-forwards a
+clean primary `main`, and lists open agent pull requests that need a resync.

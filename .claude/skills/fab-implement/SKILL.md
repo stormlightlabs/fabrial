@@ -44,11 +44,12 @@ Stop and ask when any of these is true:
 - The task is already in progress, its latest handoff is not addressed to
   this session, and the run that dispatched you does not hold its claim (see
   **Start it**).
-- Its parent is held by another run: the parent tracked task is in progress
-  or has a `storm/<parent-id>` branch on origin
-  (`git ls-remote origin storm/<parent-id>`), or the parent issue
+- Its parent is held by another run: the parent tracked task is in progress,
+  or `fab status` shows its `storm/<parent-id>` branch with a live claim,
+  work or a pull request; or the parent issue
   (`gh api repos/{owner}/{repo}/issues/<n>/parent`) is open and a pull
-  request names it. That run works this task with its parent.
+  request names it. That run works this task with its parent. A claim
+  `fab status` shows as lapsed, on a branch with no work, holds nothing.
 - It has open children that **Subtasks** cannot take.
 - It has no acceptance criteria you could check, and the person has not given
   any.
@@ -65,6 +66,9 @@ and stop and report when one:
 - waits on work outside the parent, rather than on a sibling (an issue's
   blockers are at `.../issues/<n>/dependencies/blocked_by`);
 - is in progress, or handed off to another session;
+- is held on its own branch: `fab status` shows `storm/<child-id>` with a
+  live claim or work. A child's start is committed on that branch, so the
+  tracker on yours does not show it;
 - has a pull request of its own (`gh pr list --search <id>`, or `#<n>` for a
   sub-issue);
 - has open children of its own, which breaks the two tiers `fab-decompose`
@@ -74,6 +78,9 @@ The parent is the task: it gets the claim, the branch and the pull request.
 Work the open children on that branch in dependency order, each with its
 tests, then whatever the parent asks beyond them. Do not start the children:
 the parent's claim covers them. A task with no children is worked alone.
+
+`fab run` completes only the task it is given, and the tracker refuses to
+complete a parent with open children. Give it only a task with no children.
 
 ## Take a working tree
 
@@ -231,7 +238,10 @@ Leave it in progress and complete it after the merge, as **After merge** says.
 
 When the owner reports a merge, confirm it on GitHub. Complete a tracked task
 whose tracker lives outside the repository now, as **Complete the task**
-says, with the merged head in the evidence. Then run, from any checkout:
+says, with the merged head in the evidence. For an issue with sub-issues,
+check them too: GitHub does not close an issue that open issues still block,
+so a sub-issue blocked by a sibling can stay open after the merge. Close each
+one left open. Then run, from any checkout:
 
 ```sh
 fab cleanup
