@@ -75,11 +75,10 @@ found something above a nit. The sequence runs once.
 
 ## 5. Review finished
 
-The session completes a task whose tracker lives in the repository, each
-child it carries first, runs
-`fab gates --full`, checks that the pull request still merges, and posts a
-comment through the Bot comment workflow whose first line is
-`Review finished at <full sha>`.
+The session completes a task whose tracker lives in the repository, each child
+it carries first, runs `fab gates --full`, checks that the pull request still
+merges, and posts a comment through the Bot comment workflow whose first line
+is `Review finished at <full sha>`.
 
 The comment starts the Review gate. When the SHA names the head, it turns
 `storm/review` green, marks the draft ready and writes the squash message
@@ -111,7 +110,8 @@ current head.
 ## 7. Clean up
 
 After the driver reports the merge, the session completes a task whose
-tracker lives outside the repository, and its children, then runs `fab cleanup`. It removes
-the worktree and local branch of each merged agent pull request whose
-worktree is clean and whose tip matches the merged head, fast-forwards a
-clean primary `main`, and lists open agent pull requests that need a resync.
+tracker lives outside the repository, and its children, then runs
+`fab cleanup`. It removes the worktree and local branch of each merged agent
+pull request whose worktree is clean and whose tip matches the merged head,
+fast-forwards a clean primary `main`, and lists open agent pull requests that
+need a resync.

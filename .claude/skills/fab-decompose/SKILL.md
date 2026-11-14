@@ -16,7 +16,7 @@ tracker holds it.
 | ---------- | ------------------------------------------------------------------ |
 | Collection | Groups run units. Holds their order and what crosses them.         |
 | Run unit   | One claim, one branch, one pull request. Holds tasks.              |
-| Task       | One change with its own stop rule, worked in its run unit's PR.    |
+| Task       | One change with its own stop rule, in its run unit's pull request. |
 | Dependency | One task waits for another to be done.                             |
 
 The **Tasks** section of `AGENTS.md` maps each primitive to the tracker and

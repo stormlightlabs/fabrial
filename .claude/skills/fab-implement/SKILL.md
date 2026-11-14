@@ -39,11 +39,16 @@ Stop and ask when any of these is true:
 - The tracker says the task is not ready for a reason other than its open
   children, or the issue is closed or assigned to someone else. Override
   that only when the person asks after seeing the reason, and say in your
-  report that you did. A dispatched implementer has
-  no one to ask: it reports the reasons and stops.
+  report that you did. A dispatched implementer has no one to ask: it
+  reports the reasons and stops.
 - The task is already in progress, its latest handoff is not addressed to
   this session, and the run that dispatched you does not hold its claim (see
   **Start it**).
+- Its parent is held by another run: the parent tracked task is in progress
+  or has a `storm/<parent-id>` branch on origin
+  (`git ls-remote origin storm/<parent-id>`), or the parent issue
+  (`gh api repos/{owner}/{repo}/issues/<n>/parent`) is open and a pull
+  request names it. That run works this task with its parent.
 - It has open children that **Subtasks** cannot take.
 - It has no acceptance criteria you could check, and the person has not given
   any.
@@ -130,11 +135,10 @@ pushing any work, delete the branch with
 `fab claim release <id> --run <run>`. Where origin refuses the delete, as it
 does from a cloud session, release instead pushes a claim that has already
 expired, so any run can take the task at once. If release still fails, the
-claim lapses at its expiry: report that and go on. Then start the task as the **Tasks**
-section says, from the task worktree, unless the run that dispatched you
-already started it. When the tracker refuses to start a parent only because
-it has children, leave it unstarted: the claim already marks it taken. When the tracker keeps tasks in files in the repository,
-commit the changed file with the work.
+claim lapses at its expiry: report that and go on. Then start the task as
+the **Tasks** section says, from the task worktree, unless the run that
+dispatched you already started it. When the tracker keeps tasks in files in
+the repository, commit the changed file with the work.
 
 ## Do the work
 
@@ -197,11 +201,12 @@ pull request by hand. It stays a draft until the
 marked ready. When the task is an issue, add `Closes #<n>` as the
 description's last line above the footer; GitHub reads the closing keyword
 from the description. For an issue with sub-issues, add one `Closes #<n>`
-line for each sub-issue you worked, then one for the parent. Edit the description when it should say more or less
-than the commit body did. Text above the `<!-- fabrial:footer` line becomes
-the squash commit's body, with no attribution lines or session links; leave it
-empty when the title says it all. The workflow keeps a title or body set after
-it opens, and the Review gate carries an edit into the squash message.
+line for each sub-issue you worked, then one for the parent. Edit the
+description when it should say more or less than the commit body did. Text
+above the `<!-- fabrial:footer` line becomes the squash commit's body, with no
+attribution lines or session links; leave it empty when the title says it all.
+The workflow keeps a title or body set after it opens, and the Review gate
+carries an edit into the squash message.
 
 Post what you verified as a comment on the pull request, not in the body: the
 commands you ran and what they returned, and anything you did not check. Post

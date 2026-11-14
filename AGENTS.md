@@ -161,7 +161,8 @@ stop the run.
 - `arcl task start` refuses a task that is not ready. Pass `--force` only when
   the owner asks after seeing the reasons `arcl task explain` gives.
 - A handoff parks the task. Unpark only when `arcl task explain` gives parking
-  as the only reason it is not ready.
+  as the only reason it is not ready, or parking and the parent's open
+  children.
 - When a merge conflicts on a task file, keep the newer status.
 
 ## Plan
