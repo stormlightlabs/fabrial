@@ -43,8 +43,8 @@ drifted.
   bot's status comment, which it edits rather than posting anew. The owner
   merges, by hand or with auto-merge they turn on; agents and the gate never
   turn it on.
-  `/storm:ready <sha>` or `/storm:done <sha>` from a user with write access
-  accepts that head as it is.
+  `/storm:ready <sha>` or `/storm:done <sha>` from a user with write access,
+  or that user's approving review of the head, accepts that head as it is.
 
 ## Writing
 

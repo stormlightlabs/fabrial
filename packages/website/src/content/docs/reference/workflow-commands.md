@@ -24,7 +24,7 @@ fab gate [OPTIONS] --repo <REPO> --pr <PR> --event <EVENT>
 | ----------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
 | `--repo <REPO>`         | required unless `REPO` is set  | The repository, as owner/name. Read from `REPO` when not given.                                                              |
 | `--pr <PR>`             | required unless `PR` is set    | The pull request number. Read from `PR` when not given.                                                                      |
-| `--event <EVENT>`       | required unless `EVENT` is set | The event to answer. Takes `push`, `comment` or `edit`. Read from `EVENT` when not given.                                    |
+| `--event <EVENT>`       | required unless `EVENT` is set | The event to answer. Takes `push`, `comment`, `edit` or `approve`. Read from `EVENT` when not given.                         |
 | `--head-sha <HEAD_SHA>` | unset                          | The head to act on; without it, the pull request's current head. Read from `HEAD_SHA` when not given.                        |
 | `--head-dir <HEAD_DIR>` | `head`                         | A checkout of the head, with origin/main fetched. Read from `HEAD_DIR` when not given.                                       |
 | `--action <ACTION>`     | unset                          | The pull request event's action, such as `reopened`. Read from `ACTION` when not given.                                      |

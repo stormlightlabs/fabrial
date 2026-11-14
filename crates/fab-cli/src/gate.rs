@@ -3,10 +3,12 @@
 //! reviews it in its own session (the `fab-storm` skill) and ends by commenting
 //! `Review finished at <sha>`.
 //!
-//! - `push`: a new head is pending, unless it is the change last reviewed with
-//!   only the base moved (`BEFORE` is the previous head). With
+//! - `push`: a new head waits for review, unless it is the change last
+//!   reviewed with only the base moved (`BEFORE` is the previous head). With
 //!   `ACTION=reopened` there is no `BEFORE`: the head stays as it is when its
-//!   own latest run is a success, else pending.
+//!   own latest run is a success, else it waits. A waiting head gets a
+//!   completed run with the conclusion `action_required`, which the ruleset
+//!   counts as failing, rather than a run left in progress.
 //! - `comment`: `BODY` from `AUTHOR`. `Review finished at <sha>` or
 //!   `/storm:ready <sha>` naming the head sets it to success, marks a draft
 //!   ready and sets the squash message in the status comment (see
@@ -15,6 +17,10 @@
 //!   comments count only from the bot, the App `app` in main's
 //!   `.github/fabrial.toml` names, or a user with write access; the gate
 //!   ignores anyone else's, another App's included, without a reply.
+//! - `approve`: a review was submitted. The gate reads the pull request's
+//!   reviews from the API and accepts the head as `/storm:ready` does when a
+//!   user with write access has approved that commit and not asked for
+//!   changes since. Reviews from Apps count for nothing, the bot's included.
 //! - `edit`: `SENDER` changed the title or body. On a ready pull request whose
 //!   head passed review, it sets the new squash message. Edits from anyone
 //!   without write access are ignored.
@@ -49,6 +55,9 @@ const UNREAD_NOTE: &str = "The gate could not read the commits, so this message 
 const MARKER: &str = "<!-- storm-review diff=";
 /// The status comment section that holds the squash message.
 const SQUASH_SECTION: &str = "Squash message";
+/// The conclusion of a head waiting for review: completed, so GitHub does not
+/// show it running, and failing, so the ruleset and auto-merge wait.
+const WAITING: &str = "action_required";
 
 /// The pull request event the gate answers.
 #[derive(Clone, Copy, PartialEq, ValueEnum)]
@@ -59,6 +68,8 @@ pub enum Event {
     Comment,
     /// An edit to the title or body.
     Edit,
+    /// A submitted review, which may approve the head.
+    Approve,
 }
 
 /// What the Review gate workflow passes, each also read from its environment
@@ -104,6 +115,21 @@ pub struct Options {
     dry_run: bool,
 }
 
+/// A pull request review as the gate reads it from the API.
+#[derive(serde::Deserialize)]
+struct Review {
+    /// The reviewer's login, missing once the account is deleted.
+    login: Option<String>,
+    /// `User`, or `Bot` for an App.
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    /// `APPROVED`, `CHANGES_REQUESTED`, `COMMENTED` or `DISMISSED`.
+    state: String,
+    /// The commit the review was submitted on, missing once that commit is
+    /// force-pushed away and collected.
+    commit: Option<String>,
+}
+
 /// One gate run: the pull request, its head, and how to reach GitHub.
 struct Gate {
     repo: String,
@@ -140,36 +166,41 @@ impl Gate {
         serde_json::from_str(&text).map_err(|e| format!("cannot read gh pr view: {e}"))
     }
 
-    /// Records the check on a commit, `in_progress` or a conclusion.
-    fn check(&self, sha: &str, state: &str, title: &str, summary: &str) -> Result<()> {
+    /// Records a completed check on a commit with a conclusion. An
+    /// `action_required` run links to the pull request, where the review
+    /// happens.
+    fn check(&self, sha: &str, conclusion: &str, title: &str, summary: &str) -> Result<()> {
         let path = format!("repos/{}/check-runs", self.repo);
-        let fields = [
+        let mut fields = vec![
             format!("name={CHECK_NAME}"),
             format!("head_sha={sha}"),
+            "status=completed".to_string(),
+            format!("conclusion={conclusion}"),
             format!("output[title]={title}"),
             format!("output[summary]={summary}"),
         ];
+        if conclusion == WAITING {
+            let server = std::env::var("GITHUB_SERVER_URL").unwrap_or_else(|_| "https://github.com".into());
+            fields.push(format!("details_url={server}/{}/pull/{}", self.repo, self.pr));
+        }
         let mut args = vec!["api", "-X", "POST", &path];
         for field in &fields {
             args.extend(["-f", field]);
-        }
-        let conclusion = format!("conclusion={state}");
-        if state == "in_progress" {
-            args.extend(["-f", "status=in_progress"]);
-        } else {
-            args.extend(["-f", "status=completed", "-f", &conclusion]);
         }
         self.gh_write(&args)
     }
 
     /// The summary of the bot's latest completed `storm/review` run on a
-    /// commit when that run succeeded, and empty otherwise. Runs from other
-    /// apps are ignored, since any app with checks:write can post one under
-    /// this name. A failed call reads as no success.
+    /// commit when that run succeeded, and empty otherwise. Waiting runs
+    /// are skipped, as the runs left in progress before them were, so a
+    /// waiting run posted again over a success leaves the success standing.
+    /// Runs from other apps are ignored, since any app with checks:write can
+    /// post one under this name. A failed call reads as no success.
     fn last_success(&self, sha: &str) -> String {
         let path = format!("repos/{}/commits/{sha}/check-runs?check_name={CHECK_NAME}", self.repo);
         let filter = format!(
-            "[.check_runs[] | select(.status == \"completed\" and .app.slug == \"{}\")] \
+            "[.check_runs[] | select(.status == \"completed\" and .conclusion != \"{WAITING}\" \
+             and .app.slug == \"{}\")] \
              | sort_by(.completed_at) | last | select(.conclusion == \"success\") | .output.summary",
             self.app
         );
@@ -376,7 +407,38 @@ impl Gate {
             "The agent that opened this pull request reviews it and comments `Review finished at {short}`. \
              A person can accept it as it is with `/storm:ready {short}`."
         );
-        self.check(&self.head, "in_progress", "Waiting for review", &summary)
+        self.check(&self.head, WAITING, "Waiting for review", &summary)
+    }
+
+    /// Accepts the head as `/storm:ready` does when the latest decision of
+    /// some person with write access approves it. Decisions are approvals
+    /// and change requests; a comment review changes nothing, and a
+    /// dismissed approval counts for nothing. An approval of an older commit
+    /// does nothing, without a reply.
+    fn approve(&self) -> Result<()> {
+        let path = format!("repos/{}/pulls/{}/reviews", self.repo, self.pr);
+        let filter = ".[] | {login: .user.login, type: .user.type, state, commit: .commit_id} | @json";
+        let lines = run::gh(&["api", "--paginate", &path, "--jq", filter])?;
+        let reviews = lines
+            .lines()
+            .map(|l| serde_json::from_str(l).map_err(|e| format!("cannot read a review: {e}")))
+            .collect::<Result<Vec<Review>>>()?;
+        for login in approvers(&reviews, &self.head) {
+            if self.can_write(&login) {
+                return self.accept(&login, "an approving review");
+            }
+        }
+        Ok(())
+    }
+
+    /// Marks a draft ready, turns the check green for the head and sets the
+    /// squash message, crediting `author` with accepting it by `how`.
+    fn accept(&self, author: &str, how: &str) -> Result<()> {
+        let short = self.short();
+        self.mark_ready()?;
+        let summary = format!("@{author} accepted {short} with {how}.{}", self.marker(&self.head));
+        self.check(&self.head, "success", &format!("Marked ready by @{author}"), &summary)?;
+        self.post_squash_message()
     }
 
     fn comment(&self, body: &str, author: &str) -> Result<()> {
@@ -406,13 +468,7 @@ impl Gate {
             if !self.names_head(&named) {
                 return self.wrong_sha(command, &named);
             }
-            self.mark_ready()?;
-            let summary = format!(
-                "@{author} accepted {short} with `{command}`.{}",
-                self.marker(&self.head)
-            );
-            self.check(&self.head, "success", &format!("Marked ready by @{author}"), &summary)?;
-            self.post_squash_message()
+            self.accept(author, &format!("`{command}`"))
         } else {
             Ok(())
         }
@@ -473,7 +529,38 @@ pub fn run(options: Options) -> Result<()> {
             &options.body.unwrap_or_default(),
             &given(options.author).unwrap_or_default(),
         ),
+        Event::Approve => gate.approve(),
     }
+}
+
+/// The people whose latest decision approves `head`, newest first. A
+/// decision is an approval, a change request or a dismissed approval, which
+/// GitHub lists in the place the approval had. Reviews come oldest first, as
+/// the API lists them. Apps are left out.
+fn approvers(reviews: &[Review], head: &str) -> Vec<String> {
+    // (login, state, commit) of each person's latest decision.
+    let mut latest: Vec<(&str, &str, &str)> = Vec::new();
+    for review in reviews {
+        // A review whose reviewer or commit is gone neither approves nor
+        // withdraws an approval.
+        let (Some(login), Some(commit)) = (review.login.as_deref(), review.commit.as_deref()) else {
+            continue;
+        };
+        if review.kind.as_deref() == Some("Bot") || login.ends_with("[bot]") {
+            continue;
+        }
+        if !matches!(review.state.as_str(), "APPROVED" | "CHANGES_REQUESTED" | "DISMISSED") {
+            continue;
+        }
+        latest.retain(|(l, _, _)| *l != login);
+        latest.push((login, &review.state, commit));
+    }
+    latest
+        .iter()
+        .rev()
+        .filter(|(_, state, commit)| *state == "APPROVED" && *commit == head)
+        .map(|(login, _, _)| login.to_string())
+        .collect()
 }
 
 /// Whether a line is a command word, alone or followed by whitespace.
@@ -579,6 +666,38 @@ mod tests {
         assert_eq!(marked_hash(summary), "abc123");
         assert_eq!(marked_hash("no marker"), "");
         assert_eq!(marked_hash("<!-- storm-review diff= -->"), "");
+    }
+
+    fn review(login: &str, kind: &str, state: &str, commit: &str) -> Review {
+        Review { login: Some(login.into()), kind: Some(kind.into()), state: state.into(), commit: Some(commit.into()) }
+    }
+
+    #[test]
+    fn approvers_are_people_whose_latest_decision_approves_the_head() {
+        let reviews = [
+            review("ann", "User", "APPROVED", "head"),
+            review("bob", "User", "APPROVED", "old"),
+            review("cat", "User", "APPROVED", "head"),
+            review("cat", "User", "COMMENTED", "head"),
+            review("dan", "User", "APPROVED", "head"),
+            review("dan", "User", "CHANGES_REQUESTED", "head"),
+            review("eve", "User", "DISMISSED", "head"),
+            review("app[bot]", "Bot", "APPROVED", "head"),
+            review("other", "Bot", "APPROVED", "head"),
+        ];
+        assert_eq!(approvers(&reviews, "head"), ["cat", "ann"]);
+        assert!(approvers(&reviews, "new").is_empty());
+    }
+
+    #[test]
+    fn a_review_missing_its_reviewer_or_commit_is_skipped() {
+        let mut gone = review("ann", "User", "CHANGES_REQUESTED", "old");
+        gone.commit = None;
+        let mut ghost = review("ann", "User", "CHANGES_REQUESTED", "head");
+        ghost.login = None;
+        ghost.kind = None;
+        let reviews = [review("ann", "User", "APPROVED", "head"), gone, ghost];
+        assert_eq!(approvers(&reviews, "head"), ["ann"]);
     }
 
     #[test]

@@ -19,7 +19,8 @@ const BOT: &str = "stormlight-thunderbot[bot]";
 /// with `TEST_PR`, or `TEST_PR_LATER` once the run has written a comment; a
 /// collaborator's permission with `TEST_PERMISSION`, failing the read when it
 /// is `fail`; and a commit's check
-/// runs with `TEST_CHECK_RUNS`. It applies `--jq` as gh does and accepts the
+/// runs with `TEST_CHECK_RUNS`, and the pull request's reviews with
+/// `TEST_REVIEWS`. It applies `--jq` as gh does and accepts the
 /// other writes the gate makes.
 const FAKE_GH: &str = r#"#!/usr/bin/env bash
 set -u
@@ -73,6 +74,7 @@ case "$1 ${2:-}" in
         out="{\"permission\": \"${TEST_PERMISSION:-none}\"}" ;;
       */check-runs\?*) out=${TEST_CHECK_RUNS:-"{\"check_runs\": []}"} ;;
       */pulls/*/commits) out=${TEST_COMMITS:-[]} ;;
+      */pulls/*/reviews) out=${TEST_REVIEWS:-[]} ;;
       *) exit 92 ;;
     esac
     reply "$out" ;;
@@ -735,7 +737,7 @@ fn a_rebase_that_only_moves_the_base_keeps_the_review_and_a_new_change_does_not(
         json!({}),
         None,
     );
-    assert!(changed.calls.iter().any(|c| c.has("status=in_progress")));
+    assert!(changed.calls.iter().any(|c| c.has("conclusion=action_required")));
     assert!(!changed.succeeded_check());
 }
 
@@ -925,7 +927,171 @@ fn a_reopened_head_keeps_its_own_success_and_otherwise_waits() {
     assert!(!run.calls.iter().any(|c| c.is("api", "-X")));
 
     let run = gate(&[("EVENT", "push"), ("ACTION", "reopened")], json!({}), None);
-    assert!(run.calls.iter().any(|c| c.has("status=in_progress")));
+    assert!(run.calls.iter().any(|c| c.has("conclusion=action_required")));
+}
+
+#[test]
+fn a_waiting_head_gets_a_completed_failing_run_that_links_to_the_pull_request() {
+    let run = gate(&[("EVENT", "push")], json!({}), None);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    let checks: Vec<&Call> = run.calls.iter().filter(|c| c.has("name=storm/review")).collect();
+    assert_eq!(checks.len(), 1);
+    let check = checks[0];
+    assert!(check.has("status=completed"));
+    assert!(check.has("conclusion=action_required"));
+    assert!(check.has("output[title]=Waiting for review"));
+    assert!(check.has("details_url=https://github.com/owner/repo/pull/1"));
+    assert!(!run.calls.iter().any(|c| c.has("status=in_progress")));
+}
+
+#[test]
+fn a_waiting_run_over_a_success_leaves_the_success_standing() {
+    // A rerun of the push after the review posts a waiting run last; a
+    // reopened pull request still finds the review, as it did when the
+    // waiting run was left in progress.
+    let runs = check_runs(&[
+        ("stormlight-thunderbot", "success", "Reviewed"),
+        ("stormlight-thunderbot", "action_required", "Waiting"),
+    ]);
+    let run = gate(
+        &[("EVENT", "push"), ("ACTION", "reopened"), ("TEST_CHECK_RUNS", &runs)],
+        json!({}),
+        None,
+    );
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(!run.calls.iter().any(|c| c.is("api", "-X")));
+    // A failure after the success still reads as no success.
+    let runs = check_runs(&[
+        ("stormlight-thunderbot", "success", "Reviewed"),
+        ("stormlight-thunderbot", "failure", "Failed"),
+    ]);
+    let run = gate(
+        &[("EVENT", "push"), ("ACTION", "reopened"), ("TEST_CHECK_RUNS", &runs)],
+        json!({}),
+        None,
+    );
+    assert!(run.calls.iter().any(|c| c.has("conclusion=action_required")));
+}
+
+/// A review as the REST API lists it.
+fn review(login: &str, kind: &str, state: &str, commit: &str) -> Value {
+    json!({"id": 1, "user": {"login": login, "type": kind}, "state": state, "commit_id": commit})
+}
+
+/// Runs the gate for a submitted review, with the reviews and the
+/// reviewers' permission given.
+fn approve(reviews: &[Value], permission: &str) -> Run {
+    let reviews = Value::from(reviews.to_vec()).to_string();
+    gate(
+        &[
+            ("EVENT", "approve"),
+            ("TEST_REVIEWS", &reviews),
+            ("TEST_PERMISSION", permission),
+        ],
+        json!({}),
+        None,
+    )
+}
+
+#[test]
+fn an_approval_of_the_head_accepts_it_as_storm_ready_does() {
+    let run = approve(&[review("desertthunder", "User", "APPROVED", HEAD)], "write");
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(run.calls.iter().any(|c| c.is("pr", "ready")));
+    assert!(run.calls.iter().any(|c| {
+        c.has("conclusion=success")
+            && c.has("output[title]=Marked ready by @desertthunder")
+            && c.args
+                .iter()
+                .any(|a| a.contains("accepted aaaaaaa with an approving review."))
+    }));
+    assert_eq!(run.posts().len(), 1);
+    assert!(run.posts()[0].contains("Test change (#1)\n"));
+    assert!(!run.calls.iter().any(|c| c.is("pr", "comment")));
+}
+
+#[test]
+fn an_approval_of_an_older_commit_does_nothing() {
+    let run = approve(&[review("desertthunder", "User", "APPROVED", &"b".repeat(40))], "admin");
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(!run.succeeded_check());
+    assert!(!run.calls.iter().any(|c| c.is("pr", "ready") || c.is("pr", "comment")));
+    assert!(run.posts().is_empty());
+}
+
+#[test]
+fn an_approval_needs_write_access() {
+    for (permission, accepts) in [
+        ("admin", true),
+        ("maintain", true),
+        ("write", true),
+        ("triage", false),
+        ("read", false),
+        ("none", false),
+        ("fail", false),
+    ] {
+        let run = approve(&[review("someone", "User", "APPROVED", HEAD)], permission);
+        assert_eq!(run.code, Some(0), "{permission}: {}", run.stderr);
+        assert_eq!(run.succeeded_check(), accepts, "{permission}");
+        assert_eq!(run.calls.iter().any(|c| c.is("pr", "ready")), accepts, "{permission}");
+        assert_eq!(run.posts().is_empty(), !accepts, "{permission}");
+        assert!(!run.calls.iter().any(|c| c.is("pr", "comment")), "{permission}");
+    }
+}
+
+#[test]
+fn an_approval_from_an_app_does_nothing_even_from_the_bot() {
+    for reviewer in [BOT, "other-app[bot]"] {
+        let run = approve(&[review(reviewer, "Bot", "APPROVED", HEAD)], "admin");
+        assert_eq!(run.code, Some(0), "{reviewer}: {}", run.stderr);
+        assert!(!run.succeeded_check(), "{reviewer}");
+        assert!(
+            !run.calls
+                .iter()
+                .any(|c| c.args.iter().any(|a| a.contains("/permission"))),
+            "{reviewer}"
+        );
+    }
+}
+
+#[test]
+fn a_later_change_request_withdraws_an_approval() {
+    let run = approve(
+        &[
+            review("desertthunder", "User", "APPROVED", HEAD),
+            review("desertthunder", "User", "CHANGES_REQUESTED", HEAD),
+        ],
+        "admin",
+    );
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(!run.succeeded_check());
+}
+
+#[test]
+fn a_review_without_a_commit_or_a_reviewer_is_skipped() {
+    // GitHub sends a null `commit_id` once the reviewed commit is gone, and
+    // a null `user` for a deleted account.
+    let gone =
+        json!({"id": 2, "user": {"login": "x", "type": "User"}, "state": "CHANGES_REQUESTED", "commit_id": null});
+    let ghost = json!({"id": 3, "user": null, "state": "CHANGES_REQUESTED", "commit_id": HEAD});
+    for (name, odd) in [("null commit", gone), ("null user", ghost)] {
+        let run = approve(
+            &[odd.clone(), review("desertthunder", "User", "APPROVED", HEAD)],
+            "write",
+        );
+        assert_eq!(run.code, Some(0), "{name}: {}", run.stderr);
+        assert!(run.succeeded_check(), "{name}");
+        let run = approve(&[odd], "write");
+        assert_eq!(run.code, Some(0), "{name}: {}", run.stderr);
+        assert!(!run.succeeded_check(), "{name}");
+    }
+}
+
+#[test]
+fn a_failed_review_read_fails_the_run_and_accepts_nothing() {
+    let run = gate(&[("EVENT", "approve"), ("TEST_REVIEWS", "not json")], json!({}), None);
+    assert_ne!(run.code, Some(0));
+    assert!(!run.succeeded_check());
 }
 
 #[test]

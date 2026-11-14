@@ -36,6 +36,7 @@ Then generate a private key on the App's page. GitHub downloads it as a
 | Review gate    | reads and creates `storm/review` check runs                        | Checks write              |
 | Review gate    | `gh pr ready`, `gh pr comment`, edits the status comment           | Pull requests write       |
 | Review gate    | reads the pull request's commits through `pulls/<n>/commits`       | Pull requests read        |
+| Review gate    | after a review, finds the pull request through `pulls?head=` and reads its reviews through `pulls/<n>/reviews` | Pull requests read |
 | Review gate    | reads an editor's permission through `collaborators/<user>/permission` | Metadata read         |
 | Bot comment    | posts comments, edits the status comment, posts reviews, requests a reviewer, resolves review threads | Pull requests write |
 
@@ -169,8 +170,14 @@ that copy controls what the job does with any secret it can read.
   refuses a name outside `claude/`, `codex/` and `storm/`, and git reads the
   branch's commits without running anything from it. An edited Branch PR
   can at most make it open a pull request for that branch.
-- The Review gate runs on `pull_request_target` and `issue_comment`, both
-  from `main`'s copy with `main` as the ref.
+- The Review gate runs on `pull_request_target`, `issue_comment` and
+  `workflow_run`, all from `main`'s copy with `main` as the ref.
+- Review approval (`review-approval.yml`) runs on `pull_request_review` from
+  the pull request's copy, so it reads no secrets, has no token permissions
+  and does nothing. The Review gate runs on `workflow_run` when it finishes,
+  from `main`'s copy, finds the pull request from the run's branch and reads
+  its reviews from the API. An edited Review approval can at most make the
+  gate read them again.
 - Bot comment runs on dispatch, from the copy on the ref dispatched. Its job
   runs only on `main`, but a branch's copy can drop that check and read
   repository and organization secrets.
@@ -205,9 +212,10 @@ The workflows assume a ruleset on `main` with these rules:
 Leave the App off the ruleset's bypass list, so no token minted from it can
 merge past these rules.
 
-`/storm:ready`, `/storm:done`, a person's `Review finished at` and an edit
-to the title or body count only from a user with write, maintain or admin
-access. The gate ignores the rest without a reply.
+`/storm:ready`, `/storm:done`, a person's `Review finished at`, an
+approving review and an edit to the title or body count only from a user
+with write, maintain or admin access. The gate ignores the rest without a
+reply, and ignores every App's review.
 
 The gate runs from `main` through `pull_request_target`. On the pull request
 that installs fabrial it does nothing, so mark that draft ready yourself and
