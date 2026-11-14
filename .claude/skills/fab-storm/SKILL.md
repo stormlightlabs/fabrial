@@ -206,7 +206,7 @@ regenerates generated files. When only the base moved, the review stands. A
 resolved conflict changes the branch's own diff, so the gate takes the new
 head as unreviewed: report the resolution and ask the driver whether to run
 the review stages again or to have the owner accept the head with
-`/storm:ready <sha>`; do neither unasked. When `fab-resync` stops on a
+`/storm:ready <sha>` or an approving review; do neither unasked. When `fab-resync` stops on a
 conflict it cannot resolve, stop and report it.
 
 Post it through the Bot comment workflow like the rest. The Review gate
@@ -214,7 +214,7 @@ workflow then turns `storm/review` green for that head, marks the draft ready
 and sets the squash message in the status comment. It never turns on
 auto-merge: the owner merges, by hand or with auto-merge they turn on. Post it
 only once the sequence has run to its end. A push after it sets the check back
-to pending, unless the push only moved the base.
+to waiting for review, unless the push only moved the base.
 
 Confirm the finish comment appeared, then read the state of `storm/review`
 and the repository's required checks for this head once, with

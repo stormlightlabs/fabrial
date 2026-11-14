@@ -1,0 +1,24 @@
+# Tells the Review gate (review.yml) that someone approved a pull request.
+# It holds no secrets, has no token permissions and does nothing: the Review
+# gate runs when this finishes, from main's copy, reads the pull request's
+# reviews from the API and accepts the head only when a user with write
+# access approved that commit.
+#
+# pull_request_review has no _target form, so GitHub runs this file from the
+# pull request's head, and a pull request can change it. That is why it reads
+# no secret and why the Review gate takes nothing from it but the branch it
+# ran for. A changed copy can at most make the gate read the reviews again.
+name: Review approval
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions: {}
+
+jobs:
+  approved:
+    if: github.event.review.state == 'approved'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "The Review gate reads the reviews from main."

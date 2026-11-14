@@ -96,8 +96,9 @@ Planning records are the Markdown and TOML files under the directories
 
 The Review gate reads three comments: `Review finished at <sha>`, which the
 agent posts as the App, and `/storm:ready <sha>` or `/storm:done <sha>`,
-with which a user with write access accepts that head as it is. Either one
-naming the head turns `storm/review` green, marks the draft ready and sets
+with which a user with write access accepts that head as it is. That user's
+approving review of the head accepts it too. Any of them naming the head
+turns `storm/review` green, marks the draft ready and sets
 the squash message in one bot status comment. You merge it by hand or with
 auto-merge, if the repository allows it. The gate runs from `main`, so on
 the install pull request it does nothing: mark that draft ready yourself,

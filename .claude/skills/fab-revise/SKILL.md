@@ -119,8 +119,8 @@ Where a fix changes what the pull request does, or leaves the title or body
 describing something the branch no longer does, edit them. The text above the
 `<!-- fabrial:footer` line becomes the squash commit's body.
 
-The push sets `storm/review` back to pending until the `fab-storm` skill's
-sequence posts `Review finished`.
+The push sets `storm/review` back to waiting for review until the
+`fab-storm` skill's sequence posts `Review finished`.
 
 ## Resolve the threads
 

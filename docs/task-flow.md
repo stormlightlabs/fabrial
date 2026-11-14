@@ -51,8 +51,10 @@ whether to open a pull request. When it finishes, Branch PR open runs from
 bot. On a `storm/` branch this happens on the first push that adds work
 above the claim commits.
 
-Opening the pull request starts the Review gate, which sets `storm/review` to
-pending on the head. Any CI the repository runs, such as fabrial's Check
+Opening the pull request starts the Review gate, which sets `storm/review` on
+the head to "Waiting for review": a completed check with the conclusion
+`action_required`, which fails the required check without showing as a run
+in progress. Any CI the repository runs, such as fabrial's Check
 workflow, starts as well.
 
 ## 4. Review
@@ -87,17 +89,19 @@ The comment starts the Review gate. When the SHA names the head, it turns
 into the bot's status comment. Marking it ready makes GitHub request the
 owner's review from `CODEOWNERS`. The session reports to the driver and stops.
 
-A push after this sets `storm/review` back to pending, unless the push only
+A push after this sets `storm/review` back to waiting, unless the push only
 moved the base.
 
 ## 6. The owner merges
 
 The owner reads the pull request and approves it. To accept a head the
 review did not read, such as a release pull request or a push after
-`Review finished`, a user with write access comments `/storm:ready <sha>`
-or `/storm:done <sha>`. The gate treats it like `Review finished`, and
-ignores the comment from anyone without write access. A comment naming
-another SHA gets a reply asking for it again.
+`Review finished`, a user with write access approves that commit, or
+comments `/storm:ready <sha>` or `/storm:done <sha>`. The gate treats each
+like `Review finished`, and ignores them from anyone without write access.
+An approval counts only for the commit it was submitted on, and only while
+its author has not asked for changes since; approvals from Apps never
+count. A comment naming another SHA gets a reply asking for it again.
 
 The owner merges with the squash message from the status comment: the title
 and pull request number, the body above `<!-- fabrial:footer`,

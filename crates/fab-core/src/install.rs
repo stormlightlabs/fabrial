@@ -63,6 +63,11 @@ const EMBEDDED: &[(&str, &str, bool)] = &[
         false,
     ),
     (
+        ".github/workflows/review-approval.yml",
+        include_str!("../../../.github/workflows/review-approval.yml"),
+        false,
+    ),
+    (
         ".github/workflows/comment.yml",
         include_str!("../../../.github/workflows/comment.yml"),
         false,
@@ -1207,10 +1212,18 @@ mod tests {
             assert_eq!(text.matches("create-github-app-token").count(), 1, "{workflow}");
             assert_eq!(text.matches("environment:").count(), 1, "{workflow}");
         }
-        // The half a push runs, from the pushed branch, reads no secrets.
-        let push = fs::read_to_string(workflows.join("branch-pr.yml")).unwrap();
-        assert!(!push.contains("secrets.") && !push.contains("create-github-app-token"));
-        assert!(!push.contains("environment:"));
+        // The halves a push or a review runs, from the pull request's
+        // branch, read no secrets.
+        for relay in ["branch-pr.yml", "review-approval.yml"] {
+            let text = fs::read_to_string(workflows.join(relay)).unwrap();
+            assert!(
+                !text.contains("secrets.") && !text.contains("create-github-app-token"),
+                "{relay}"
+            );
+            assert!(!text.contains("environment:"), "{relay}");
+        }
+        let relay = fs::read_to_string(workflows.join("review-approval.yml")).unwrap();
+        assert!(relay.contains("\npermissions: {}\n"));
         assert_eq!(check(dir.path()).unwrap(), vec![]);
     }
 
@@ -1352,6 +1365,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let report = init(dir.path(), &settings(), false).unwrap();
         assert!(report.written.iter().any(|p| p == Path::new(".github/storm/shot.sh")));
+        assert!(
+            report
+                .written
+                .iter()
+                .any(|p| p == Path::new(".github/workflows/review-approval.yml"))
+        );
         for skill in ["fab-rubber-duck", "fab-decompose"] {
             let path = PathBuf::from(format!(".claude/skills/{skill}/SKILL.md"));
             assert!(report.written.contains(&path), "{skill} is not installed");
