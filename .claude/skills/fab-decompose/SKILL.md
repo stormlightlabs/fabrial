@@ -15,9 +15,9 @@ tracker holds it.
 | Primitive  | What it is                                                         |
 | ---------- | ------------------------------------------------------------------ |
 | Collection | Groups run units. Holds their order and what crosses them.         |
-| Run unit   | A body of work one run takes. Holds tasks, and is never claimed.   |
-| Task       | One claim, one branch, one pull request.                           |
-| Dependency | One task waits for another to land.                                |
+| Run unit   | One claim, one branch, one pull request. Holds tasks.              |
+| Task       | One change with its own stop rule, worked in its run unit's PR.    |
+| Dependency | One task waits for another to be done.                             |
 
 The **Tasks** section of `AGENTS.md` maps each primitive to the tracker and
 names the command that writes it. Without that section, use GitHub:
@@ -32,8 +32,9 @@ names the command that writes it. Without that section, use GitHub:
 Both endpoints take the issue's numeric `id`, not its number. Read it with
 `gh api repos/{owner}/{repo}/issues/<n> --jq .id`.
 
-A lone run unit opens no collection. File it in an existing collection it
-belongs to, or leave out the collection flag (`--milestone` above).
+A run unit of one change is a lone task with no children. A lone run unit
+opens no collection. File it in an existing collection it belongs to, or
+leave out the collection flag (`--milestone` above).
 
 ## Before writing anything
 
@@ -52,10 +53,11 @@ and says so.
 
 ## Run units
 
-One per body of work that fits a run. Its body gives the goal, its own stop
-rule (more than "every task is done"), the source, and what it must not
-absorb. It carries no status: nothing claims it, so a status would only copy
-its tasks'.
+One per body of work that fits one review: a run claims it, works its tasks
+on one branch and opens one pull request, so size it to a diff a reviewer
+can read in one pass. Its body gives the goal, its own stop rule (more than
+"every task is done"), the source, and what it must not absorb. It carries a
+status like any task, since a run claims, starts and completes it.
 
 Two tiers only. A task that needs tasks of its own is a second run unit beside
 the first, never nested under it.
@@ -81,9 +83,11 @@ apart are two. Each task's body holds:
 
 Attach each task to its run unit through the tracker's relation, not a line in
 a body: a run finds its tasks through the relation. Where one task cannot
-start until another lands, record a dependency as well, since the relation
-says nothing about order. A task waiting on a dependency is not blocked; leave
-its status alone.
+start until another is done, record a dependency as well, since the relation
+says nothing about order. A dependency between tasks of one run unit sets the
+order a run works them in. One on a task in another run unit holds the run
+unit back until that task lands. A task waiting on a dependency is not
+blocked; leave its status alone.
 
 ## Then
 
@@ -94,6 +98,6 @@ and report exactly what was written, so the next run resumes from there.
 ## Do not
 
 - Write a task whose stop rule you cannot state.
-- Give a run unit a status, or nest deeper than run unit and task.
+- Nest deeper than run unit and task.
 - Open a collection for one run unit.
 - Claim or start any of it. Filing and working are separate steps.

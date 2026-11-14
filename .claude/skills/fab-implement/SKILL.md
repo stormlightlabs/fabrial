@@ -6,7 +6,9 @@ argument-hint: <task-id|#issue|description>
 
 # Implement
 
-Take one task, do the work on its own branch, push it. One task per run.
+Take one task, do the work on its own branch, push it. One task per run. A
+task with open subtasks, or an issue with open sub-issues, is a run unit: its
+children are worked with it, on its branch, in one pull request.
 
 ## Read before starting
 
@@ -34,17 +36,39 @@ Stop and ask when any of these is true:
 - The task is an ID, not an issue number, and `AGENTS.md` has no **Tasks**
   section to read it with. Do not treat the ID as a description: nothing
   would start, complete or hand off the task.
-- The tracker says the task is not ready, or the issue is closed or assigned
-  to someone else. Override that only when the person asks after seeing the
-  reason, and say in your report that you did. A dispatched implementer has
+- The tracker says the task is not ready for a reason other than its open
+  children, or the issue is closed or assigned to someone else. Override
+  that only when the person asks after seeing the reason, and say in your
+  report that you did. A dispatched implementer has
   no one to ask: it reports the reasons and stops.
 - The task is already in progress, its latest handoff is not addressed to
   this session, and the run that dispatched you does not hold its claim (see
   **Start it**).
-- It has open subtasks. Work those one at a time instead.
+- It has open children that **Subtasks** cannot take.
 - It has no acceptance criteria you could check, and the person has not given
   any.
 - The work needs a decision the task does not record.
+
+## Subtasks
+
+A tracked task's children are its child tasks, read as the **Tasks** section
+says; an issue's are its sub-issues,
+`gh api repos/{owner}/{repo}/issues/<n>/sub_issues`. Skip the children that
+are already done or closed. Check every open child before writing anything,
+and stop and report when one:
+
+- waits on work outside the parent, rather than on a sibling (an issue's
+  blockers are at `.../issues/<n>/dependencies/blocked_by`);
+- is in progress, or handed off to another session;
+- has a pull request of its own (`gh pr list --search <id>`, or `#<n>` for a
+  sub-issue);
+- has open children of its own, which breaks the two tiers `fab-decompose`
+  writes.
+
+The parent is the task: it gets the claim, the branch and the pull request.
+Work the open children on that branch in dependency order, each with its
+tests, then whatever the parent asks beyond them. Do not start the children:
+the parent's claim covers them. A task with no children is worked alone.
 
 ## Take a working tree
 
@@ -108,7 +132,8 @@ does from a cloud session, release instead pushes a claim that has already
 expired, so any run can take the task at once. If release still fails, the
 claim lapses at its expiry: report that and go on. Then start the task as the **Tasks**
 section says, from the task worktree, unless the run that dispatched you
-already started it. When the tracker keeps tasks in files in the repository,
+already started it. When the tracker refuses to start a parent only because
+it has children, leave it unstarted: the claim already marks it taken. When the tracker keeps tasks in files in the repository,
 commit the changed file with the work.
 
 ## Do the work
@@ -171,7 +196,8 @@ pull request by hand. It stays a draft until the
 `fab-storm` skill's review finishes; GitHub requests the owner's review when it is
 marked ready. When the task is an issue, add `Closes #<n>` as the
 description's last line above the footer; GitHub reads the closing keyword
-from the description. Edit the description when it should say more or less
+from the description. For an issue with sub-issues, add one `Closes #<n>`
+line for each sub-issue you worked, then one for the parent. Edit the description when it should say more or less
 than the commit body did. Text above the `<!-- fabrial:footer` line becomes
 the squash commit's body, with no attribution lines or session links; leave it
 empty when the title says it all. The workflow keeps a title or body set after
@@ -187,7 +213,8 @@ When the tracker keeps its tasks in the repository, complete a tracked task
 on the branch once the work is done and verified: before the `fab-storm` skill's
 **Finish**, or before your report in a run without `fab-storm`. Do it as the
 **Tasks** section says, with evidence that names the pull request, such as
-`Done in #<n> at <short sha>: <summary>`. Commit the changed file, run
+`Done in #<n> at <short sha>: <summary>`. Complete each child you worked, in
+dependency order, and then the parent. Commit the changed files, run
 `fab gates` and push. The status reaches `main` with the merge, and an abandoned
 pull request leaves it untouched.
 
