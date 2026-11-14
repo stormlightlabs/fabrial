@@ -101,7 +101,10 @@ comments `/storm:ready <sha>` or `/storm:done <sha>`. The gate treats each
 like `Review finished`, and ignores them from anyone without write access.
 An approval counts only for the commit it was submitted on, and only while
 its author has not asked for changes since; approvals from Apps never
-count. A comment naming another SHA gets a reply asking for it again.
+count. On a pull request from a fork whose workflow runs wait for a
+maintainer's approval, an approval counts only once those runs are
+approved; `/storm:ready <sha>` works meanwhile. A comment naming another
+SHA gets a reply asking for it again.
 
 The owner merges with the squash message from the status comment: the title
 and pull request number, the body above `<!-- fabrial:footer`,

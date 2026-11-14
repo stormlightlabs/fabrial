@@ -118,15 +118,16 @@ pub struct Options {
 /// A pull request review as the gate reads it from the API.
 #[derive(serde::Deserialize)]
 struct Review {
-    /// The reviewer's login.
-    login: String,
+    /// The reviewer's login, missing once the account is deleted.
+    login: Option<String>,
     /// `User`, or `Bot` for an App.
     #[serde(rename = "type")]
-    kind: String,
+    kind: Option<String>,
     /// `APPROVED`, `CHANGES_REQUESTED`, `COMMENTED` or `DISMISSED`.
     state: String,
-    /// The commit the review was submitted on.
-    commit: String,
+    /// The commit the review was submitted on, missing once that commit is
+    /// force-pushed away and collected.
+    commit: Option<String>,
 }
 
 /// One gate run: the pull request, its head, and how to reach GitHub.
@@ -537,22 +538,28 @@ pub fn run(options: Options) -> Result<()> {
 /// GitHub lists in the place the approval had. Reviews come oldest first, as
 /// the API lists them. Apps are left out.
 fn approvers(reviews: &[Review], head: &str) -> Vec<String> {
-    let mut latest: Vec<&Review> = Vec::new();
+    // (login, state, commit) of each person's latest decision.
+    let mut latest: Vec<(&str, &str, &str)> = Vec::new();
     for review in reviews {
-        if review.kind == "Bot" || review.login.ends_with("[bot]") {
+        // A review whose reviewer or commit is gone neither approves nor
+        // withdraws an approval.
+        let (Some(login), Some(commit)) = (review.login.as_deref(), review.commit.as_deref()) else {
+            continue;
+        };
+        if review.kind.as_deref() == Some("Bot") || login.ends_with("[bot]") {
             continue;
         }
         if !matches!(review.state.as_str(), "APPROVED" | "CHANGES_REQUESTED" | "DISMISSED") {
             continue;
         }
-        latest.retain(|r| r.login != review.login);
-        latest.push(review);
+        latest.retain(|(l, _, _)| *l != login);
+        latest.push((login, &review.state, commit));
     }
     latest
         .iter()
         .rev()
-        .filter(|r| r.state == "APPROVED" && r.commit == head)
-        .map(|r| r.login.clone())
+        .filter(|(_, state, commit)| *state == "APPROVED" && *commit == head)
+        .map(|(login, _, _)| login.to_string())
         .collect()
 }
 
@@ -662,7 +669,7 @@ mod tests {
     }
 
     fn review(login: &str, kind: &str, state: &str, commit: &str) -> Review {
-        Review { login: login.into(), kind: kind.into(), state: state.into(), commit: commit.into() }
+        Review { login: Some(login.into()), kind: Some(kind.into()), state: state.into(), commit: Some(commit.into()) }
     }
 
     #[test]
@@ -680,6 +687,17 @@ mod tests {
         ];
         assert_eq!(approvers(&reviews, "head"), ["cat", "ann"]);
         assert!(approvers(&reviews, "new").is_empty());
+    }
+
+    #[test]
+    fn a_review_missing_its_reviewer_or_commit_is_skipped() {
+        let mut gone = review("ann", "User", "CHANGES_REQUESTED", "old");
+        gone.commit = None;
+        let mut ghost = review("ann", "User", "CHANGES_REQUESTED", "head");
+        ghost.login = None;
+        ghost.kind = None;
+        let reviews = [review("ann", "User", "APPROVED", "head"), gone, ghost];
+        assert_eq!(approvers(&reviews, "head"), ["ann"]);
     }
 
     #[test]

@@ -2,9 +2,10 @@
 id = "arcl-t-01M7DFWXKYMM842EHBGXRNTQQ7"
 phase = "arcl-ph-01M5S4SCFE01K31R17FQ29AHJ8"
 title = "Let an approving review finish the Review gate"
-status = "in_progress"
+status = "completed"
 priority = "high"
 position = 0
+evidence = "Done in #114: the Review gate accepts an approving review and stops showing a waiting head as running"
 +++
 
 The Review gate keeps `storm/review` running until an agent or a person

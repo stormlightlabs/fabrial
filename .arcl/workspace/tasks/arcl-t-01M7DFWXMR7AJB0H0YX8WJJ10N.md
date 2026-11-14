@@ -2,9 +2,10 @@
 id = "arcl-t-01M7DFWXMR7AJB0H0YX8WJJ10N"
 parent = "arcl-t-01M7DFWXKYMM842EHBGXRNTQQ7"
 title = "Stop showing storm/review as running while it waits"
-status = "pending"
+status = "completed"
 priority = "high"
 position = 0
+evidence = "Done in #114: storm/review completes a waiting head as action_required, titled Waiting for review, instead of showing it in progress"
 +++
 
 `fab gate` creates the `storm/review` check run with `status=in_progress`

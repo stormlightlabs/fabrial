@@ -1068,6 +1068,26 @@ fn a_later_change_request_withdraws_an_approval() {
 }
 
 #[test]
+fn a_review_without_a_commit_or_a_reviewer_is_skipped() {
+    // GitHub sends a null `commit_id` once the reviewed commit is gone, and
+    // a null `user` for a deleted account.
+    let gone =
+        json!({"id": 2, "user": {"login": "x", "type": "User"}, "state": "CHANGES_REQUESTED", "commit_id": null});
+    let ghost = json!({"id": 3, "user": null, "state": "CHANGES_REQUESTED", "commit_id": HEAD});
+    for (name, odd) in [("null commit", gone), ("null user", ghost)] {
+        let run = approve(
+            &[odd.clone(), review("desertthunder", "User", "APPROVED", HEAD)],
+            "write",
+        );
+        assert_eq!(run.code, Some(0), "{name}: {}", run.stderr);
+        assert!(run.succeeded_check(), "{name}");
+        let run = approve(&[odd], "write");
+        assert_eq!(run.code, Some(0), "{name}: {}", run.stderr);
+        assert!(!run.succeeded_check(), "{name}");
+    }
+}
+
+#[test]
 fn a_failed_review_read_fails_the_run_and_accepts_nothing() {
     let run = gate(&[("EVENT", "approve"), ("TEST_REVIEWS", "not json")], json!({}), None);
     assert_ne!(run.code, Some(0));

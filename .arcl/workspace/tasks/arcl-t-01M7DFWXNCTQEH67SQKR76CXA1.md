@@ -2,9 +2,10 @@
 id = "arcl-t-01M7DFWXNCTQEH67SQKR76CXA1"
 parent = "arcl-t-01M7DFWXKYMM842EHBGXRNTQQ7"
 title = "Accept an approving review as /storm:ready"
-status = "pending"
+status = "completed"
 priority = "high"
 position = 0
+evidence = "Done in #114: an approval of the head from a person with write access marks it ready as /storm:ready does; reviews with no reviewer or commit are skipped"
 +++
 
 Only `Review finished at <sha>`, `/storm:ready <sha>` or `/storm:done <sha>`
