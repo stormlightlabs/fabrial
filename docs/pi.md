@@ -403,8 +403,10 @@ Each reading is keyed by repository, PR number and head SHA, and only counts
 checks and reviews of that head. Its status is `unknown` before the first
 reading or when there is no PR or no check, `stale` when the head may have
 moved or the last read failed, and otherwise `pending`, `failed` or `success`
-from the checks. Every reading goes out as a `fabrial:pr` extension event
-without a model call.
+from the checks. The Review gate marks a head waiting for review with a
+completed `storm/review` run that concludes `action_required`, so the
+package counts that check as failed until the review finishes. Every reading
+goes out as a `fabrial:pr` extension event without a model call.
 
 The status is for the person to read. A merge, a closure, a failed check or
 a requested change shows in the [status area](#status-area) and starts no

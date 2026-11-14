@@ -158,10 +158,10 @@ makes it refuse. A plain push refuses when the remote moved. On a refusal,
 start again from **Work in the pull request's tree**.
 
 When only the base moved, the Review gate keeps `storm/review` green.
-Otherwise the check goes back to pending and the change needs another review
-sequence, which the driver asks a `fab-storm` run for. Read the check once after
-the push and do not wait on it. If it is pending after a push that only moved
-the base, the previous head's check was not yet green when the gate read it:
+Otherwise the check goes back to waiting for review and the change needs
+another review sequence, which the driver asks a `fab-storm` run for. Read the
+check once after the push and do not wait on it. If it is waiting for review
+after a push that only moved the base, the previous head's check was not yet green when the gate read it:
 say so, and that the driver can rerun this push's Review gate run once that
 check is green, or ask for another sequence.
 

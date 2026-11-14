@@ -206,8 +206,8 @@ regenerates generated files. When only the base moved, the review stands. A
 resolved conflict changes the branch's own diff, so the gate takes the new
 head as unreviewed: report the resolution and ask the driver whether to run
 the review stages again or to have the owner accept the head with
-`/storm:ready <sha>` or an approving review; do neither unasked. When `fab-resync` stops on a
-conflict it cannot resolve, stop and report it.
+`/storm:ready <sha>` or an approving review; do neither unasked. When
+`fab-resync` stops on a conflict it cannot resolve, stop and report it.
 
 Post it through the Bot comment workflow like the rest. The Review gate
 workflow then turns `storm/review` green for that head, marks the draft ready
