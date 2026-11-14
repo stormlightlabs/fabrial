@@ -26,6 +26,16 @@ request has it, then runs `fab claim take <id> --run <run>`, which creates
 and `fab claim renew` extends it. An issue or a description needs no claim:
 the session works on a `claude/<topic>` or `codex/<topic>` branch.
 
+A task with open subtasks, or an issue with open sub-issues, is taken whole.
+The parent gets the claim, the branch and the pull request, and the session
+works its open children on that branch in dependency order. It skips children
+already done, and stops before any work when a child waits on work outside
+the parent, is in progress elsewhere, has a live claim or work on its own
+`storm/<child-id>` branch, or has a pull request of its own. A lapsed claim
+on a branch with no work holds nothing. `fab run` takes only a task with no
+children. For an issue, the pull request body carries a `Closes #<n>` line
+for each sub-issue and one for the parent.
+
 ## 2. Implement and push
 
 The session, following `fab-implement`, makes the change and its test in the
@@ -67,10 +77,10 @@ found something above a nit. The sequence runs once.
 
 ## 5. Review finished
 
-The session completes a task whose tracker lives in the repository, runs
-`fab gates --full`, checks that the pull request still merges, and posts a
-comment through the Bot comment workflow whose first line is
-`Review finished at <full sha>`.
+The session completes a task whose tracker lives in the repository, each child
+it carries first, runs `fab gates --full`, checks that the pull request still
+merges, and posts a comment through the Bot comment workflow whose first line
+is `Review finished at <full sha>`.
 
 The comment starts the Review gate. When the SHA names the head, it turns
 `storm/review` green, marks the draft ready and writes the squash message
@@ -102,7 +112,9 @@ current head.
 ## 7. Clean up
 
 After the driver reports the merge, the session completes a task whose
-tracker lives outside the repository, then runs `fab cleanup`. It removes
-the worktree and local branch of each merged agent pull request whose
+tracker lives outside the repository, and its children, then runs
+`fab cleanup`. GitHub does not close an issue that open issues still block,
+so the session closes any sub-issue the merge left open. `fab cleanup`
+removes the worktree and local branch of each merged agent pull request whose
 worktree is clean and whose tip matches the merged head, fast-forwards a
 clean primary `main`, and lists open agent pull requests that need a resync.

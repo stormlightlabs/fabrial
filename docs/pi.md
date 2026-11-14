@@ -214,7 +214,8 @@ from the primary checkout, on `main`:
 fab run <task> --trusted-checkout /trusted/fabrial --config /private/issuer.toml
 ```
 
-`<task>` is an ID, an issue as `#<n>` or a file holding a description. An ID
+`<task>` is an ID, an issue as `#<n>` or a file holding a description, with
+no subtasks or sub-issues: the run completes only that task. An ID
 needs a `[tasks]` table in `.github/fabrial.toml`, naming the command for each
 step of the repository's tracker:
 

@@ -12,7 +12,9 @@ diff yourself, since the separation is what makes the review worth having.
 
 ## Start
 
-A tracked task's ID, an issue `#<n>` or a description starts at implement. A pull
+A tracked task's ID, an issue `#<n>` or a description starts at implement. A
+task with open subtasks or sub-issues runs with all of them, in one pull
+request, as the `fab-implement` skill's **Subtasks** says. A pull
 request number starts at review. A bare number is a pull request if
 `gh pr view <n>` (or `pull_request_read`) finds one, and an issue otherwise.
 
@@ -180,10 +182,10 @@ Review finished at <full head sha>
 Each comment is one Bot comment run.
 
 For a tracked task whose tracker keeps its tasks in the repository, first
-complete it on the branch and push, as the `fab-implement` skill's **Complete the
-task** says, so the checks below and the gate read the final head. Run `fab
-sequence` again on that head; when the depth rose, run the stages it now adds
-before posting.
+complete it on the branch, each child it carries before it, and push, as
+the `fab-implement` skill's **Complete the task** says, so the checks below
+and the gate read the final head. Run `fab sequence` again on that head;
+when the depth rose, run the stages it now adds before posting.
 
 Then run `fab gates --full` on that head, which runs every check whatever the
 diff touches. Fix a failure within the task and push before posting; a
@@ -247,7 +249,7 @@ comment carries.
 Any of these ends the run without `Review finished`. Report the reason.
 
 - The implementer stopped before pushing, for example because the tracker
-  refused to start the task.
+  refused to start the task or a subtask was blocked outside it.
 - A fix needs a decision the task and its spec do not record.
 - A gate fails and the fix is outside the task.
 

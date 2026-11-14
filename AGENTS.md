@@ -148,6 +148,12 @@ an idea or a finding goes in the Roadmap plan's phase it belongs in, as
 PLAN.md's **Work** says. A lone run unit uses an existing phase, or no
 `--phase`.
 
+A run takes a run unit whole, in one pull request: it claims and starts the
+parent, works the child tasks in dependency order without starting them, and
+at the end completes each child and then the parent. `arcl task explain`
+calls a parent with open children not ready; that reason alone does not
+stop the run.
+
 - Every change to a task is a file change: commit it on the branch it
   describes, so the status reaches `main` with the merge. Record new tasks and
   bugs found along the way on the branch in progress, never in a pull request
@@ -155,7 +161,8 @@ PLAN.md's **Work** says. A lone run unit uses an existing phase, or no
 - `arcl task start` refuses a task that is not ready. Pass `--force` only when
   the owner asks after seeing the reasons `arcl task explain` gives.
 - A handoff parks the task. Unpark only when `arcl task explain` gives parking
-  as the only reason it is not ready.
+  as the only reason it is not ready, or parking and the parent's open
+  children.
 - When a merge conflicts on a task file, keep the newer status.
 
 ## Plan

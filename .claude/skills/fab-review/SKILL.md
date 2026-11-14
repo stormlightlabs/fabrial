@@ -53,7 +53,9 @@ Read the changed files around the diff, not only the diff. Read the task the
 change is for: the branch name, the pull request body or the first commit names
 it. For a tracked task, read it and its acceptance criteria as the **Tasks**
 section of `AGENTS.md` says; for an issue, `gh issue view <n>` or
-`issue_read`; otherwise the pull request body is the task.
+`issue_read`; otherwise the pull request body is the task. A task with
+subtasks or sub-issues carries them in the same pull request: read each
+one's acceptance criteria too.
 
 `references/reading-the-diff.md` gives the commands. In short: fetch the
 branch, pin its head commit once and review that, use one transport (`gh`, or
